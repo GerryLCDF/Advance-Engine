@@ -95,6 +95,18 @@ export function MusicTab() {
 
   const [dutyCycle, setDutyCycle] = useState('12.5');
   const [activePattern, setActivePattern] = useState<string | null>(null);
+  const [channelStates, setChannelStates] = useState<Record<string, { visible: boolean; solo: boolean; muted: boolean }>>(() => {
+    const m: Record<string, { visible: boolean; solo: boolean; muted: boolean }> = {};
+    CHANNELS.forEach((ch) => { m[ch.id] = { visible: true, solo: false, muted: false }; });
+    return m;
+  });
+
+  const toggleChannel = (id: string, key: 'visible' | 'solo' | 'muted') => {
+    setChannelStates((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], [key]: !prev[id][key] },
+    }));
+  };
 
   const selectedSong = songs.find((so) => so.id === selectedNodeId)
     ?? (selectedNodeId ? null : null);
@@ -124,34 +136,76 @@ export function MusicTab() {
       id: 'channels',
       title: 'CHANNELS',
       collapsed: false,
-      items: CHANNELS.map((ch) => ({
-        id: ch.id, label: ch.name, icon: ch.icon,
-        subtitle: '',
-      })),
+      items: CHANNELS.map((ch) => {
+        const cs = channelStates[ch.id] ?? { visible: true, solo: false, muted: false };
+        return {
+          id: ch.id, label: ch.name, icon: ch.icon,
+          subtitle: '',
+          actions: (
+            <>
+              <span
+                onClick={() => toggleChannel(ch.id, 'visible')}
+                style={{
+                  cursor: 'pointer', fontSize: 10, opacity: cs.visible ? 1 : 0.3,
+                  filter: cs.visible ? 'none' : 'grayscale(1)',
+                }}
+                title={cs.visible ? 'Ocultar' : 'Mostrar'}
+              >
+                👁
+              </span>
+              <span
+                onClick={() => toggleChannel(ch.id, 'solo')}
+                style={{
+                  cursor: 'pointer', fontSize: 9, fontWeight: 700, padding: '0 2px',
+                  color: cs.solo ? '#fbbf24' : '#666',
+                  background: cs.solo ? 'rgba(251,191,36,0.15)' : 'transparent',
+                  borderRadius: 2,
+                }}
+                title={cs.solo ? 'Quitar Solo' : 'Solo'}
+              >
+                S
+              </span>
+              <span
+                onClick={() => toggleChannel(ch.id, 'muted')}
+                style={{
+                  cursor: 'pointer', fontSize: 9, fontWeight: 700, padding: '0 2px',
+                  color: cs.muted ? '#f87171' : '#666',
+                  background: cs.muted ? 'rgba(248,113,113,0.15)' : 'transparent',
+                  borderRadius: 2,
+                }}
+                title={cs.muted ? 'Quitar Mute' : 'Mute'}
+              >
+                M
+              </span>
+            </>
+          ),
+        };
+      }),
     },
     {
-      id: 'instruments-duty',
-      title: 'DUTY',
-      collapsed: true,
-      items: DUTY_PRESETS.map((p) => ({
-        id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
-      })),
-    },
-    {
-      id: 'instruments-wave',
-      title: 'WAVE',
-      collapsed: true,
-      items: WAVE_PRESETS.map((p) => ({
-        id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
-      })),
-    },
-    {
-      id: 'instruments-noise',
-      title: 'NOISE',
-      collapsed: true,
-      items: NOISE_PRESETS.map((p) => ({
-        id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
-      })),
+      id: 'instruments',
+      title: 'INSTRUMENTS',
+      collapsed: false,
+      items: [
+        {
+          id: '__header-duty', label: 'DUTY', isHeader: true,
+          children: DUTY_PRESETS.map((p) => ({
+            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+          })),
+        },
+        {
+          id: '__header-wave', label: 'WAVE', isHeader: true,
+          children: WAVE_PRESETS.map((p) => ({
+            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+          })),
+        },
+        {
+          id: '__header-noise', label: 'NOISE', isHeader: true,
+          children: NOISE_PRESETS.map((p) => ({
+            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+          })),
+        },
+      ],
     },
   ];
 

@@ -6,6 +6,8 @@ export interface HierarchyItem {
   icon?: string;
   subtitle?: string;
   color?: string;
+  isHeader?: boolean;
+  actions?: React.ReactNode;
   children?: HierarchyItem[];
 }
 
@@ -39,70 +41,115 @@ export function HierarchyPanel({
     setCollapsedMap((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const renderNode = (node: HierarchyItem, depth: number) => (
-    <div key={node.id}>
-      <div
-        onClick={() => onSelect(node.id)}
-        onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(node.id, e.clientX, e.clientY); }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 5,
-          padding: '5px 8px 5px 8px',
-          paddingLeft: 8 + depth * 14,
-          cursor: 'pointer',
-          background: selectedId === node.id ? 'var(--bg-raised)' : 'transparent',
-          borderRadius: 4,
-          fontSize: 12,
-          color: selectedId === node.id ? '#c4a0f0' : 'var(--text-secondary)',
-          marginBottom: 1,
-          userSelect: 'none',
-        }}
-        onMouseEnter={(e) => {
-          if (selectedId !== node.id) e.currentTarget.style.background = '#2a2a30';
-        }}
-        onMouseLeave={(e) => {
-          if (selectedId !== node.id) e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        {node.icon && <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{node.icon}</span>}
-        {node.color && !node.icon && (
-          <span style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: node.color, flexShrink: 0, display: 'inline-block',
-          }} />
-        )}
-        <span
+  const [collapsedItems, setCollapsedItems] = useState<Record<string, boolean>>({});
+
+  const toggleItemCollapse = (id: string) => {
+    setCollapsedItems((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const renderNode = (node: HierarchyItem, depth: number) => {
+    const hasChildren = node.children && node.children.length > 0;
+    const isCollapsed = collapsedItems[node.id] ?? false;
+
+    if (node.isHeader) {
+      return (
+        <div key={node.id}>
+          <div
+            onClick={() => toggleItemCollapse(node.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 3,
+              padding: '3px 6px 3px 8px',
+              paddingLeft: 8 + depth * 14,
+              cursor: 'pointer', userSelect: 'none', marginTop: 4,
+            }}
+          >
+            {hasChildren && (
+              <span style={{ color: '#666', fontSize: 8, transition: 'transform 0.12s', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+                ▼
+              </span>
+            )}
+            <span style={{
+              color: '#888', fontSize: 9, fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: '0.5px',
+            }}>
+              {node.label}
+            </span>
+          </div>
+          {hasChildren && !isCollapsed && node.children?.map((child) => renderNode(child, depth + 1))}
+        </div>
+      );
+    }
+
+    return (
+      <div key={node.id}>
+        <div
+          onClick={() => onSelect(node.id)}
+          onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(node.id, e.clientX, e.clientY); }}
           style={{
-            flex: 1,
-            overflow: 'hidden',
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '5px 8px 5px 8px',
+            paddingLeft: 8 + depth * 14,
+            cursor: 'pointer',
+            background: selectedId === node.id ? 'var(--bg-raised)' : 'transparent',
+            borderRadius: 4,
+            fontSize: 12,
+            color: selectedId === node.id ? '#c4a0f0' : 'var(--text-secondary)',
+            marginBottom: 1,
+            userSelect: 'none',
+          }}
+          onMouseEnter={(e) => {
+            if (selectedId !== node.id) e.currentTarget.style.background = '#2a2a30';
+          }}
+          onMouseLeave={(e) => {
+            if (selectedId !== node.id) e.currentTarget.style.background = 'transparent';
           }}
         >
-          {node.label}
-        </span>
-        {node.subtitle && (
-          <span style={{ color: '#666', fontSize: 10, flexShrink: 0 }}>{node.subtitle}</span>
-        )}
-        {onRemove && (
+          {node.icon && <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{node.icon}</span>}
+          {node.color && !node.icon && (
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: node.color, flexShrink: 0, display: 'inline-block',
+            }} />
+          )}
           <span
-            onClick={(e) => { e.stopPropagation(); onRemove(node.id); }}
             style={{
-              color: '#666', cursor: 'pointer', fontSize: 12, padding: '0 4px',
-              opacity: 0,
+              flex: 1,
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
             }}
-            className="hierarchy-rm"
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
           >
-            ✕
+            {node.label}
           </span>
-        )}
+          {node.actions && (
+            <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              {node.actions}
+            </div>
+          )}
+          {node.subtitle && (
+            <span style={{ color: '#666', fontSize: 10, flexShrink: 0 }}>{node.subtitle}</span>
+          )}
+          {onRemove && (
+            <span
+              onClick={(e) => { e.stopPropagation(); onRemove(node.id); }}
+              style={{
+                color: '#666', cursor: 'pointer', fontSize: 12, padding: '0 4px',
+                opacity: 0,
+              }}
+              className="hierarchy-rm"
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
+            >
+              ✕
+            </span>
+          )}
+        </div>
+        {node.children?.map((child) => renderNode(child, depth + 1))}
       </div>
-      {node.children?.map((child) => renderNode(child, depth + 1))}
-    </div>
-  );
+    );
+  };
 
   return (
     <div
