@@ -117,7 +117,17 @@ export function ThemeModal({ onClose }: Props) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <button
+            onClick={() => { setTheme('#2d2d33', '#5a3fa0'); setFontSize(13); }}
+            style={{
+              background: 'var(--bg-raised)', border: 'none', borderRadius: 6,
+              color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600,
+              padding: '6px 16px', cursor: 'pointer',
+            }}
+          >
+            Restaurar predeterminado
+          </button>
           <button
             onClick={onClose}
             style={{
