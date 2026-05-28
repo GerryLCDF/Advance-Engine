@@ -52,7 +52,7 @@ export function RecientesScreen() {
       }}
     >
       {recent.length === 0 ? (
-        <p style={{ color: '#888', fontSize: 14 }}>No hay proyectos recientes. ¡Crea uno!</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>No hay proyectos recientes. ¡Crea uno!</p>
       ) : (
         <motion.div
           variants={containerVariants}
@@ -86,7 +86,7 @@ export function RecientesScreen() {
 
               <span
                 style={{
-                  color: '#e8e8f0',
+                  color: 'var(--text)',
                   fontSize: 13,
                   fontWeight: 500,
                   textAlign: 'center',
@@ -108,7 +108,7 @@ export function RecientesScreen() {
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: 24,
-                  color: '#c4a0f0',
+                  color: 'var(--accent-light)',
                   lineHeight: 1,
                   padding: 4,
                 }}
@@ -123,10 +123,10 @@ export function RecientesScreen() {
 
       <motion.button
         onClick={() => setActiveScreen({ type: 'todos-proyectos' })}
-        whileHover={{ scale: 1.04, background: '#6d4fc7' } as any}
+        whileHover={{ scale: 1.04, background: 'var(--accent-dark)' } as any}
         whileTap={{ scale: 0.97 }}
         style={{
-          background: '#5a3fa0',
+          background: 'var(--accent)',
           border: 'none',
           borderRadius: 6,
           color: '#fff',

@@ -57,7 +57,7 @@ export function EditarScreen({ projectId }: EditarScreenProps) {
         inset: 0,
         display: 'flex',
         zIndex: 10,
-        background: '#1c1c2a',
+        background: 'var(--bg-canvas)',
       }}
     >
       {/* Panel izquierdo con botón Eliminar en el footer */}
@@ -108,7 +108,7 @@ export function EditarScreen({ projectId }: EditarScreenProps) {
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#a78bfa',
+            color: 'var(--accent-light)',
             cursor: 'pointer',
             fontSize: 13,
             fontWeight: 600,
@@ -198,8 +198,8 @@ export function EditarScreen({ projectId }: EditarScreenProps) {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               style={{
-                background: '#2a2a3e',
-                border: '1px solid #444',
+                background: 'var(--bg-panel)',
+                border: '1px solid var(--border-color)',
                 borderRadius: 12,
                 padding: '24px 28px',
                 maxWidth: 320,
@@ -209,14 +209,14 @@ export function EditarScreen({ projectId }: EditarScreenProps) {
                 gap: 16,
               }}
             >
-              <p style={{ color: '#f0f0f0', fontSize: 15 }}>
+              <p style={{ color: 'var(--text)', fontSize: 15 }}>
                 ¿Eliminar <strong>{draftName}</strong>? Esta acción no se puede deshacer.
               </p>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
                 <button
                   onClick={() => setConfirmDelete(false)}
                   style={{
-                    background: '#444',
+                    background: 'var(--text-dim)',
                     border: 'none',
                     borderRadius: 6,
                     color: '#fff',
@@ -253,7 +253,7 @@ export function EditarScreen({ projectId }: EditarScreenProps) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ color: '#e8e8f0', fontSize: 16, fontWeight: 700 }}>{label}</span>
+      <span style={{ color: 'var(--text)', fontSize: 16, fontWeight: 700 }}>{label}</span>
       {children}
     </div>
   );

@@ -18,8 +18,8 @@ export function TabBar({ active, onChange }: TabBarProps) {
     <div
       style={{
         display: 'flex',
-        borderTop: '1px solid #1a1a2e',
-        background: '#1a1a2e',
+        borderTop: '1px solid var(--border-color)',
+        background: 'var(--bg-terminal)',
         flexShrink: 0,
         height: 44,
       }}
@@ -33,15 +33,15 @@ export function TabBar({ active, onChange }: TabBarProps) {
             style={{
               flex: 1,
               border: 'none',
-              background: isActive ? '#5a3fa0' : 'transparent',
-              color: isActive ? '#fff' : '#aaa',
+              background: isActive ? 'var(--accent)' : 'transparent',
+              color: isActive ? '#fff' : 'var(--text-dim)',
               fontSize: 14,
               fontWeight: isActive ? 700 : 400,
               cursor: 'pointer',
               position: 'relative',
               transition: 'background 0.2s, color 0.2s',
             }}
-            whileHover={{ background: isActive ? '#6a4fba' : '#2a2a4e' } as any}
+            whileHover={{ background: isActive ? 'var(--accent-light)' : 'var(--bg-inspector)' } as any}
           >
             {tab.label}
             {isActive && (
@@ -53,7 +53,7 @@ export function TabBar({ active, onChange }: TabBarProps) {
                   left: 0,
                   right: 0,
                   height: 2,
-                  background: '#a78bfa',
+                  background: 'var(--accent-light)',
                   borderRadius: '0 0 2px 2px',
                 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}

@@ -28,6 +28,8 @@ interface AdvanceAPI {
   };
   window: {
     minimize: () => void;
+    maximize: () => void;
+    maximizeEditor: () => void;
     close: () => void;
   };
 }

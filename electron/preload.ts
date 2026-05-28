@@ -31,6 +31,8 @@ export interface AdvanceAPI {
   // Ventana
   window: {
     minimize: () => void;
+    maximize: () => void;
+    maximizeEditor: () => void;
     close: () => void;
   };
 }
@@ -52,6 +54,8 @@ contextBridge.exposeInMainWorld('advanceAPI', {
   },
   window: {
     minimize: () => ipcRenderer.send('window-minimize'),
+    maximize: () => ipcRenderer.send('window-maximize'),
+    maximizeEditor: () => ipcRenderer.send('window-maximize-editor'),
     close: () => ipcRenderer.send('window-close'),
   },
 } satisfies AdvanceAPI);

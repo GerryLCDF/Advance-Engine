@@ -31,7 +31,7 @@ export function CartuchoPanel({
       style={{
         width: 260,
         flexShrink: 0,
-        background: '#b090e8',
+        background: 'var(--accent-light)',
         borderRadius: '0 0 0 8px',
         display: 'flex',
         flexDirection: 'column',
@@ -52,7 +52,7 @@ export function CartuchoPanel({
       {/* Nombre bajo el cartucho */}
       <span
         style={{
-          color: '#1a0a3a',
+          color: 'var(--accent-dark)',
           fontWeight: 700,
           fontSize: 13,
           textAlign: 'center',
@@ -68,10 +68,10 @@ export function CartuchoPanel({
       {/* Botón Modificar Cartucho */}
       <motion.button
         onClick={onModificarCartucho}
-        whileHover={{ scale: 1.04, background: '#7c5fcc' }}
+        whileHover={{ scale: 1.04, background: 'var(--accent-dark)' }}
         whileTap={{ scale: 0.97 }}
         style={{
-          background: '#9b74e0',
+          background: 'var(--accent)',
           border: 'none',
           borderRadius: 6,
           color: '#fff',

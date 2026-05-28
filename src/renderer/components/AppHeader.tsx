@@ -14,7 +14,7 @@ export function AppHeader() {
         alignItems: 'center',
         gap: 12,
         padding: '8px 12px',
-        background: '#c4a0f0',
+        background: 'var(--accent-light)',
         flexShrink: 0,
         // drag region for frameless window
         WebkitAppRegion: 'drag',
@@ -25,14 +25,14 @@ export function AppHeader() {
         style={{
           width: 56,
           height: 56,
-          background: '#fff',
+          background: 'var(--bg-raised)',
           borderRadius: 10,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           fontWeight: 900,
           fontSize: 11,
-          color: '#333',
+          color: 'var(--text)',
           flexShrink: 0,
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
@@ -42,13 +42,13 @@ export function AppHeader() {
 
       {/* Title block */}
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 26, fontWeight: 800, color: '#1a0a3a', lineHeight: 1.1 }}>
+        <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--accent-dark)', lineHeight: 1.1 }}>
           Advance Studio
         </div>
         <div
           style={{
             fontSize: 13,
-            color: '#3a1a7a',
+            color: 'var(--accent)',
             textAlign: 'right',
             marginTop: 2,
           }}
@@ -72,7 +72,7 @@ export function AppHeader() {
         </div>
       </div>
 
-      {/* Window controls */}
+      {/* Window controls — solo cerrar en el launcher */}
       <div
         style={{
           display: 'flex',
@@ -82,7 +82,6 @@ export function AppHeader() {
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
-        <WinBtn label="─" title="Minimizar" onClick={() => window_?.minimize()} />
         <WinBtn label="✕" title="Cerrar" onClick={() => window_?.close()} danger />
       </div>
     </div>
@@ -94,7 +93,7 @@ function NavPill({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       onClick={onClick}
       style={{
-        background: '#7c3aed',
+        background: 'var(--accent)',
         border: 'none',
         borderRadius: 4,
         color: '#fff',

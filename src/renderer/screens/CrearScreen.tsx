@@ -138,7 +138,7 @@ export function CrearScreen() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ color: '#e8e8f0', fontSize: 16, fontWeight: 700 }}>{label}</span>
+      <span style={{ color: 'var(--text)', fontSize: 16, fontWeight: 700 }}>{label}</span>
       {children}
     </div>
   );
@@ -175,9 +175,9 @@ function TemplateThumbnail({
           width: 72,
           height: 54,
           borderRadius: 6,
-          border: selected ? '2px solid #a78bfa' : '2px solid #444',
+          border: selected ? '2px solid var(--accent-light)' : '2px solid var(--border-color)',
           overflow: 'hidden',
-          background: '#1a1a2a',
+          background: 'var(--bg-dark)',
           transition: 'border-color 0.15s',
         }}
       >
@@ -187,7 +187,7 @@ function TemplateThumbnail({
           style={{ width: '100%', height: '100%', objectFit: 'cover', imageRendering: 'pixelated' }}
         />
       </div>
-      <span style={{ color: '#aaa', fontSize: 11 }}>{label}</span>
+      <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>{label}</span>
     </motion.div>
   );
 }

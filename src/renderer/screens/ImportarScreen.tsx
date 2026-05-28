@@ -118,7 +118,7 @@ export function ImportarScreen() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ color: '#e8e8f0', fontSize: 16, fontWeight: 700 }}>{label}</span>
+      <span style={{ color: 'var(--text)', fontSize: 16, fontWeight: 700 }}>{label}</span>
       {children}
     </div>
   );

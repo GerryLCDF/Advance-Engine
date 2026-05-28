@@ -43,7 +43,7 @@ export function TodosProyectosScreen() {
         inset: 0,
         display: 'flex',
         flexDirection: 'column',
-        background: '#1c1c2a',
+        background: 'var(--bg-canvas)',
         zIndex: 10,
       }}
     >
@@ -55,7 +55,7 @@ export function TodosProyectosScreen() {
           gap: 12,
           padding: '0 16px',
           height: 48,
-          background: '#c4a0f0',
+          background: 'var(--accent-light)',
           flexShrink: 0,
         }}
       >
@@ -66,7 +66,7 @@ export function TodosProyectosScreen() {
             background: 'rgba(0,0,0,0.2)',
             border: 'none',
             borderRadius: 6,
-            color: '#1a0a3a',
+            color: 'var(--accent-dark)',
             fontSize: 18,
             width: 32,
             height: 32,
@@ -80,7 +80,7 @@ export function TodosProyectosScreen() {
         >
           ←
         </motion.button>
-        <span style={{ fontWeight: 800, fontSize: 16, color: '#1a0a3a' }}>Advance Studio</span>
+        <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--accent-dark)' }}>Advance Studio</span>
       </div>
 
       {/* Lista */}
@@ -95,7 +95,7 @@ export function TodosProyectosScreen() {
         }}
       >
         {all.length === 0 && (
-          <p style={{ color: '#888', textAlign: 'center', marginTop: 32, fontSize: 14 }}>
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 32, fontSize: 14 }}>
             No hay proyectos guardados.
           </p>
         )}
@@ -111,12 +111,12 @@ export function TodosProyectosScreen() {
               gap: 14,
               padding: '8px 12px',
               borderRadius: 8,
-              border: '1px solid #2a2a4a',
-              background: '#22223a',
+              border: '1px solid var(--border-light)',
+              background: 'var(--bg-inspector)',
               cursor: 'pointer',
             }}
             onClick={() => openProject(project.id)}
-            whileHover={{ background: '#2e2e4e' } as any}
+            whileHover={{ background: 'var(--bg-raised)' } as any}
           >
             <CartuchoDisplay
               name=""
@@ -127,7 +127,7 @@ export function TodosProyectosScreen() {
             <span
               style={{
                 flex: 1,
-                color: '#e8e8f0',
+                color: 'var(--text)',
                 fontWeight: 600,
                 fontSize: 14,
                 overflow: 'hidden',
@@ -137,7 +137,7 @@ export function TodosProyectosScreen() {
             >
               {project.name}
             </span>
-            <span style={{ color: '#888', fontSize: 12, flexShrink: 0 }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 12, flexShrink: 0 }}>
               {formatDate(project.lastOpened)}
             </span>
             <motion.button
@@ -148,7 +148,7 @@ export function TodosProyectosScreen() {
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 20,
-                color: '#c4a0f0',
+                color: 'var(--accent-light)',
                 padding: '2px 4px',
                 flexShrink: 0,
               }}

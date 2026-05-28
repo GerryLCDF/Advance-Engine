@@ -30,7 +30,7 @@ import { TodosProyectosScreen } from './TodosProyectosScreen';
 import { EditarScreen } from './EditarScreen';
 import { ModificarPortadaScreen } from './ModificarPortadaScreen';
 import { CreditosScreen } from './CreditosScreen';
-import { EditorPlaceholderScreen } from './EditorPlaceholderScreen';
+import { EditorScreen } from './EditorScreen';
 
 export function Launcher() {
   const activeScreen = useAppStore((s) => s.activeScreen);
@@ -54,7 +54,7 @@ export function Launcher() {
   if (activeScreen.type === 'editor') {
     return (
       <AnimatePresence>
-        <EditorPlaceholderScreen key={`editor-${activeScreen.projectId}`} projectId={activeScreen.projectId} />
+        <EditorScreen key={`editor-${activeScreen.projectId}`} projectId={activeScreen.projectId} />
       </AnimatePresence>
     );
   }
@@ -66,7 +66,7 @@ export function Launcher() {
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        background: '#2a2a3e',
+        background: 'var(--bg-panel)',
         overflow: 'hidden',
         borderRadius: 8,
         position: 'relative',

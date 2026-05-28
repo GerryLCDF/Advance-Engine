@@ -172,17 +172,17 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
 
           <motion.button
             onClick={handleCambiarPortadaClick}
-            whileHover={{ scale: 1.04, background: '#7c5fcc' } as any}
+            whileHover={{ scale: 1.04,             background: 'var(--accent-dark)' } as any}
             whileTap={{ scale: 0.97 }}
             style={{
-              background: '#7c3aed',
-              border: 'none',
-              borderRadius: 6,
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 600,
-              padding: '6px 20px',
-              cursor: 'pointer',
+            background: 'var(--accent)',
+            border: 'none',
+            borderRadius: 6,
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 600,
+            padding: '6px 20px',
+            cursor: 'pointer',
             }}
           >
             Cambiar portada
@@ -192,14 +192,14 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
         {/* Zona inferior: selector de plantillas */}
         <div
           style={{
-            background: '#2a2a3e',
+            background: 'var(--bg-panel)',
             padding: '14px 20px',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
           }}
         >
-          <span style={{ color: '#e8e8f0', fontSize: 15, fontWeight: 700 }}>Colores:</span>
+          <span style={{ color: 'var(--text)', fontSize: 15, fontWeight: 700 }}>Colores:</span>
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             {TEMPLATES.map((t) => (
               <TemplateCard
@@ -217,8 +217,8 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
         <div
           style={{
             display: 'flex',
-            background: '#2a2a3e',
-            borderTop: '1px solid #1a1a2e',
+            background: 'var(--bg-panel)',
+            borderTop: '1px solid var(--border-color)',
           }}
         >
           <motion.button
@@ -279,8 +279,8 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
               exit={{    scale: 0.88, opacity: 0, y: 12 }}
               transition={{ type: 'spring', stiffness: 320, damping: 24 }}
               style={{
-                background: '#1e1e30',
-                border: '1px solid #3a3a5a',
+                background: 'var(--bg-dark)',
+                border: '1px solid var(--bg-raised)',
                 borderRadius: 12,
                 padding: '24px 28px',
                 width: 320,
@@ -292,7 +292,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
               {/* Título */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 22 }}>🖼️</span>
-                <span style={{ color: '#e8e8f0', fontSize: 16, fontWeight: 700 }}>
+                <span style={{ color: 'var(--text)', fontSize: 16, fontWeight: 700 }}>
                   Requisitos de portada
                 </span>
               </div>
@@ -304,7 +304,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
                 <ReqRow icon="🎨" label="Color"        value="RGB o RGBA" />
               </div>
 
-              <p style={{ color: '#888', fontSize: 12, lineHeight: 1.5 }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.5 }}>
                 La imagen se recortará para ajustarse a la ventana del cartucho.
                 Usa exactamente 480×270 px para mejores resultados.
               </p>
@@ -316,7 +316,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
                   alignItems: 'center',
                   gap: 8,
                   cursor: 'pointer',
-                  color: '#aaa',
+                  color: 'var(--text-dim)',
                   fontSize: 12,
                   userSelect: 'none',
                 }}
@@ -325,7 +325,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
                   type="checkbox"
                   checked={dontShowAgain}
                   onChange={(e) => setDontShowAgain(e.target.checked)}
-                  style={{ width: 14, height: 14, accentColor: '#7c3aed', cursor: 'pointer' }}
+                  style={{ width: 14, height: 14,                   accentColor: 'var(--accent)', cursor: 'pointer' }}
                 />
                 No volver a mostrar este mensaje
               </label>
@@ -334,13 +334,13 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
               <div style={{ display: 'flex', gap: 8 }}>
                 <motion.button
                   onClick={handleHintClose}
-                  whileHover={{ background: '#3a3a5a' } as any}
+                  whileHover={{ background: 'var(--bg-raised)' } as any}
                   style={{
                     flex: 1,
-                    background: '#2a2a4a',
-                    border: '1px solid #3a3a5a',
+                    background: 'var(--bg-inspector)',
+                    border: '1px solid var(--bg-raised)',
                     borderRadius: 7,
-                    color: '#aaa',
+                    color: 'var(--text-dim)',
                     fontSize: 13,
                     fontWeight: 600,
                     padding: '8px',
@@ -351,10 +351,10 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
                 </motion.button>
                 <motion.button
                   onClick={handleHintContinue}
-                  whileHover={{ background: '#6a30cc' } as any}
+                  whileHover={{             background: 'var(--accent-dark)' } as any}
                   style={{
                     flex: 2,
-                    background: '#7c3aed',
+                    background: 'var(--accent)',
                     border: 'none',
                     borderRadius: 7,
                     color: '#fff',
@@ -384,14 +384,14 @@ function ReqRow({ icon, label, value }: { icon: string; label: string; value: st
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        background: '#2a2a3e',
+        background: 'var(--bg-panel)',
         borderRadius: 7,
         padding: '8px 12px',
       }}
     >
       <span style={{ fontSize: 16 }}>{icon}</span>
-      <span style={{ color: '#888', fontSize: 12, minWidth: 80 }}>{label}</span>
-      <span style={{ color: '#e8e8f0', fontSize: 13, fontWeight: 600 }}>{value}</span>
+      <span style={{ color: 'var(--text-muted)', fontSize: 12, minWidth: 80 }}>{label}</span>
+      <span style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>{value}</span>
     </div>
   );
 }
@@ -408,15 +408,15 @@ function TemplateCard({
       whileTap={{ scale: 0.94 }}
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
     >
-      <span style={{ color: '#aaa', fontSize: 11 }}>{label}</span>
+      <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>{label}</span>
       <div
         style={{
           width: 80,
           height: 60,
           borderRadius: 6,
-          border: selected ? '2px solid #a78bfa' : '2px solid #444',
+          border: selected ? '2px solid var(--accent-light)' : '2px solid var(--border-color)',
           overflow: 'hidden',
-          background: '#1a1a2a',
+          background: 'var(--bg-dark)',
           transition: 'border-color 0.15s',
         }}
       >
