@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
+import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { InstrumentType, NoteRow } from '../../../types/editor';
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -22,6 +23,10 @@ export function MusicTab() {
   const removePattern = useAppStore((s) => s.removePattern);
   const updatePattern = useAppStore((s) => s.updatePattern);
   const updateNoteRow = useAppStore((s) => s.updateNoteRow);
+  const hierarchyWidth = useAppStore((s) => s.hierarchyWidth);
+  const inspectorWidth = useAppStore((s) => s.inspectorWidth);
+  const setHierarchyWidth = useAppStore((s) => s.setHierarchyWidth);
+  const setInspectorWidth = useAppStore((s) => s.setInspectorWidth);
 
   const [dutyCycle, setDutyCycle] = useState('12.5');
   const [activePattern, setActivePattern] = useState<string | null>(null);
@@ -167,263 +172,265 @@ export function MusicTab() {
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-      <HierarchyPanel
-        sections={hierarchySections}
-        selectedId={selectedNodeId}
-        onSelect={setSelectedNodeId}
-        onRemove={handleRemove}
-      />
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-canvas)' }}>
-        {/* Toolbar */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          padding: '4px 10px', background: 'var(--bg-panel)',
-          borderBottom: '1px solid var(--border-color)',
-          height: 32, flexShrink: 0,
-        }}>
-          <ToolBtn label="💾" title="Guardar" />
-          <ToolBtn label="▶" title="Play" />
-          <ToolBtn label="⏹" title="Stop" />
-          <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-          <ToolBtn label="✏" title="Dibujar" active />
-          <ToolBtn label="◇" title="Seleccionar" />
-          <ToolBtn label="🗑" title="Borrar" />
-          <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-          <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Duty:</span>
-          <select
-            value={dutyCycle}
-            onChange={(e) => setDutyCycle(e.target.value)}
-            style={{
-              background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
-              borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
-              padding: '2px 4px',
-            }}
-          >
-            <option value="12.5">12.5%</option>
-            <option value="25">25%</option>
-            <option value="50">50%</option>
-            <option value="75">75%</option>
-          </select>
-
-          {/* Step count */}
-          <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-          <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Steps:</span>
-          <select
-            value={editStepCount}
-            onChange={(e) => handleResizePattern(Number(e.target.value))}
-            style={{
-              background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
-              borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
-              padding: '2px 4px',
-            }}
-          >
-            <option value={16}>16</option>
-            <option value={32}>32</option>
-            <option value={48}>48</option>
-            <option value={64}>64</option>
-          </select>
-
-          <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 8 }}>Inst:</span>
-          <select
-            value={selectedInstId}
-            onChange={(e) => setSelectedInstId(e.target.value)}
-            style={{
-              background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
-              borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
-              padding: '2px 4px',
-            }}
-          >
-            {(currentSong?.instruments ?? []).map((i) => (
-              <option key={i.id} value={i.id}>{i.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Piano Roll */}
-        <div style={{ flex: 1, overflow: 'auto', display: 'flex', position: 'relative' }}>
-          {/* Note labels (sticky left) */}
+    <ResizableEditorLayout
+      leftWidth={hierarchyWidth}
+      rightWidth={inspectorWidth}
+      onLeftWidthChange={setHierarchyWidth}
+      onRightWidthChange={setInspectorWidth}
+      left={
+        <HierarchyPanel
+          sections={hierarchySections}
+          selectedId={selectedNodeId}
+          onSelect={setSelectedNodeId}
+          onRemove={handleRemove}
+        />
+      }
+      center={
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-canvas)' }}>
+          {/* Toolbar */}
           <div style={{
-            display: 'flex', flexDirection: 'column',
-            background: 'var(--bg-dark)',
-            borderRight: '1px solid var(--bg-raised)',
-            flexShrink: 0, position: 'sticky', left: 0, zIndex: 1,
-          }}>
-            {ALL_NOTES.map(({ note, octave, label }) => (
-              <div
-                key={label}
-                style={{
-                  width: 44, height: 16,
-                  borderBottom: '1px solid var(--border-color)',
-                  display: 'flex', alignItems: 'center',
-                  paddingLeft: isNoteSharp(note) ? 12 : 4,
-                  fontSize: 8,
-                  color: isNoteSharp(note) ? 'var(--text-dim)' : isCNote(note) ? 'var(--accent-light)' : 'var(--text-secondary)',
-                  background: isNoteSharp(note) ? 'var(--bg-canvas)' : isCNote(note) ? 'var(--bg-inspector)' : 'transparent',
-                }}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-
-          {/* Grid */}
-          <div style={{ position: 'relative', minWidth: patternStepCount * 24 }}>
-            {/* Beat lines overlay */}
-            <div style={{
-              position: 'absolute', inset: 0, pointerEvents: 'none',
-              backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
-              backgroundSize: `${4 * 24}px 1px`,
-            }} />
-
-            {/* Measure lines (every 16 steps) */}
-            <div style={{
-              position: 'absolute', inset: 0, pointerEvents: 'none',
-              backgroundImage: 'linear-gradient(90deg, var(--accent-dark) 1px, transparent 1px)',
-              backgroundSize: `${16 * 24}px 1px`,
-            }} />
-
-            {/* Note cells */}
-            {ALL_NOTES.map(({ note, octave, label }) => (
-              <div key={label} style={{ display: 'flex', height: 16, position: 'relative' }}>
-                {Array.from({ length: patternStepCount }, (_, step) => {
-                  const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
-                  return (
-                    <div
-                      key={step}
-                      style={{
-                        width: 24, height: 16,
-                        background: active ? 'var(--accent)' : 'transparent',
-                        borderBottom: '1px solid var(--border-color)',
-                        borderRight: '1px solid var(--border-color)',
-                        cursor: 'pointer',
-                        transition: 'background 0.05s',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!active) e.currentTarget.style.background = 'var(--accent-dark)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!active) e.currentTarget.style.background = 'transparent';
-                      }}
-                      onClick={() => {
-                        if (patternSong && selectedPattern) {
-                          if (active) {
-                            updateNoteRow(patternSong.id, selectedPattern.id, step, { note: '', octave: 4, instrumentId: '', effect: '' });
-                          } else {
-                            updateNoteRow(patternSong.id, selectedPattern.id, step, { note, octave, instrumentId: selectedInstId, effect: '' });
-                          }
-                        }
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Patterns bottom bar */}
-        {currentSong && (
-          <div style={{
-            height: 36,
-            background: 'var(--bg-panel)',
-            borderTop: '1px solid var(--border-color)',
             display: 'flex', alignItems: 'center', gap: 4,
-            padding: '0 10px', flexShrink: 0, overflowX: 'auto',
+            padding: '4px 10px', background: 'var(--bg-panel)',
+            borderBottom: '1px solid var(--border-color)',
+            height: 32, flexShrink: 0,
           }}>
-            <span style={{ color: 'var(--accent)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', marginRight: 6 }}>
-              PATTERNS
-            </span>
-            {currentSong.patterns.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => setActivePattern(p.id)}
-                style={{
-                  background: activePattern === p.id ? 'var(--accent)' : 'var(--bg-raised)',
-                  border: 'none', borderRadius: 4,
-                  color: '#fff', fontSize: 10,
-                  padding: '4px 10px', cursor: 'pointer',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {i + 1}: {p.id.slice(0, 4).toUpperCase()} {activePattern === p.id ? '▸' : 'V'}
-              </button>
-            ))}
-            <button
-              onClick={() => currentSong && addPattern(currentSong.id)}
+            <ToolBtn label="💾" title="Guardar" />
+            <ToolBtn label="▶" title="Play" />
+            <ToolBtn label="⏹" title="Stop" />
+            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
+            <ToolBtn label="✏" title="Dibujar" active />
+            <ToolBtn label="◇" title="Seleccionar" />
+            <ToolBtn label="🗑" title="Borrar" />
+            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
+            <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Duty:</span>
+            <select
+              value={dutyCycle}
+              onChange={(e) => setDutyCycle(e.target.value)}
               style={{
-                background: 'var(--accent)', border: 'none', borderRadius: 4,
-                color: '#fff', width: 22, height: 22,
-                fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
+                background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
+                borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
+                padding: '2px 4px',
               }}
             >
-              +
-            </button>
-          </div>
-        )}
+              <option value="12.5">12.5%</option>
+              <option value="25">25%</option>
+              <option value="50">50%</option>
+              <option value="75">75%</option>
+            </select>
 
-        {/* Instrument mute/solo bar */}
-        {currentSong && currentSong.instruments.length > 0 && (
-          <div style={{
-            height: 28,
-            background: 'var(--bg-canvas)',
-            borderTop: '1px solid var(--border-color)',
-            display: 'flex', alignItems: 'center', gap: 4,
-            padding: '0 10px', flexShrink: 0, overflowX: 'auto',
-          }}>
-            {currentSong.instruments.map((inst) => (
-              <div
-                key={inst.id}
+            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
+            <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Steps:</span>
+            <select
+              value={editStepCount}
+              onChange={(e) => handleResizePattern(Number(e.target.value))}
+              style={{
+                background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
+                borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
+                padding: '2px 4px',
+              }}
+            >
+              <option value={16}>16</option>
+              <option value={32}>32</option>
+              <option value={48}>48</option>
+              <option value={64}>64</option>
+            </select>
+
+            <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 8 }}>Inst:</span>
+            <select
+              value={selectedInstId}
+              onChange={(e) => setSelectedInstId(e.target.value)}
+              style={{
+                background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
+                borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
+                padding: '2px 4px',
+              }}
+            >
+              {(currentSong?.instruments ?? []).map((i) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Piano Roll */}
+          <div style={{ flex: 1, overflow: 'auto', display: 'flex', position: 'relative' }}>
+            {/* Note labels (sticky left) */}
+            <div style={{
+              display: 'flex', flexDirection: 'column',
+              background: 'var(--bg-dark)',
+              borderRight: '1px solid var(--bg-raised)',
+              flexShrink: 0, position: 'sticky', left: 0, zIndex: 1,
+            }}>
+              {ALL_NOTES.map(({ note, octave, label }) => (
+                <div
+                  key={label}
+                  style={{
+                    width: 44, height: 16,
+                    borderBottom: '1px solid var(--border-color)',
+                    display: 'flex', alignItems: 'center',
+                    paddingLeft: isNoteSharp(note) ? 12 : 4,
+                    fontSize: 8,
+                    color: isNoteSharp(note) ? 'var(--text-dim)' : isCNote(note) ? 'var(--accent-light)' : 'var(--text-secondary)',
+                    background: isNoteSharp(note) ? 'var(--bg-canvas)' : isCNote(note) ? 'var(--bg-inspector)' : 'transparent',
+                  }}
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            {/* Grid */}
+            <div style={{ position: 'relative', minWidth: patternStepCount * 24 }}>
+              <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none',
+                backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
+                backgroundSize: `${4 * 24}px 1px`,
+              }} />
+              <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none',
+                backgroundImage: 'linear-gradient(90deg, var(--accent-dark) 1px, transparent 1px)',
+                backgroundSize: `${16 * 24}px 1px`,
+              }} />
+              {ALL_NOTES.map(({ note, octave, label }) => (
+                <div key={label} style={{ display: 'flex', height: 16, position: 'relative' }}>
+                  {Array.from({ length: patternStepCount }, (_, step) => {
+                    const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
+                    return (
+                      <div
+                        key={step}
+                        style={{
+                          width: 24, height: 16,
+                          background: active ? 'var(--accent)' : 'transparent',
+                          borderBottom: '1px solid var(--border-color)',
+                          borderRight: '1px solid var(--border-color)',
+                          cursor: 'pointer',
+                          transition: 'background 0.05s',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!active) e.currentTarget.style.background = 'var(--accent-dark)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!active) e.currentTarget.style.background = 'transparent';
+                        }}
+                        onClick={() => {
+                          if (patternSong && selectedPattern) {
+                            if (active) {
+                              updateNoteRow(patternSong.id, selectedPattern.id, step, { note: '', octave: 4, instrumentId: '', effect: '' });
+                            } else {
+                              updateNoteRow(patternSong.id, selectedPattern.id, step, { note, octave, instrumentId: selectedInstId, effect: '' });
+                            }
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Patterns bottom bar */}
+          {currentSong && (
+            <div style={{
+              height: 36,
+              background: 'var(--bg-panel)',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '0 10px', flexShrink: 0, overflowX: 'auto',
+            }}>
+              <span style={{ color: 'var(--accent)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', marginRight: 6 }}>
+                PATTERNS
+              </span>
+              {currentSong.patterns.map((p, i) => (
+                <button
+                  key={p.id}
+                  onClick={() => setActivePattern(p.id)}
+                  style={{
+                    background: activePattern === p.id ? 'var(--accent)' : 'var(--bg-raised)',
+                    border: 'none', borderRadius: 4,
+                    color: '#fff', fontSize: 10,
+                    padding: '4px 10px', cursor: 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {i + 1}: {p.id.slice(0, 4).toUpperCase()} {activePattern === p.id ? '▸' : 'V'}
+                </button>
+              ))}
+              <button
+                onClick={() => currentSong && addPattern(currentSong.id)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 2,
-                  padding: '2px 6px',
-                  background: inst.muted ? '#2a1515' : 'var(--bg-dark)',
-                  borderRadius: 3, fontSize: 10,
-                  color: inst.muted ? '#666' : '#aaa',
+                  background: 'var(--accent)', border: 'none', borderRadius: 4,
+                  color: '#fff', width: 22, height: 22,
+                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
-                <span style={{ cursor: 'pointer' }} onClick={() => updateInstrument(currentSong.id, inst.id, { visible: !inst.visible })}>
-                  {inst.visible ? '👁' : '👁‍🗨'}
-                </span>
-                <span>{inst.name}</span>
-                <button
-                  onClick={() => updateInstrument(currentSong.id, inst.id, { muted: !inst.muted })}
-                  style={{
-                    background: inst.muted ? 'var(--red)' : 'var(--bg-raised)',
-                    border: 'none', borderRadius: 2,
-                    color: '#fff', fontSize: 8,
-                    padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
-                  }}
-                >
-                  M
-                </button>
-                <button
-                  onClick={() => updateInstrument(currentSong.id, inst.id, { solo: !inst.solo })}
-                  style={{
-                    background: inst.solo ? '#fbbf24' : 'var(--bg-raised)',
-                    border: 'none', borderRadius: 2,
-                    color: inst.solo ? '#000' : '#fff',
-                    fontSize: 8, padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
-                  }}
-                >
-                  S
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                +
+              </button>
+            </div>
+          )}
 
-      <InspectorPanel
-        title="Inspector"
-        sections={inspectorSections}
-        emptyMessage="Selecciona un instrumento"
-      />
-    </div>
+          {/* Instrument mute/solo bar */}
+          {currentSong && currentSong.instruments.length > 0 && (
+            <div style={{
+              height: 28,
+              background: 'var(--bg-canvas)',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '0 10px', flexShrink: 0, overflowX: 'auto',
+            }}>
+              {currentSong.instruments.map((inst) => (
+                <div
+                  key={inst.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 2,
+                    padding: '2px 6px',
+                    background: inst.muted ? '#2a1515' : 'var(--bg-dark)',
+                    borderRadius: 3, fontSize: 10,
+                    color: inst.muted ? '#666' : '#aaa',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ cursor: 'pointer' }} onClick={() => updateInstrument(currentSong.id, inst.id, { visible: !inst.visible })}>
+                    {inst.visible ? '👁' : '👁‍🗨'}
+                  </span>
+                  <span>{inst.name}</span>
+                  <button
+                    onClick={() => updateInstrument(currentSong.id, inst.id, { muted: !inst.muted })}
+                    style={{
+                      background: inst.muted ? 'var(--red)' : 'var(--bg-raised)',
+                      border: 'none', borderRadius: 2,
+                      color: '#fff', fontSize: 8,
+                      padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
+                    }}
+                  >
+                    M
+                  </button>
+                  <button
+                    onClick={() => updateInstrument(currentSong.id, inst.id, { solo: !inst.solo })}
+                    style={{
+                      background: inst.solo ? '#fbbf24' : 'var(--bg-raised)',
+                      border: 'none', borderRadius: 2,
+                      color: inst.solo ? '#000' : '#fff',
+                      fontSize: 8, padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
+                    }}
+                  >
+                    S
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      }
+      right={
+        <InspectorPanel
+          title="Inspector"
+          sections={inspectorSections}
+          emptyMessage="Selecciona un instrumento"
+        />
+      }
+    />
   );
 }
 
