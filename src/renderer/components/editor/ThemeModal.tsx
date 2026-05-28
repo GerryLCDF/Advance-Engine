@@ -7,7 +7,7 @@ interface Props {
 
 const THEME_PRESETS: { name: string; bgPanel: string; accent: string }[] = [
   { name: 'Advance Studio', bgPanel: '#2d2d33', accent: '#5a3fa0' },
-  { name: 'GBStudio',       bgPanel: '#2a2d3e', accent: '#6888ff' },
+  { name: 'GBStudio',       bgPanel: '#222222', accent: '#c92c61' },
   { name: 'Godot',          bgPanel: '#3d3d48', accent: '#478cbf' },
   { name: 'Unity',          bgPanel: '#38383d', accent: '#2196F3' },
   { name: 'White',          bgPanel: '#ececec', accent: '#7c3aed' },

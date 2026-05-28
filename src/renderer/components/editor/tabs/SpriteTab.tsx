@@ -27,6 +27,12 @@ export function SpriteTab() {
   const [tilePage, setTilePage] = useState(0);
   const [brushTile, setBrushTile] = useState<number | null>(null);
 
+  // ── Animation playback ──────────────────────────────────────────────────
+  const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [onionSkin, setOnionSkin] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+
   // ── Pan ─────────────────────────────────────────────────────────────────
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
@@ -122,6 +128,29 @@ export function SpriteTab() {
   const filteredAnimations = selectedSprite
     ? selectedSprite.animations
     : [];
+
+  // ── Animation playback timer ───────────────────────────────────────────
+  useEffect(() => {
+    if (!isPlaying || !selectedAnim || selectedAnim.frames.length === 0) return;
+    const dur = selectedAnim.frames[currentFrameIdx]?.duration ?? 100;
+    const animId = selectedAnim.id;
+    const id = window.setTimeout(() => {
+      setCurrentFrameIdx((prev) => {
+        const freshAnim = useAppStore.getState().spriteSheets
+          .flatMap((s) => s.animations)
+          .find((a) => a.id === animId);
+        if (!freshAnim || freshAnim.frames.length === 0) return prev;
+        const next = prev + 1;
+        if (next >= freshAnim.frames.length) {
+          if (freshAnim.loop) return 0;
+          setIsPlaying(false);
+          return prev;
+        }
+        return next;
+      });
+    }, dur);
+    return () => window.clearTimeout(id);
+  }, [isPlaying, selectedAnim?.id, currentFrameIdx]);
 
   const hierarchySections: HierarchySection[] = [
     {
@@ -254,28 +283,48 @@ export function SpriteTab() {
                     overflow: 'hidden',
                   }}
                 >
-                  <div style={{
-                    position: 'absolute', inset: 0,
-                    backgroundImage: 'linear-gradient(#ffffff11 1px, transparent 1px), linear-gradient(90deg, #ffffff11 1px, transparent 1px)',
-                    backgroundSize: `${selectedSprite.tileWidth}px ${selectedSprite.tileHeight}px`,
-                    pointerEvents: 'none',
-                  }} />
-                  {selectedAnim?.frames.map((f, i) => {
+                  {showGrid && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      backgroundImage: 'linear-gradient(#ffffff11 1px, transparent 1px), linear-gradient(90deg, #ffffff11 1px, transparent 1px)',
+                      backgroundSize: `${selectedSprite.tileWidth}px ${selectedSprite.tileHeight}px`,
+                      pointerEvents: 'none',
+                    }} />
+                  )}
+                  {onionSkin && selectedAnim?.frames.slice(0, currentFrameIdx).map((f, i) => {
+                    const alpha = 0.06 + 0.12 * ((i + 1) / currentFrameIdx);
                     const tx = (f.tileIndex % selectedSprite.cols);
                     const ty = Math.floor(f.tileIndex / selectedSprite.cols);
                     return (
-                      <div key={i} style={{
+                      <div key={`onion-${i}`} style={{
                         position: 'absolute',
                         left: tx * selectedSprite.tileWidth,
                         top: ty * selectedSprite.tileHeight,
                         width: selectedSprite.tileWidth,
                         height: selectedSprite.tileHeight,
-                        border: '1px solid #a78bfa55',
-                        background: 'rgba(167,139,250,0.12)',
+                        border: '1px solid rgba(167,139,250,0.3)',
+                        background: `rgba(167,139,250,${alpha})`,
                         pointerEvents: 'none',
                       }} />
                     );
                   })}
+                  {selectedAnim && selectedAnim.frames[currentFrameIdx] && (() => {
+                    const f = selectedAnim.frames[currentFrameIdx];
+                    const tx = (f.tileIndex % selectedSprite.cols);
+                    const ty = Math.floor(f.tileIndex / selectedSprite.cols);
+                    return (
+                      <div style={{
+                        position: 'absolute',
+                        left: tx * selectedSprite.tileWidth,
+                        top: ty * selectedSprite.tileHeight,
+                        width: selectedSprite.tileWidth,
+                        height: selectedSprite.tileHeight,
+                        border: '2px solid var(--accent-light)',
+                        background: 'rgba(167,139,250,0.2)',
+                        pointerEvents: 'none',
+                      }} />
+                    );
+                  })()}
                 </div>
               </div>
             ) : (
@@ -363,47 +412,86 @@ export function SpriteTab() {
           {/* Frames timeline */}
           {selectedAnim && (
             <div style={{
-              height: 64,
+              height: 96,
               background: 'var(--bg-panel)',
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '4px 10px',
-              overflowX: 'auto',
+              display: 'flex', flexDirection: 'column',
               flexShrink: 0,
             }}>
-              <span style={{ color: 'var(--accent)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', marginRight: 6 }}>
-                Frames
-              </span>
-              {selectedAnim.frames.map((f, i) => (
-                <div
-                  key={i}
+              {/* Transport bar */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 2,
+                padding: '2px 8px',
+                borderBottom: '1px solid var(--border-color)',
+                height: 28, flexShrink: 0,
+              }}>
+                <button onClick={() => {
+                  setIsPlaying(false);
+                  setCurrentFrameIdx((p) => Math.max(0, p - 1));
+                }} style={transportBtnStyle} title="Frame anterior">⏮</button>
+                <button onClick={() => {
+                  if (isPlaying) { setIsPlaying(false); }
+                  else { setCurrentFrameIdx(0); setIsPlaying(true); }
+                }} style={{ ...transportBtnStyle, background: isPlaying ? 'var(--accent)' : 'var(--bg-raised)' }} title={isPlaying ? 'Detener' : 'Reproducir'}>
+                  {isPlaying ? '⏸' : '▶'}
+                </button>
+                <button onClick={() => {
+                  setIsPlaying(false);
+                  setCurrentFrameIdx((p) => Math.min(selectedAnim.frames.length - 1, p + 1));
+                }} style={transportBtnStyle} title="Frame siguiente">⏭</button>
+
+                <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 6px' }} />
+
+                <button onClick={() => setOnionSkin((p) => !p)}
+                  style={{ ...transportBtnStyle, background: onionSkin ? 'var(--accent)' : 'var(--bg-raised)' }}
+                  title="Papel cebolla">🧅</button>
+                <button onClick={() => setShowGrid((p) => !p)}
+                  style={{ ...transportBtnStyle, background: showGrid ? 'var(--accent)' : 'var(--bg-raised)' }}
+                  title="Mostrar cuadrícula">▦</button>
+
+                <span style={{ color: 'var(--text-dim)', fontSize: 10, marginLeft: 8 }}>
+                  Frame {Math.min(currentFrameIdx + 1, selectedAnim.frames.length)}/{selectedAnim.frames.length}
+                </span>
+              </div>
+
+              {/* Frames list */}
+              <div style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 4,
+                padding: '4px 10px', overflowX: 'auto',
+              }}>
+                {selectedAnim.frames.map((f, i) => (
+                  <div
+                    key={i}
+                    onClick={() => { setIsPlaying(false); setCurrentFrameIdx(i); }}
+                    style={{
+                      width: 44, height: 44,
+                      background: i === currentFrameIdx ? 'var(--accent-dark)' : 'var(--bg-dark)',
+                      border: i === currentFrameIdx ? '1px solid var(--accent-light)' : '1px solid var(--bg-raised)',
+                      borderRadius: 4, cursor: 'pointer',
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, fontSize: 9, color: i === currentFrameIdx ? 'var(--accent-lighter)' : 'var(--text-muted)',
+                    }}
+                    title={`Frame ${i + 1}`}
+                  >
+                    <span>{f.tileIndex}</span>
+                    <span style={{ fontSize: 8, color: i === currentFrameIdx ? 'var(--accent-light)' : '#666' }}>{f.duration}ms</span>
+                  </div>
+                ))}
+                <button
+                  onClick={() => { parentSprite && addFrame(parentSprite.id, selectedAnim.id); }}
                   style={{
-                    width: 44, height: 44,
-                    background: 'var(--bg-dark)',
-                    border: '1px solid var(--bg-raised)',
-                    borderRadius: 4,
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0, fontSize: 9, color: 'var(--text-muted)',
+                    background: 'var(--accent)',
+                    border: 'none', borderRadius: 4,
+                    color: '#fff', width: 32, height: 32,
+                    fontSize: 18, fontWeight: 700, cursor: 'pointer',
+                    flexShrink: 0, lineHeight: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
+                  title="Añadir frame"
                 >
-                  <span>{f.tileIndex}</span>
-                  <span style={{ fontSize: 8, color: '#666' }}>{f.duration}ms</span>
-                </div>
-              ))}
-              <button
-                onClick={() => parentSprite && addFrame(parentSprite.id, selectedAnim.id)}
-                style={{
-                  background: 'var(--accent)',
-                  border: 'none', borderRadius: 4,
-                  color: '#fff', width: 32, height: 32,
-                  fontSize: 18, fontWeight: 700, cursor: 'pointer',
-                  flexShrink: 0, lineHeight: 1,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-                title="Añadir frame"
-              >
-                +
-              </button>
+                  +
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -433,4 +521,13 @@ const pageBtnStyle: React.CSSProperties = {
   color: 'var(--text-secondary)', fontSize: 10,
   padding: '3px 6px', cursor: 'pointer',
   height: 24,
+};
+
+const transportBtnStyle: React.CSSProperties = {
+  background: 'var(--bg-raised)',
+  border: 'none', borderRadius: 3,
+  color: 'var(--text-secondary)', fontSize: 11,
+  width: 24, height: 22, cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  lineHeight: 1,
 };
