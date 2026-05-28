@@ -329,6 +329,14 @@ export function MusicTab() {
   };
 
   return (
+    <>
+    <style>{`
+      .music-piano-roll::-webkit-scrollbar { width: 10px; height: 10px; }
+      .music-piano-roll::-webkit-scrollbar-track { background: var(--bg-dark); border-radius: 4px; }
+      .music-piano-roll::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+      .music-piano-roll::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+      .music-piano-roll::-webkit-scrollbar-corner { background: var(--bg-dark); }
+    `}</style>
     <ResizableEditorLayout
       leftWidth={hierarchyWidth}
       rightWidth={inspectorWidth}
@@ -411,7 +419,7 @@ export function MusicTab() {
           </div>
 
           {/* Piano Roll */}
-          <div ref={pianoRollRef} style={{ flex: 1, overflow: 'scroll', display: 'flex', position: 'relative' }}>
+          <div ref={pianoRollRef} className="music-piano-roll" style={{ flex: 1, overflow: 'scroll', display: 'flex', position: 'relative' }}>
             {/* Piano keyboard (sticky left) */}
             <div style={{
               display: 'flex', flexDirection: 'column',
@@ -633,6 +641,7 @@ export function MusicTab() {
         />
       }
     />
+    </>
   );
 }
 
