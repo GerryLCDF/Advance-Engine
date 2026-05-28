@@ -95,6 +95,10 @@ export function MusicTab() {
 
   const [toolMode, setToolMode] = useState<'pencil' | 'eraser' | 'select'>('pencil');
   const [activePattern, setActivePattern] = useState<string | null>(null);
+  const [musicZoom, setMusicZoom] = useState(2);
+
+  const CELL_W = 8 * musicZoom;
+  const CELL_H = 12 * musicZoom;
   const [channelStates, setChannelStates] = useState<Record<string, { visible: boolean; solo: boolean; muted: boolean }>>(() => {
     const m: Record<string, { visible: boolean; solo: boolean; muted: boolean }> = {};
     CHANNELS.forEach((ch) => { m[ch.id] = { visible: true, solo: false, muted: false }; });
@@ -379,6 +383,12 @@ export function MusicTab() {
                 </select>
               </div>
             </div>
+            {/* Zoom controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
+              <button onClick={() => setMusicZoom((z) => Math.max(1, z - 1))} style={zoomBtnStyle}>−</button>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 10, minWidth: 24, textAlign: 'center' }}>{musicZoom}x</span>
+              <button onClick={() => setMusicZoom((z) => Math.min(4, z + 1))} style={zoomBtnStyle}>+</button>
+            </div>
           </div>
 
           {/* Piano Roll */}
@@ -397,7 +407,7 @@ export function MusicTab() {
                   <div
                     key={label}
                     style={{
-                      width: 44, height: 12,
+                      width: 44, height: CELL_H,
                       borderBottom: '1px solid var(--border-color)',
                       display: 'flex', alignItems: 'center',
                       position: 'relative',
@@ -435,11 +445,11 @@ export function MusicTab() {
             </div>
 
             {/* Grid with 8×12 cell blocks */}
-            <div style={{ position: 'relative', minWidth: patternStepCount * 8 }}>
+            <div style={{ position: 'relative', minWidth: patternStepCount * CELL_W }}>
               {/* Block vertical dividers (every 8 steps) */}
               {Array.from({ length: Math.ceil(patternStepCount / 8) + 1 }, (_, i) => (
                 <div key={`bv${i}`} style={{
-                  position: 'absolute', left: i * 64 - 1, top: 0, bottom: 0,
+                  position: 'absolute', left: i * 8 * CELL_W - 1, top: 0, bottom: 0,
                   width: 1, background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-color)',
                   pointerEvents: 'none', zIndex: 1,
                 }} />
@@ -448,29 +458,29 @@ export function MusicTab() {
               {Array.from({ length: Math.ceil(ALL_NOTES.length / 12) + 1 }, (_, i) => (
                 <div key={`bh${i}`} style={{
                   position: 'absolute', left: 0, right: 0,
-                  top: i * 144 - 1, height: 1,
+                  top: i * 12 * CELL_H - 1, height: 1,
                   background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-light)',
                   pointerEvents: 'none', zIndex: 1,
                 }} />
               ))}
-              {/* Beat lines (every 4 steps = 32px) */}
+              {/* Beat lines (every 4 steps) */}
               <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
-                backgroundSize: '32px 1px', zIndex: 0,
+                backgroundSize: `${4 * CELL_W}px 1px`, zIndex: 0,
               }} />
               {/* Note cells */}
               {ALL_NOTES.map(({ note, octave, label }) => {
                 const sharp = isNoteSharp(note);
                 return (
-                  <div key={label} style={{ display: 'flex', height: 12, position: 'relative' }}>
+                  <div key={label} style={{ display: 'flex', height: CELL_H, position: 'relative' }}>
                     {Array.from({ length: patternStepCount }, (_, step) => {
                       const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
                       return (
                         <div
                           key={step}
                           style={{
-                            width: 8, height: 12,
+                            width: CELL_W, height: CELL_H,
                             background: active
                               ? 'var(--accent)'
                               : sharp
@@ -624,6 +634,14 @@ function ToolBtn({ children, active, onClick }: { children: React.ReactNode; act
     </button>
   );
 }
+
+const zoomBtnStyle: React.CSSProperties = {
+  background: 'var(--bg-raised)',
+  border: 'none', borderRadius: 3,
+  color: 'var(--text-secondary)', fontSize: 13,
+  width: 22, height: 20, cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
 
 // ── Iconos SVG ─────────────────────────────────────────────────────────
 function SaveIcon({ size }: { size: number }) {
