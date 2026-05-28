@@ -27,7 +27,8 @@ export function SpriteTab() {
   const [tilePage, setTilePage] = useState(0);
   const [brushTile, setBrushTile] = useState<number | null>(null);
 
-  // ── Animation playback ──────────────────────────────────────────────────
+  // ── Animation preview (separate from hierarchy selection) ─────────────
+  const [previewAnimId, setPreviewAnimId] = useState<string | null>(null);
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [onionSkin, setOnionSkin] = useState(false);
@@ -40,6 +41,24 @@ export function SpriteTab() {
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hasMoved = useRef(false);
+
+  // ── Derived state ───────────────────────────────────────────────────────
+  const selectedSprite = useMemo(
+    () => spriteSheets.find((sp) => sp.id === selectedNodeId) ?? null,
+    [spriteSheets, selectedNodeId],
+  );
+
+  const previewAnim = useMemo(() => {
+    if (!previewAnimId || !selectedSprite) return null;
+    return selectedSprite.animations.find((a) => a.id === previewAnimId) ?? null;
+  }, [previewAnimId, selectedSprite]);
+
+  // Reset preview when sprite changes or animation is deleted
+  useEffect(() => {
+    if (previewAnimId && (!selectedSprite || !selectedSprite.animations.some((a) => a.id === previewAnimId))) {
+      setPreviewAnimId(null);
+    }
+  }, [selectedSprite, previewAnimId]);
 
   // ── Center canvas on mount / sprite change / zoom change ──────────────
   const centerCanvas = useCallback(() => {
@@ -54,9 +73,7 @@ export function SpriteTab() {
     setPanY((ch - sh) / 2);
   }, [spriteSheets, selectedNodeId, zoomFactor]);
 
-  useEffect(() => {
-    centerCanvas();
-  }, [centerCanvas]);
+  useEffect(() => { centerCanvas(); }, [centerCanvas]);
 
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -111,29 +128,11 @@ export function SpriteTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panX, panY]);
 
-  const selectedSprite = useMemo(
-    () => spriteSheets.find((sp) => sp.id === selectedNodeId) ?? null,
-    [spriteSheets, selectedNodeId],
-  );
-
-  const selectedAnim = useMemo(
-    () => spriteSheets.flatMap((sp) => sp.animations).find((a) => a.id === selectedNodeId) ?? null,
-    [spriteSheets, selectedNodeId],
-  );
-
-  const parentSprite = selectedAnim
-    ? spriteSheets.find((sp) => sp.animations.some((a) => a.id === selectedAnim.id)) ?? null
-    : selectedSprite;
-
-  const filteredAnimations = selectedSprite
-    ? selectedSprite.animations
-    : [];
-
   // ── Animation playback timer ───────────────────────────────────────────
   useEffect(() => {
-    if (!isPlaying || !selectedAnim || selectedAnim.frames.length === 0) return;
-    const dur = selectedAnim.frames[currentFrameIdx]?.duration ?? 100;
-    const animId = selectedAnim.id;
+    if (!isPlaying || !previewAnim || previewAnim.frames.length === 0) return;
+    const dur = previewAnim.frames[currentFrameIdx]?.duration ?? 100;
+    const animId = previewAnim.id;
     const id = window.setTimeout(() => {
       setCurrentFrameIdx((prev) => {
         const freshAnim = useAppStore.getState().spriteSheets
@@ -150,8 +149,32 @@ export function SpriteTab() {
       });
     }, dur);
     return () => window.clearTimeout(id);
-  }, [isPlaying, selectedAnim?.id, currentFrameIdx]);
+  }, [isPlaying, previewAnim?.id, currentFrameIdx]);
 
+  // ── Hierarchy selection handler ───────────────────────────────────────
+  function handleHierarchySelect(id: string) {
+    const isSprite = spriteSheets.some((sp) => sp.id === id);
+    if (isSprite) {
+      setSelectedNodeId(id);
+      setPreviewAnimId(null);
+      setCurrentFrameIdx(0);
+      setIsPlaying(false);
+    } else {
+      setPreviewAnimId(id);
+      setCurrentFrameIdx(0);
+      setIsPlaying(false);
+    }
+  }
+
+  function handleAddAnimation() {
+    if (!selectedSprite) return;
+    addAnimation(selectedSprite.id);
+    const sprite = useAppStore.getState().spriteSheets.find((s) => s.id === selectedSprite.id);
+    const newAnim = sprite?.animations[sprite.animations.length - 1];
+    if (newAnim) setPreviewAnimId(newAnim.id);
+  }
+
+  // ── Sections ────────────────────────────────────────────────────────────
   const hierarchySections: HierarchySection[] = [
     {
       id: 'sprites',
@@ -170,9 +193,18 @@ export function SpriteTab() {
         id: anim.id, label: anim.name, icon: '▶',
         subtitle: `${anim.frames.length}f`,
       })),
-      onAdd: selectedSprite ? () => addAnimation(selectedSprite.id) : undefined,
+      onAdd: handleAddAnimation,
     },
   ];
+
+  const selectedAnim = useMemo(
+    () => spriteSheets.flatMap((sp) => sp.animations).find((a) => a.id === previewAnimId) ?? null,
+    [spriteSheets, previewAnimId],
+  );
+
+  const parentSprite = selectedAnim
+    ? spriteSheets.find((sp) => sp.animations.some((a) => a.id === selectedAnim.id)) ?? null
+    : selectedSprite;
 
   const inspectorSections: InspectorSection[] = [];
 
@@ -223,25 +255,29 @@ export function SpriteTab() {
 
   const handleRemove = (id: string) => {
     const isSprite = spriteSheets.some((sp) => sp.id === id);
-    if (isSprite) removeSpriteSheet(id);
-    else {
+    if (isSprite) {
+      removeSpriteSheet(id);
+      if (selectedNodeId === id) setSelectedNodeId('');
+    } else {
       for (const sp of spriteSheets) {
         if (sp.animations.some((a) => a.id === id)) {
           removeAnimation(sp.id, id);
           break;
         }
       }
+      if (previewAnimId === id) setPreviewAnimId(null);
     }
-    if (selectedNodeId === id) setSelectedNodeId('');
   };
 
   const handleDropTile = (tileIdx: number) => {
-    if (selectedAnim && parentSprite) {
-      addFrame(parentSprite.id, selectedAnim.id);
-      const newLen = parentSprite.animations.find((a) => a.id === selectedAnim.id)?.frames.length ?? 0;
-      updateFrame(parentSprite.id, selectedAnim.id, newLen - 1, { tileIndex: tileIdx });
+    if (previewAnim && parentSprite) {
+      addFrame(parentSprite.id, previewAnim.id);
+      const newLen = parentSprite.animations.find((a) => a.id === previewAnim.id)?.frames.length ?? 0;
+      updateFrame(parentSprite.id, previewAnim.id, newLen - 1, { tileIndex: tileIdx });
     }
   };
+
+  const anim = previewAnim;
 
   return (
     <ResizableEditorLayout
@@ -253,7 +289,7 @@ export function SpriteTab() {
         <HierarchyPanel
           sections={hierarchySections}
           selectedId={selectedNodeId}
-          onSelect={setSelectedNodeId}
+          onSelect={handleHierarchySelect}
           onRemove={handleRemove}
         />
       }
@@ -291,7 +327,7 @@ export function SpriteTab() {
                       pointerEvents: 'none',
                     }} />
                   )}
-                  {onionSkin && selectedAnim?.frames.slice(0, currentFrameIdx).map((f, i) => {
+                  {onionSkin && anim?.frames.slice(0, currentFrameIdx).map((f, i) => {
                     const alpha = 0.06 + 0.12 * ((i + 1) / currentFrameIdx);
                     const tx = (f.tileIndex % selectedSprite.cols);
                     const ty = Math.floor(f.tileIndex / selectedSprite.cols);
@@ -308,8 +344,8 @@ export function SpriteTab() {
                       }} />
                     );
                   })}
-                  {selectedAnim && selectedAnim.frames[currentFrameIdx] && (() => {
-                    const f = selectedAnim.frames[currentFrameIdx];
+                  {anim && anim.frames[currentFrameIdx] && (() => {
+                    const f = anim.frames[currentFrameIdx];
                     const tx = (f.tileIndex % selectedSprite.cols);
                     const ty = Math.floor(f.tileIndex / selectedSprite.cols);
                     return (
@@ -344,7 +380,6 @@ export function SpriteTab() {
               <button onClick={() => setSpriteZoom(Math.min(400, spriteZoom + 10))} style={zoomBtnStyle}>+</button>
             </div>
 
-            {/* Zoom indicator */}
             <div style={{
               position: 'absolute', bottom: 8, right: 8,
               background: '#2d2d33cc', borderRadius: 4,
@@ -368,7 +403,6 @@ export function SpriteTab() {
               overflowX: 'auto',
               flexShrink: 0,
             }}>
-              {/* Pagination */}
               <button onClick={() => setTilePage(0)} style={pageBtnStyle} title="Primero">|&#60;</button>
               <button onClick={() => setTilePage((p) => Math.max(0, p - 1))} style={pageBtnStyle} title="Anterior">&#60;</button>
               <span style={{ color: 'var(--text-muted)', fontSize: 10, minWidth: 30, textAlign: 'center' }}>
@@ -379,7 +413,6 @@ export function SpriteTab() {
 
               <div style={{ width: 1, height: 30, background: 'var(--bg-raised)', margin: '0 8px' }} />
 
-              {/* Tiles */}
               <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 {pageTiles.map((tileIdx) => (
                   <div
@@ -387,18 +420,13 @@ export function SpriteTab() {
                     onClick={() => { setBrushTile(tileIdx); }}
                     onDoubleClick={() => handleDropTile(tileIdx)}
                     style={{
-                      width: 28,
-                      height: 28,
+                      width: 28, height: 28,
                       background: brushTile === tileIdx ? 'var(--accent)' : 'var(--bg-dark)',
                       border: `1px solid ${brushTile === tileIdx ? 'var(--accent-light)' : 'var(--bg-raised)'}`,
                       borderRadius: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--text-muted)',
-                      fontSize: 9,
-                      cursor: 'pointer',
-                      flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--text-muted)', fontSize: 9,
+                      cursor: 'pointer', flexShrink: 0,
                     }}
                     title={`Tile ${tileIdx} (doble clic para añadir a frames)`}
                   >
@@ -409,68 +437,82 @@ export function SpriteTab() {
             </div>
           )}
 
-          {/* Frames bar */}
-          {selectedAnim && (
+          {/* Bottom frames bar */}
+          {anim && (
             <div style={{
-              height: 40,
               background: 'var(--bg-panel)',
               borderTop: '1px solid var(--border-color)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-              padding: '0 12px',
+              display: 'flex', flexDirection: 'column',
               flexShrink: 0,
             }}>
-              <button onClick={() => {
-                if (isPlaying) { setIsPlaying(false); }
-                else { setCurrentFrameIdx(0); setIsPlaying(true); }
-              }} style={{ ...transportBtnStyle, background: isPlaying ? 'var(--accent)' : 'var(--bg-raised)' }} title={isPlaying ? 'Detener' : 'Reproducir'}>
-                {isPlaying ? '⏸' : '▶'}
-              </button>
+              {/* Transport controls */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                padding: '4px 12px',
+                borderBottom: '1px solid var(--border-color)',
+              }}>
+                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.max(0, p - 1)); }} style={transportBtnStyle} title="Frame anterior">⏮</button>
+                <button onClick={() => {
+                  if (isPlaying) { setIsPlaying(false); }
+                  else { setCurrentFrameIdx(0); setIsPlaying(true); }
+                }} style={{ ...transportBtnStyle, background: isPlaying ? 'var(--accent)' : 'var(--bg-raised)' }} title={isPlaying ? 'Detener' : 'Reproducir'}>
+                  {isPlaying ? '⏸' : '▶'}
+                </button>
+                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.min(anim.frames.length - 1, p + 1)); }} style={transportBtnStyle} title="Frame siguiente">⏭</button>
 
-              <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 4px' }} />
+                <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 6px' }} />
 
-              <button onClick={() => setOnionSkin((p) => !p)}
-                style={{ ...transportBtnStyle, background: onionSkin ? 'var(--accent)' : 'var(--bg-raised)' }}
-                title="Papel cebolla">🧅</button>
-              <button onClick={() => setShowGrid((p) => !p)}
-                style={{ ...transportBtnStyle, background: showGrid ? 'var(--accent)' : 'var(--bg-raised)' }}
-                title="Mostrar cuadrícula">▦</button>
+                <button onClick={() => setOnionSkin((p) => !p)}
+                  style={{ ...transportBtnStyle, background: onionSkin ? 'var(--accent)' : 'var(--bg-raised)' }}
+                  title="Papel cebolla">🧅</button>
+                <button onClick={() => setShowGrid((p) => !p)}
+                  style={{ ...transportBtnStyle, background: showGrid ? 'var(--accent)' : 'var(--bg-raised)' }}
+                  title="Mostrar cuadrícula">▦</button>
 
-              <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 4px' }} />
-
-              <span style={{ color: 'var(--text-dim)', fontSize: 10, marginRight: 6 }}>
-                {Math.min(currentFrameIdx + 1, selectedAnim.frames.length)}/{selectedAnim.frames.length}
-              </span>
-
-              <div
-                onClick={() => { setIsPlaying(false); setCurrentFrameIdx(0); }}
-                style={{
-                  width: 28, height: 28,
-                  background: currentFrameIdx === 0 ? 'var(--accent-dark)' : 'var(--bg-dark)',
-                  border: currentFrameIdx === 0 ? '1px solid var(--accent-light)' : '1px solid var(--bg-raised)',
-                  borderRadius: 4, cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, fontSize: 8, color: currentFrameIdx === 0 ? 'var(--accent-lighter)' : 'var(--text-muted)',
-                }}
-                title="Frame 1"
-              >
-                <span>{selectedAnim.frames[0]?.tileIndex ?? '-'}</span>
+                <span style={{ color: 'var(--text-dim)', fontSize: 10, marginLeft: 8 }}>
+                  {Math.min(currentFrameIdx + 1, anim.frames.length)}/{anim.frames.length}
+                </span>
               </div>
 
-              <button
-                onClick={() => { parentSprite && addFrame(parentSprite.id, selectedAnim.id); }}
-                style={{
-                  background: 'var(--accent)',
-                  border: 'none', borderRadius: 4,
-                  color: '#fff', width: 24, height: 24,
-                  fontSize: 16, fontWeight: 700, cursor: 'pointer',
-                  flexShrink: 0, lineHeight: 1,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-                title="Añadir frame"
-              >
-                +
-              </button>
+              {/* Frame thumbnails */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '4px 12px', overflowX: 'auto',
+              }}>
+                {anim.frames.map((f, i) => (
+                  <div
+                    key={i}
+                    onClick={() => { setIsPlaying(false); setCurrentFrameIdx(i); }}
+                    style={{
+                      width: 44, height: 44,
+                      background: i === currentFrameIdx ? 'var(--accent-dark)' : 'var(--bg-dark)',
+                      border: i === currentFrameIdx ? '1px solid var(--accent-light)' : '1px solid var(--bg-raised)',
+                      borderRadius: 4, cursor: 'pointer',
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, fontSize: 9, color: i === currentFrameIdx ? 'var(--accent-lighter)' : 'var(--text-muted)',
+                    }}
+                    title={`Frame ${i + 1}`}
+                  >
+                    <span>{f.tileIndex}</span>
+                    <span style={{ fontSize: 8, color: i === currentFrameIdx ? 'var(--accent-light)' : '#666' }}>{f.duration}ms</span>
+                  </div>
+                ))}
+                <button
+                  onClick={() => { parentSprite && addFrame(parentSprite.id, anim.id); }}
+                  style={{
+                    background: 'var(--accent)',
+                    border: 'none', borderRadius: 4,
+                    color: '#fff', width: 32, height: 32,
+                    fontSize: 18, fontWeight: 700, cursor: 'pointer',
+                    flexShrink: 0, lineHeight: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  title="Añadir frame"
+                >
+                  +
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -479,7 +521,7 @@ export function SpriteTab() {
         <InspectorPanel
           title="Inspector"
           sections={inspectorSections}
-          emptyMessage="Selecciona un sprite o animación"
+          emptyMessage="Selecciona un sprite"
         />
       }
     />
