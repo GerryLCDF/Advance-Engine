@@ -56,7 +56,7 @@ const defaultInstrument = (): Instrument => ({
 });
 
 const defaultPattern = (): Pattern => ({
-  id: uid(), name: 'Patrón 1', rows: Array.from({ length: 16 }, () => defaultNoteRow()),
+  id: uid(), name: 'Patrón 1', rows: Array.from({ length: 64 }, () => defaultNoteRow()),
 });
 
 const defaultNoteRow = (): NoteRow => ({
