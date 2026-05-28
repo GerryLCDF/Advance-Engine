@@ -321,70 +321,64 @@ export function MusicTab() {
       }
       center={
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-canvas)' }}>
-          {/* Toolbar */}
+          {/* Toolbar — estilo cápsula (MundoTab) */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 4,
+            display: 'flex', alignItems: 'center', gap: 2,
             padding: '4px 10px', background: 'var(--bg-panel)',
             borderBottom: '1px solid var(--border-color)',
-            height: 32, flexShrink: 0,
           }}>
-            <ToolBtn label="💾" title="Guardar" />
-            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-            <ToolBtn label="▶" title="Play" />
-            <ToolBtn label="⏹" title="Stop" />
-            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-            <ToolBtn label="✏" title="Dibujar notas" active={toolMode === 'pencil'} onClick={() => setToolMode('pencil')} />
-            <ToolBtn label="◇" title="Seleccionar" active={toolMode === 'select'} onClick={() => setToolMode('select')} />
-            <ToolBtn label="🗑" title="Borrar notas" active={toolMode === 'eraser'} onClick={() => setToolMode('eraser')} />
-            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-            <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Steps:</span>
-            <select
-              value={editStepCount}
-              onChange={(e) => handleResizePattern(Number(e.target.value))}
-              style={{
-                background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
-                borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
-                padding: '2px 4px',
-              }}
-            >
-              <option value={16}>16</option>
-              <option value={32}>32</option>
-              <option value={48}>48</option>
-              <option value={64}>64</option>
-            </select>
-
-            <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 8 }}>Inst:</span>
-            <select
-              value={selectedInstId}
-              onChange={(e) => setSelectedInstId(e.target.value)}
-              style={{
-                background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
-                borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
-                padding: '2px 4px', maxWidth: 140,
-              }}
-            >
-              {(() => {
-                const selChan = CHANNELS.find((c) => c.id === selectedNodeId);
-                if (selChan?.type === 'duty') {
-                  return DUTY_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
-                  ));
-                }
-                if (selChan?.type === 'wave') {
-                  return WAVE_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
-                  ));
-                }
-                if (selChan?.type === 'noise') {
-                  return NOISE_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
-                  ));
-                }
-                return [...DUTY_PRESETS, ...WAVE_PRESETS, ...NOISE_PRESETS].map((p) => (
-                  <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
-                ));
-              })()}
-            </select>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 2,
+              background: 'var(--bg-canvas)', borderRadius: 20,
+              padding: '3px 4px',
+            }}>
+              <ToolBtn onClick={() => {}}><SaveIcon size={14} /></ToolBtn>
+              <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
+              <ToolBtn onClick={() => {}}><PlayIcon size={14} /></ToolBtn>
+              <ToolBtn onClick={() => {}}><StopIcon size={14} /></ToolBtn>
+              <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
+              <ToolBtn active={toolMode === 'pencil'} onClick={() => setToolMode('pencil')}><PencilIcon size={14} /></ToolBtn>
+              <ToolBtn active={toolMode === 'select'} onClick={() => setToolMode('select')}><SelectIcon size={14} /></ToolBtn>
+              <ToolBtn active={toolMode === 'eraser'} onClick={() => setToolMode('eraser')}><EraserIcon size={14} /></ToolBtn>
+              <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginLeft: 4 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 9 }}>Steps</span>
+                <select
+                  value={editStepCount}
+                  onChange={(e) => handleResizePattern(Number(e.target.value))}
+                  style={{
+                    background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)',
+                    borderRadius: 8, color: 'var(--text-secondary)', fontSize: 9,
+                    padding: '2px 4px', height: 18,
+                  }}
+                >
+                  {[16, 32, 48, 64].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginLeft: 6 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 9 }}>Inst</span>
+                <select
+                  value={selectedInstId}
+                  onChange={(e) => setSelectedInstId(e.target.value)}
+                  style={{
+                    background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)',
+                    borderRadius: 8, color: 'var(--text-secondary)', fontSize: 9,
+                    padding: '2px 4px', height: 18, maxWidth: 110,
+                  }}
+                >
+                  {(() => {
+                    const selChan = CHANNELS.find((c) => c.id === selectedNodeId);
+                    let list = selChan?.type === 'duty' ? DUTY_PRESETS
+                      : selChan?.type === 'wave' ? WAVE_PRESETS
+                      : selChan?.type === 'noise' ? NOISE_PRESETS
+                      : ALL_PRESETS;
+                    return list.map((p) => (
+                      <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
+                    ));
+                  })()}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Piano Roll */}
@@ -613,20 +607,68 @@ export function MusicTab() {
   );
 }
 
-function ToolBtn({ label, title, active, onClick }: { label: string; title?: string; active?: boolean; onClick?: () => void }) {
+function ToolBtn({ children, active, onClick }: { children: React.ReactNode; active?: boolean; onClick?: () => void }) {
   return (
     <button
-      title={title}
       onClick={onClick}
       style={{
         background: active ? 'var(--accent)' : 'transparent',
-        border: 'none', borderRadius: 3,
-        color: 'var(--text-secondary)', fontSize: 13,
+        border: 'none', borderRadius: 16,
+        color: active ? '#fff' : 'var(--text-secondary)',
         width: 26, height: 24, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'background 0.15s',
       }}
     >
-      {label}
+      {children}
     </button>
+  );
+}
+
+// ── Iconos SVG ─────────────────────────────────────────────────────────
+function SaveIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
+    </svg>
+  );
+}
+function PlayIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  );
+}
+function StopIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+    </svg>
+  );
+}
+function PencilIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  );
+}
+function SelectIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+      <path d="M13 13l6 6" />
+    </svg>
+  );
+}
+function EraserIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.6 1.6c.8-.8 2-.8 2.8 0L21 5.4c.8.8.8 2 0 2.8L12 17" />
+      <path d="M6 11l7 7" />
+    </svg>
   );
 }
