@@ -93,7 +93,7 @@ export function MusicTab() {
   const setHierarchyWidth = useAppStore((s) => s.setHierarchyWidth);
   const setInspectorWidth = useAppStore((s) => s.setInspectorWidth);
 
-  const [dutyCycle, setDutyCycle] = useState('12.5');
+  const [toolMode, setToolMode] = useState<'pencil' | 'eraser' | 'select'>('pencil');
   const [activePattern, setActivePattern] = useState<string | null>(null);
   const [channelStates, setChannelStates] = useState<Record<string, { visible: boolean; solo: boolean; muted: boolean }>>(() => {
     const m: Record<string, { visible: boolean; solo: boolean; muted: boolean }> = {};
@@ -275,9 +275,9 @@ export function MusicTab() {
   const patternSong = selectedPattern ? songs.find((so) => so.patterns.some((p) => p.id === selectedPattern.id)) : currentSong;
   const patternStepCount = patternRows.length;
 
-  // Build all notes across octaves (B8 → C2)
+  // Build all notes across 6 octaves (72 notes, B7 → C2)
   const ALL_NOTES: { note: string; octave: number; label: string }[] = [];
-  for (let o = 8; o >= 2; o--) {
+  for (let o = 7; o >= 2; o--) {
     for (let i = NOTES.length - 1; i >= 0; i--) {
       ALL_NOTES.push({ note: NOTES[i], octave: o, label: `${NOTES[i]}${o}` });
     }
@@ -329,29 +329,13 @@ export function MusicTab() {
             height: 32, flexShrink: 0,
           }}>
             <ToolBtn label="💾" title="Guardar" />
+            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
             <ToolBtn label="▶" title="Play" />
             <ToolBtn label="⏹" title="Stop" />
             <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-            <ToolBtn label="✏" title="Dibujar" active />
-            <ToolBtn label="◇" title="Seleccionar" />
-            <ToolBtn label="🗑" title="Borrar" />
-            <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
-            <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Duty:</span>
-            <select
-              value={dutyCycle}
-              onChange={(e) => setDutyCycle(e.target.value)}
-              style={{
-                background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
-                borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
-                padding: '2px 4px',
-              }}
-            >
-              <option value="12.5">12.5%</option>
-              <option value="25">25%</option>
-              <option value="50">50%</option>
-              <option value="75">75%</option>
-            </select>
-
+            <ToolBtn label="✏" title="Dibujar notas" active={toolMode === 'pencil'} onClick={() => setToolMode('pencil')} />
+            <ToolBtn label="◇" title="Seleccionar" active={toolMode === 'select'} onClick={() => setToolMode('select')} />
+            <ToolBtn label="🗑" title="Borrar notas" active={toolMode === 'eraser'} onClick={() => setToolMode('eraser')} />
             <div style={{ width: 1, height: 18, background: 'var(--bg-raised)', margin: '0 6px' }} />
             <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Steps:</span>
             <select
@@ -379,21 +363,27 @@ export function MusicTab() {
                 padding: '2px 4px', maxWidth: 140,
               }}
             >
-              <optgroup label="DUTY">
-                {DUTY_PRESETS.map((p) => (
+              {(() => {
+                const selChan = CHANNELS.find((c) => c.id === selectedNodeId);
+                if (selChan?.type === 'duty') {
+                  return DUTY_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
+                  ));
+                }
+                if (selChan?.type === 'wave') {
+                  return WAVE_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
+                  ));
+                }
+                if (selChan?.type === 'noise') {
+                  return NOISE_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
+                  ));
+                }
+                return [...DUTY_PRESETS, ...WAVE_PRESETS, ...NOISE_PRESETS].map((p) => (
                   <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
-                ))}
-              </optgroup>
-              <optgroup label="WAVE">
-                {WAVE_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
-                ))}
-              </optgroup>
-              <optgroup label="NOISE">
-                {NOISE_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
-                ))}
-              </optgroup>
+                ));
+              })()}
             </select>
           </div>
 
@@ -413,41 +403,32 @@ export function MusicTab() {
                   <div
                     key={label}
                     style={{
-                      width: 52, height: 20,
+                      width: 44, height: 12,
                       borderBottom: '1px solid var(--border-color)',
                       display: 'flex', alignItems: 'center',
                       position: 'relative',
-                      background: sharp
-                        ? 'var(--bg-canvas)'
-                        : isC
-                        ? 'var(--bg-inspector)'
-                        : '#2d2d33',
+                      background: sharp ? 'var(--bg-canvas)' : isC ? 'var(--bg-inspector)' : '#2d2d33',
                     }}
                   >
-                    {/* Black key overlay */}
                     {sharp && (
                       <div style={{
                         position: 'absolute', right: 0, top: 0, bottom: 0,
-                        width: 28,
-                        background: '#1a1a20',
+                        width: 20, background: '#1a1a20',
                         borderLeft: '1px solid var(--border-color)',
-                        borderRadius: '0 0 3px 3px',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        <span style={{ color: 'var(--text-dim)', fontSize: 7 }}>{label}</span>
+                        <span style={{ color: 'var(--text-dim)', fontSize: 6 }}>{label}</span>
                       </div>
                     )}
-                    {/* White key label */}
                     {!sharp && (
                       <span style={{
-                        fontSize: 9, marginLeft: 4,
+                        fontSize: 7, marginLeft: 2,
                         color: isC ? 'var(--accent-light)' : 'var(--text-muted)',
                         fontWeight: isC ? 600 : 400,
                       }}>
                         {label}
                       </span>
                     )}
-                    {/* Octave divider line */}
                     {isC && (
                       <div style={{
                         position: 'absolute', bottom: -1, left: 0, right: 0,
@@ -459,31 +440,43 @@ export function MusicTab() {
               })}
             </div>
 
-            {/* Grid */}
-            <div style={{ position: 'relative', minWidth: patternStepCount * 28 }}>
-              {/* Beat lines */}
+            {/* Grid with 8×12 cell blocks */}
+            <div style={{ position: 'relative', minWidth: patternStepCount * 8 }}>
+              {/* Block vertical dividers (every 8 steps) */}
+              {Array.from({ length: Math.ceil(patternStepCount / 8) + 1 }, (_, i) => (
+                <div key={`bv${i}`} style={{
+                  position: 'absolute', left: i * 64 - 1, top: 0, bottom: 0,
+                  width: 1, background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-color)',
+                  pointerEvents: 'none', zIndex: 1,
+                }} />
+              ))}
+              {/* Block horizontal dividers (every 12 notes) */}
+              {Array.from({ length: Math.ceil(ALL_NOTES.length / 12) + 1 }, (_, i) => (
+                <div key={`bh${i}`} style={{
+                  position: 'absolute', left: 0, right: 0,
+                  top: i * 144 - 1, height: 1,
+                  background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-light)',
+                  pointerEvents: 'none', zIndex: 1,
+                }} />
+              ))}
+              {/* Beat lines (every 4 steps = 32px) */}
               <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
-                backgroundSize: `${4 * 28}px 1px`, zIndex: 0,
+                backgroundSize: '32px 1px', zIndex: 0,
               }} />
-              {/* Bar lines */}
-              <div style={{
-                position: 'absolute', inset: 0, pointerEvents: 'none',
-                backgroundImage: 'linear-gradient(90deg, var(--accent-dark) 1px, transparent 1px)',
-                backgroundSize: `${16 * 28}px 1px`, zIndex: 0,
-              }} />
+              {/* Note cells */}
               {ALL_NOTES.map(({ note, octave, label }) => {
                 const sharp = isNoteSharp(note);
                 return (
-                  <div key={label} style={{ display: 'flex', height: 20, position: 'relative' }}>
+                  <div key={label} style={{ display: 'flex', height: 12, position: 'relative' }}>
                     {Array.from({ length: patternStepCount }, (_, step) => {
                       const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
                       return (
                         <div
                           key={step}
                           style={{
-                            width: 28, height: 20,
+                            width: 8, height: 12,
                             background: active
                               ? 'var(--accent)'
                               : sharp
@@ -497,10 +490,12 @@ export function MusicTab() {
                           }}
                           onClick={() => {
                             if (patternSong && selectedPattern) {
-                              if (active) {
+                              if (toolMode === 'eraser' || (toolMode === 'pencil' && active)) {
                                 updateNoteRow(patternSong.id, selectedPattern.id, step, { note: '', octave: 4, instrumentId: '', effect: '' });
-                              } else {
+                              } else if (toolMode === 'pencil' && !active) {
                                 updateNoteRow(patternSong.id, selectedPattern.id, step, { note, octave, instrumentId: selectedInstId, effect: '' });
+                              } else if (toolMode === 'select') {
+                                setSelectedNodeId(step.toString());
                               }
                             }
                           }}
@@ -618,10 +613,11 @@ export function MusicTab() {
   );
 }
 
-function ToolBtn({ label, title, active }: { label: string; title?: string; active?: boolean }) {
+function ToolBtn({ label, title, active, onClick }: { label: string; title?: string; active?: boolean; onClick?: () => void }) {
   return (
     <button
       title={title}
+      onClick={onClick}
       style={{
         background: active ? 'var(--accent)' : 'transparent',
         border: 'none', borderRadius: 3,
