@@ -5,11 +5,13 @@ import type { EditorTab } from '../../types/editor';
 import { ThemeModal } from './ThemeModal';
 
 const TABS: { key: EditorTab; label: string }[] = [
-  { key: 'mundo',   label: 'Mundo' },
-  { key: 'sprite',  label: 'Sprite' },
-  { key: 'imagen',  label: 'Imagen' },
-  { key: 'music',   label: 'Music/Sound' },
-  { key: 'dialogo', label: 'Dialogo' },
+  { key: 'mundo',     label: 'Mundo' },
+  { key: 'scripting', label: 'Scripting' },
+  { key: 'sprite',    label: 'Sprite' },
+  { key: 'imagen',    label: 'Imagen' },
+  { key: 'music',     label: 'Music' },
+  { key: 'sound',     label: 'Sound' },
+  { key: 'dialogo',   label: 'Dialogo' },
 ];
 
 type MenuItemDef = { label: string; shortcut?: string; onClick?: () => void; divider?: boolean };
@@ -44,9 +46,11 @@ const MENU_ITEMS: Record<string, MenuItemDef[]> = {
   ],
   Help: [
     { label: 'Mundo', onClick: () => {} },
+    { label: 'Scripting', onClick: () => {} },
     { label: 'Sprite', onClick: () => {} },
     { label: 'Imagen', onClick: () => {} },
-    { label: 'Music/Sound', onClick: () => {} },
+    { label: 'Music', onClick: () => {} },
+    { label: 'Sound', onClick: () => {} },
     { label: 'Dialog', onClick: () => {}, divider: true },
     { label: 'Tema' },
     { label: 'Idioma', divider: true },
@@ -95,9 +99,11 @@ export function EditorTopBar() {
         setActiveScreen({ type: 'launcher' });
         break;
       case 'Mundo': setEditorTab('mundo'); break;
+      case 'Scripting': setEditorTab('scripting'); break;
       case 'Sprite': setEditorTab('sprite'); break;
       case 'Imagen': setEditorTab('imagen'); break;
-      case 'Music/Sound': setEditorTab('music'); break;
+      case 'Music': setEditorTab('music'); break;
+      case 'Sound': setEditorTab('sound'); break;
       case 'Dialog': setEditorTab('dialogo'); break;
       case 'Tema': setShowThemeModal(true); break;
     }

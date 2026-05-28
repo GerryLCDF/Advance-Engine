@@ -1,6 +1,6 @@
 // ── Editor data types for Advance Studio ───────────────────────────────────
 
-export type EditorTab = 'mundo' | 'sprite' | 'imagen' | 'music' | 'dialogo';
+export type EditorTab = 'mundo' | 'scripting' | 'sprite' | 'imagen' | 'music' | 'sound' | 'dialogo';
 
 // ── Mundo (Scene/World) ──────────────────────────────────────────────────
 export interface Actor {
