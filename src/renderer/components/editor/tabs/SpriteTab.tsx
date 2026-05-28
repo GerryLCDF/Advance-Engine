@@ -34,6 +34,9 @@ export function SpriteTab() {
   const [onionSkin, setOnionSkin] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
 
+  // ── Context menu ───────────────────────────────────────────────────────
+  const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+
   // ── Pan ─────────────────────────────────────────────────────────────────
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
@@ -277,9 +280,44 @@ export function SpriteTab() {
     }
   };
 
+  // ── Context menu handlers ─────────────────────────────────────────────
+  function handleContextMenu(id: string, x: number, y: number) {
+    setCtxMenu({ id, x, y });
+  }
+
+  function doRename(id: string) {
+    const isSprite = spriteSheets.some((sp) => sp.id === id);
+    const item = isSprite
+      ? spriteSheets.find((sp) => sp.id === id)
+      : spriteSheets.flatMap((sp) => sp.animations).find((a) => a.id === id);
+    if (!item) return;
+    const name = prompt('Nuevo nombre:', item.name);
+    if (name && name.trim()) {
+      if (isSprite) updateSpriteSheet(id, { name: name.trim() });
+      else {
+        const parent = spriteSheets.find((sp) => sp.animations.some((a) => a.id === id));
+        if (parent) updateAnimation(parent.id, id, { name: name.trim() });
+      }
+    }
+    setCtxMenu(null);
+  }
+
+  function doDelete(id: string) {
+    handleRemove(id);
+    setCtxMenu(null);
+  }
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [ctxMenu]);
+
   const anim = previewAnim;
 
   return (
+    <>
     <ResizableEditorLayout
       leftWidth={hierarchyWidth}
       rightWidth={inspectorWidth}
@@ -291,6 +329,7 @@ export function SpriteTab() {
           selectedId={selectedNodeId}
           onSelect={handleHierarchySelect}
           onRemove={handleRemove}
+          onContextMenu={handleContextMenu}
         />
       }
       center={
@@ -524,10 +563,42 @@ export function SpriteTab() {
           emptyMessage="Selecciona un sprite"
         />
       }
-    />
+    >
+    </ResizableEditorLayout>
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <div style={{
+          position: 'fixed', zIndex: 99999,
+          left: ctxMenu.x, top: ctxMenu.y,
+          background: 'var(--bg-panel)',
+          border: '1px solid var(--border-color)',
+          borderRadius: 6,
+          padding: '4px 0',
+          minWidth: 140,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>
+          <div onClick={() => doRename(ctxMenu.id)} style={ctxItemStyle}>
+            ✏️ Renombrar
+          </div>
+          <div onClick={() => doDelete(ctxMenu.id)} style={{ ...ctxItemStyle, color: '#f87171' }}>
+            🗑️ Eliminar
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
+const ctxItemStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  fontSize: 12,
+  color: 'var(--text-secondary)',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+};
 const zoomBtnStyle: React.CSSProperties = {
   background: 'var(--bg-raised)',
   border: 'none', borderRadius: 3,

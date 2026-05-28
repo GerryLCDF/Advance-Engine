@@ -22,10 +22,11 @@ interface HierarchyPanelProps {
   selectedId: string;
   onSelect: (id: string) => void;
   onRemove?: (id: string) => void;
+  onContextMenu?: (id: string, x: number, y: number) => void;
 }
 
 export function HierarchyPanel({
-  sections, selectedId, onSelect, onRemove,
+  sections, selectedId, onSelect, onRemove, onContextMenu,
 }: HierarchyPanelProps) {
   const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(() => {
     const m: Record<string, boolean> = {};
@@ -41,6 +42,7 @@ export function HierarchyPanel({
     <div key={node.id}>
       <div
         onClick={() => onSelect(node.id)}
+        onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(node.id, e.clientX, e.clientY); }}
         style={{
           display: 'flex',
           alignItems: 'center',
