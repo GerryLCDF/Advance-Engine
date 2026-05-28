@@ -409,89 +409,68 @@ export function SpriteTab() {
             </div>
           )}
 
-          {/* Frames timeline */}
+          {/* Frames bar */}
           {selectedAnim && (
             <div style={{
-              height: 96,
+              height: 40,
               background: 'var(--bg-panel)',
-              display: 'flex', flexDirection: 'column',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              padding: '0 12px',
               flexShrink: 0,
             }}>
-              {/* Transport bar */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 2,
-                padding: '2px 8px',
-                borderBottom: '1px solid var(--border-color)',
-                height: 28, flexShrink: 0,
-              }}>
-                <button onClick={() => {
-                  setIsPlaying(false);
-                  setCurrentFrameIdx((p) => Math.max(0, p - 1));
-                }} style={transportBtnStyle} title="Frame anterior">⏮</button>
-                <button onClick={() => {
-                  if (isPlaying) { setIsPlaying(false); }
-                  else { setCurrentFrameIdx(0); setIsPlaying(true); }
-                }} style={{ ...transportBtnStyle, background: isPlaying ? 'var(--accent)' : 'var(--bg-raised)' }} title={isPlaying ? 'Detener' : 'Reproducir'}>
-                  {isPlaying ? '⏸' : '▶'}
-                </button>
-                <button onClick={() => {
-                  setIsPlaying(false);
-                  setCurrentFrameIdx((p) => Math.min(selectedAnim.frames.length - 1, p + 1));
-                }} style={transportBtnStyle} title="Frame siguiente">⏭</button>
+              <button onClick={() => {
+                if (isPlaying) { setIsPlaying(false); }
+                else { setCurrentFrameIdx(0); setIsPlaying(true); }
+              }} style={{ ...transportBtnStyle, background: isPlaying ? 'var(--accent)' : 'var(--bg-raised)' }} title={isPlaying ? 'Detener' : 'Reproducir'}>
+                {isPlaying ? '⏸' : '▶'}
+              </button>
 
-                <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 6px' }} />
+              <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 4px' }} />
 
-                <button onClick={() => setOnionSkin((p) => !p)}
-                  style={{ ...transportBtnStyle, background: onionSkin ? 'var(--accent)' : 'var(--bg-raised)' }}
-                  title="Papel cebolla">🧅</button>
-                <button onClick={() => setShowGrid((p) => !p)}
-                  style={{ ...transportBtnStyle, background: showGrid ? 'var(--accent)' : 'var(--bg-raised)' }}
-                  title="Mostrar cuadrícula">▦</button>
+              <button onClick={() => setOnionSkin((p) => !p)}
+                style={{ ...transportBtnStyle, background: onionSkin ? 'var(--accent)' : 'var(--bg-raised)' }}
+                title="Papel cebolla">🧅</button>
+              <button onClick={() => setShowGrid((p) => !p)}
+                style={{ ...transportBtnStyle, background: showGrid ? 'var(--accent)' : 'var(--bg-raised)' }}
+                title="Mostrar cuadrícula">▦</button>
 
-                <span style={{ color: 'var(--text-dim)', fontSize: 10, marginLeft: 8 }}>
-                  Frame {Math.min(currentFrameIdx + 1, selectedAnim.frames.length)}/{selectedAnim.frames.length}
-                </span>
+              <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 4px' }} />
+
+              <span style={{ color: 'var(--text-dim)', fontSize: 10, marginRight: 6 }}>
+                {Math.min(currentFrameIdx + 1, selectedAnim.frames.length)}/{selectedAnim.frames.length}
+              </span>
+
+              <div
+                onClick={() => { setIsPlaying(false); setCurrentFrameIdx(0); }}
+                style={{
+                  width: 28, height: 28,
+                  background: currentFrameIdx === 0 ? 'var(--accent-dark)' : 'var(--bg-dark)',
+                  border: currentFrameIdx === 0 ? '1px solid var(--accent-light)' : '1px solid var(--bg-raised)',
+                  borderRadius: 4, cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, fontSize: 8, color: currentFrameIdx === 0 ? 'var(--accent-lighter)' : 'var(--text-muted)',
+                }}
+                title="Frame 1"
+              >
+                <span>{selectedAnim.frames[0]?.tileIndex ?? '-'}</span>
               </div>
 
-              {/* Frames list */}
-              <div style={{
-                flex: 1, display: 'flex', alignItems: 'center', gap: 4,
-                padding: '4px 10px', overflowX: 'auto',
-              }}>
-                {selectedAnim.frames.map((f, i) => (
-                  <div
-                    key={i}
-                    onClick={() => { setIsPlaying(false); setCurrentFrameIdx(i); }}
-                    style={{
-                      width: 44, height: 44,
-                      background: i === currentFrameIdx ? 'var(--accent-dark)' : 'var(--bg-dark)',
-                      border: i === currentFrameIdx ? '1px solid var(--accent-light)' : '1px solid var(--bg-raised)',
-                      borderRadius: 4, cursor: 'pointer',
-                      display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, fontSize: 9, color: i === currentFrameIdx ? 'var(--accent-lighter)' : 'var(--text-muted)',
-                    }}
-                    title={`Frame ${i + 1}`}
-                  >
-                    <span>{f.tileIndex}</span>
-                    <span style={{ fontSize: 8, color: i === currentFrameIdx ? 'var(--accent-light)' : '#666' }}>{f.duration}ms</span>
-                  </div>
-                ))}
-                <button
-                  onClick={() => { parentSprite && addFrame(parentSprite.id, selectedAnim.id); }}
-                  style={{
-                    background: 'var(--accent)',
-                    border: 'none', borderRadius: 4,
-                    color: '#fff', width: 32, height: 32,
-                    fontSize: 18, fontWeight: 700, cursor: 'pointer',
-                    flexShrink: 0, lineHeight: 1,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  title="Añadir frame"
-                >
-                  +
-                </button>
-              </div>
+              <button
+                onClick={() => { parentSprite && addFrame(parentSprite.id, selectedAnim.id); }}
+                style={{
+                  background: 'var(--accent)',
+                  border: 'none', borderRadius: 4,
+                  color: '#fff', width: 24, height: 24,
+                  fontSize: 16, fontWeight: 700, cursor: 'pointer',
+                  flexShrink: 0, lineHeight: 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+                title="Añadir frame"
+              >
+                +
+              </button>
             </div>
           )}
         </>
