@@ -36,6 +36,7 @@ export function Launcher() {
   const activeScreen = useAppStore((s) => s.activeScreen);
   const activeTab = useAppStore((s) => s.activeTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const setActiveScreen = useAppStore((s) => s.setActiveScreen);
   const resetDraft = useAppStore((s) => s.resetDraft);
   const loadProjects = useAppStore((s) => s.loadProjects);
 
@@ -44,10 +45,11 @@ export function Launcher() {
     loadProjects();
   }, [loadProjects]);
 
-  // Resetear draft al cambiar de tab
+  // Resetear draft al cambiar de tab y salir de overlays
   const handleTabChange = (tab: typeof activeTab) => {
     resetDraft();
     setActiveTab(tab);
+    setActiveScreen({ type: 'launcher' });
   };
 
   // ── Pantalla editor (fullscreen, sale del shell del Launcher) ─────────────
