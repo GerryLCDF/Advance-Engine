@@ -97,10 +97,11 @@ export function MusicTab() {
   const [activePattern, setActivePattern] = useState<string | null>(null);
   const [musicZoom, setMusicZoom] = useState(2);
 
-  const CELL_W = 8 * musicZoom;
-  const CELL_H = 12 * musicZoom;
+  const BASE = 12;
+  const CELL_W = BASE * musicZoom;
+  const CELL_H = BASE * musicZoom;
 
-  // Zoom con Ctrl+Wheel (como las otras pestañas)
+  // Zoom con Ctrl+Wheel, scroll horizontal con Shift+Wheel (como las otras pestañas)
   const pianoRollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = pianoRollRef.current;
@@ -109,6 +110,9 @@ export function MusicTab() {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         setMusicZoom((z) => Math.max(1, Math.min(4, z + (e.deltaY > 0 ? -1 : 1))));
+      } else if (e.shiftKey) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
       }
     };
     el.addEventListener('wheel', handler, { passive: false });
