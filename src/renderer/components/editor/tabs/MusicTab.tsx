@@ -420,123 +420,125 @@ export function MusicTab() {
           </div>
 
           {/* Piano Roll */}
-          <div ref={pianoRollRef} className="music-piano-roll" style={{ flex: 1, overflow: 'auto', display: 'flex', position: 'relative' }}>
-            {/* Piano keyboard (sticky left) */}
-            <div style={{
-              display: 'flex', flexDirection: 'column',
-              background: 'var(--bg-dark)',
-              borderRight: '1px solid var(--bg-raised)',
-              flexShrink: 0, position: 'sticky', left: 0, zIndex: 2,
-            }}>
-              {ALL_NOTES.map(({ note, octave, label }) => {
-                const sharp = isNoteSharp(note);
-                const isC = isCNote(note);
-                return (
-                  <div
-                    key={label}
-                    style={{
-                      width: 44, height: CELL_H,
-                      borderBottom: '1px solid var(--border-color)',
-                      display: 'flex', alignItems: 'center',
-                      position: 'relative',
-                      background: sharp ? 'var(--bg-canvas)' : isC ? 'var(--bg-inspector)' : '#2d2d33',
-                    }}
-                  >
-                    {sharp && (
-                      <div style={{
-                        position: 'absolute', right: 0, top: 0, bottom: 0,
-                        width: 20, background: '#1a1a20',
-                        borderLeft: '1px solid var(--border-color)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <span style={{ color: 'var(--text-dim)', fontSize: 6 }}>{label}</span>
-                      </div>
-                    )}
-                    {!sharp && (
-                      <span style={{
-                        fontSize: 7, marginLeft: 2,
-                        color: isC ? 'var(--accent-light)' : 'var(--text-muted)',
-                        fontWeight: isC ? 600 : 400,
-                      }}>
-                        {label}
-                      </span>
-                    )}
-                    {isC && (
-                      <div style={{
-                        position: 'absolute', bottom: -1, left: 0, right: 0,
-                        height: 1, background: 'var(--accent-dark)',
-                      }} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Grid with 8×12 cell blocks */}
-            <div style={{ position: 'relative', minWidth: patternStepCount * CELL_W }}>
-              {/* Block vertical dividers (every 8 steps) */}
-              {Array.from({ length: Math.ceil(patternStepCount / 8) + 1 }, (_, i) => (
-                <div key={`bv${i}`} style={{
-                  position: 'absolute', left: i * 8 * CELL_W - 1, top: 0, bottom: 0,
-                  width: 1, background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-color)',
-                  pointerEvents: 'none', zIndex: 1,
-                }} />
-              ))}
-              {/* Block horizontal dividers (every 12 notes) */}
-              {Array.from({ length: Math.ceil(ALL_NOTES.length / 12) + 1 }, (_, i) => (
-                <div key={`bh${i}`} style={{
-                  position: 'absolute', left: 0, right: 0,
-                  top: i * 12 * CELL_H - 1, height: 1,
-                  background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-light)',
-                  pointerEvents: 'none', zIndex: 1,
-                }} />
-              ))}
-              {/* Beat lines (every 4 steps) */}
+          <div ref={pianoRollRef} className="music-piano-roll" style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+            <div style={{ display: 'flex', width: 'fit-content', height: 'fit-content' }}>
+              {/* Piano keyboard (sticky left) */}
               <div style={{
-                position: 'absolute', inset: 0, pointerEvents: 'none',
-                backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
-                backgroundSize: `${4 * CELL_W}px 1px`, zIndex: 0,
-              }} />
-              {/* Note cells */}
-              {ALL_NOTES.map(({ note, octave, label }) => {
-                const sharp = isNoteSharp(note);
-                return (
-                  <div key={label} style={{ display: 'flex', height: CELL_H, position: 'relative' }}>
-                    {Array.from({ length: patternStepCount }, (_, step) => {
-                      const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
-                      return (
-                        <div
-                          key={step}
-                          style={{
-                            width: CELL_W, height: CELL_H,
-                            background: active
-                              ? 'var(--accent)'
-                              : sharp
-                              ? 'transparent'
-                              : step % 2 === 0
-                              ? 'rgba(255,255,255,0.015)'
-                              : 'transparent',
-                            borderBottom: '1px solid var(--border-color)',
-                            borderRight: '1px solid var(--border-color)',
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => {
-                            if (patternSong && selectedPattern) {
-                              if (toolMode === 'eraser' || (toolMode === 'pencil' && active)) {
-                                updateNoteRow(patternSong.id, selectedPattern.id, step, { note: '', octave: 4, instrumentId: '', effect: '' });
-                              } else if (toolMode === 'pencil' && !active) {
-                                updateNoteRow(patternSong.id, selectedPattern.id, step, { note, octave, instrumentId: selectedInstId, effect: '' });
-                              } else if (toolMode === 'select') {
-                                setSelectedNodeId(step.toString());
+                display: 'flex', flexDirection: 'column',
+                background: 'var(--bg-dark)',
+                borderRight: '1px solid var(--bg-raised)',
+                flexShrink: 0, position: 'sticky', left: 0, zIndex: 2,
+              }}>
+                {ALL_NOTES.map(({ note, octave, label }) => {
+                  const sharp = isNoteSharp(note);
+                  const isC = isCNote(note);
+                  return (
+                    <div
+                      key={label}
+                      style={{
+                        width: 44, height: CELL_H,
+                        borderBottom: '1px solid var(--border-color)',
+                        display: 'flex', alignItems: 'center',
+                        position: 'relative',
+                        background: sharp ? 'var(--bg-canvas)' : isC ? 'var(--bg-inspector)' : '#2d2d33',
+                      }}
+                    >
+                      {sharp && (
+                        <div style={{
+                          position: 'absolute', right: 0, top: 0, bottom: 0,
+                          width: 20, background: '#1a1a20',
+                          borderLeft: '1px solid var(--border-color)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <span style={{ color: 'var(--text-dim)', fontSize: 6 }}>{label}</span>
+                        </div>
+                      )}
+                      {!sharp && (
+                        <span style={{
+                          fontSize: 7, marginLeft: 2,
+                          color: isC ? 'var(--accent-light)' : 'var(--text-muted)',
+                          fontWeight: isC ? 600 : 400,
+                        }}>
+                          {label}
+                        </span>
+                      )}
+                      {isC && (
+                        <div style={{
+                          position: 'absolute', bottom: -1, left: 0, right: 0,
+                          height: 1, background: 'var(--accent-dark)',
+                        }} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Grid with 8×12 cell blocks */}
+              <div style={{ position: 'relative', width: patternStepCount * CELL_W, height: ALL_NOTES.length * CELL_H }}>
+                {/* Block vertical dividers (every 8 steps) */}
+                {Array.from({ length: Math.ceil(patternStepCount / 8) + 1 }, (_, i) => (
+                  <div key={`bv${i}`} style={{
+                    position: 'absolute', left: i * 8 * CELL_W - 1, top: 0, bottom: 0,
+                    width: 1, background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-color)',
+                    pointerEvents: 'none', zIndex: 1,
+                  }} />
+                ))}
+                {/* Block horizontal dividers (every 12 notes) */}
+                {Array.from({ length: Math.ceil(ALL_NOTES.length / 12) + 1 }, (_, i) => (
+                  <div key={`bh${i}`} style={{
+                    position: 'absolute', left: 0, right: 0,
+                    top: i * 12 * CELL_H - 1, height: 1,
+                    background: i % 2 === 0 ? 'var(--accent-dark)' : 'var(--border-light)',
+                    pointerEvents: 'none', zIndex: 1,
+                  }} />
+                ))}
+                {/* Beat lines (every 4 steps) */}
+                <div style={{
+                  position: 'absolute', inset: 0, pointerEvents: 'none',
+                  backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
+                  backgroundSize: `${4 * CELL_W}px 1px`, zIndex: 0,
+                }} />
+                {/* Note cells */}
+                {ALL_NOTES.map(({ note, octave, label }) => {
+                  const sharp = isNoteSharp(note);
+                  return (
+                    <div key={label} style={{ display: 'flex', height: CELL_H, position: 'relative' }}>
+                      {Array.from({ length: patternStepCount }, (_, step) => {
+                        const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
+                        return (
+                          <div
+                            key={step}
+                            style={{
+                              width: CELL_W, height: CELL_H,
+                              background: active
+                                ? 'var(--accent)'
+                                : sharp
+                                ? 'transparent'
+                                : step % 2 === 0
+                                ? 'rgba(255,255,255,0.015)'
+                                : 'transparent',
+                              borderBottom: '1px solid var(--border-color)',
+                              borderRight: '1px solid var(--border-color)',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => {
+                              if (patternSong && selectedPattern) {
+                                if (toolMode === 'eraser' || (toolMode === 'pencil' && active)) {
+                                  updateNoteRow(patternSong.id, selectedPattern.id, step, { note: '', octave: 4, instrumentId: '', effect: '' });
+                                } else if (toolMode === 'pencil' && !active) {
+                                  updateNoteRow(patternSong.id, selectedPattern.id, step, { note, octave, instrumentId: selectedInstId, effect: '' });
+                                } else if (toolMode === 'select') {
+                                  setSelectedNodeId(step.toString());
+                                }
                               }
-                            }
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
