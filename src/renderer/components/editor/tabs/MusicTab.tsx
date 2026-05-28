@@ -414,7 +414,7 @@ export function MusicTab() {
             {/* Zoom controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
               <button onClick={() => setMusicZoom((z) => Math.max(1, z - 0.5))} style={zoomBtnStyle}>−</button>
-              <span style={{ color: 'var(--text-secondary)', fontSize: 10, minWidth: 24, textAlign: 'center' }}>{musicZoom}x</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 10, minWidth: 24, textAlign: 'center' }}>{Number(musicZoom.toFixed(1))}x</span>
               <button onClick={() => setMusicZoom((z) => Math.min(4, z + 0.5))} style={zoomBtnStyle}>+</button>
             </div>
           </div>
