@@ -46,6 +46,13 @@ export function MusicTab() {
     ?? (selectedInst ? songs.find((so) => so.instruments.some((i) => i.id === selectedInst.id)) : null)
     ?? (selectedPattern ? songs.find((so) => so.patterns.some((p) => p.id === selectedPattern.id)) : null);
 
+  // Auto-select first pattern when song changes
+  React.useEffect(() => {
+    if (currentSong && currentSong.patterns.length > 0 && !currentSong.patterns.some((p) => p.id === activePattern)) {
+      setActivePattern(currentSong.patterns[0].id);
+    }
+  }, [currentSong?.id, currentSong?.patterns.length]);
+
   const hierarchySections: HierarchySection[] = [
     {
       id: 'songs',
@@ -253,78 +260,117 @@ export function MusicTab() {
 
           {/* Piano Roll */}
           <div style={{ flex: 1, overflow: 'auto', display: 'flex', position: 'relative' }}>
-            {/* Note labels (sticky left) */}
+            {/* Piano keyboard (sticky left) */}
             <div style={{
               display: 'flex', flexDirection: 'column',
               background: 'var(--bg-dark)',
               borderRight: '1px solid var(--bg-raised)',
-              flexShrink: 0, position: 'sticky', left: 0, zIndex: 1,
+              flexShrink: 0, position: 'sticky', left: 0, zIndex: 2,
             }}>
-              {ALL_NOTES.map(({ note, octave, label }) => (
-                <div
-                  key={label}
-                  style={{
-                    width: 44, height: 16,
-                    borderBottom: '1px solid var(--border-color)',
-                    display: 'flex', alignItems: 'center',
-                    paddingLeft: isNoteSharp(note) ? 12 : 4,
-                    fontSize: 8,
-                    color: isNoteSharp(note) ? 'var(--text-dim)' : isCNote(note) ? 'var(--accent-light)' : 'var(--text-secondary)',
-                    background: isNoteSharp(note) ? 'var(--bg-canvas)' : isCNote(note) ? 'var(--bg-inspector)' : 'transparent',
-                  }}
-                >
-                  {label}
-                </div>
-              ))}
+              {ALL_NOTES.map(({ note, octave, label }) => {
+                const sharp = isNoteSharp(note);
+                const isC = isCNote(note);
+                return (
+                  <div
+                    key={label}
+                    style={{
+                      width: 52, height: 20,
+                      borderBottom: '1px solid var(--border-color)',
+                      display: 'flex', alignItems: 'center',
+                      position: 'relative',
+                      background: sharp
+                        ? 'var(--bg-canvas)'
+                        : isC
+                        ? 'var(--bg-inspector)'
+                        : '#2d2d33',
+                    }}
+                  >
+                    {/* Black key overlay */}
+                    {sharp && (
+                      <div style={{
+                        position: 'absolute', right: 0, top: 0, bottom: 0,
+                        width: 28,
+                        background: '#1a1a20',
+                        borderLeft: '1px solid var(--border-color)',
+                        borderRadius: '0 0 3px 3px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{ color: 'var(--text-dim)', fontSize: 7 }}>{label}</span>
+                      </div>
+                    )}
+                    {/* White key label */}
+                    {!sharp && (
+                      <span style={{
+                        fontSize: 9, marginLeft: 4,
+                        color: isC ? 'var(--accent-light)' : 'var(--text-muted)',
+                        fontWeight: isC ? 600 : 400,
+                      }}>
+                        {label}
+                      </span>
+                    )}
+                    {/* Octave divider line */}
+                    {isC && (
+                      <div style={{
+                        position: 'absolute', bottom: -1, left: 0, right: 0,
+                        height: 1, background: 'var(--accent-dark)',
+                      }} />
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Grid */}
-            <div style={{ position: 'relative', minWidth: patternStepCount * 24 }}>
+            <div style={{ position: 'relative', minWidth: patternStepCount * 28 }}>
+              {/* Beat lines */}
               <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
-                backgroundSize: `${4 * 24}px 1px`,
+                backgroundSize: `${4 * 28}px 1px`, zIndex: 0,
               }} />
+              {/* Bar lines */}
               <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 backgroundImage: 'linear-gradient(90deg, var(--accent-dark) 1px, transparent 1px)',
-                backgroundSize: `${16 * 24}px 1px`,
+                backgroundSize: `${16 * 28}px 1px`, zIndex: 0,
               }} />
-              {ALL_NOTES.map(({ note, octave, label }) => (
-                <div key={label} style={{ display: 'flex', height: 16, position: 'relative' }}>
-                  {Array.from({ length: patternStepCount }, (_, step) => {
-                    const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
-                    return (
-                      <div
-                        key={step}
-                        style={{
-                          width: 24, height: 16,
-                          background: active ? 'var(--accent)' : 'transparent',
-                          borderBottom: '1px solid var(--border-color)',
-                          borderRight: '1px solid var(--border-color)',
-                          cursor: 'pointer',
-                          transition: 'background 0.05s',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!active) e.currentTarget.style.background = 'var(--accent-dark)';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!active) e.currentTarget.style.background = 'transparent';
-                        }}
-                        onClick={() => {
-                          if (patternSong && selectedPattern) {
-                            if (active) {
-                              updateNoteRow(patternSong.id, selectedPattern.id, step, { note: '', octave: 4, instrumentId: '', effect: '' });
-                            } else {
-                              updateNoteRow(patternSong.id, selectedPattern.id, step, { note, octave, instrumentId: selectedInstId, effect: '' });
+              {ALL_NOTES.map(({ note, octave, label }) => {
+                const sharp = isNoteSharp(note);
+                return (
+                  <div key={label} style={{ display: 'flex', height: 20, position: 'relative' }}>
+                    {Array.from({ length: patternStepCount }, (_, step) => {
+                      const active = patternRows[step]?.note === note && patternRows[step]?.octave === octave;
+                      return (
+                        <div
+                          key={step}
+                          style={{
+                            width: 28, height: 20,
+                            background: active
+                              ? 'var(--accent)'
+                              : sharp
+                              ? 'transparent'
+                              : step % 2 === 0
+                              ? 'rgba(255,255,255,0.015)'
+                              : 'transparent',
+                            borderBottom: '1px solid var(--border-color)',
+                            borderRight: '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => {
+                            if (patternSong && selectedPattern) {
+                              if (active) {
+                                updateNoteRow(patternSong.id, selectedPattern.id, step, { note: '', octave: 4, instrumentId: '', effect: '' });
+                              } else {
+                                updateNoteRow(patternSong.id, selectedPattern.id, step, { note, octave, instrumentId: selectedInstId, effect: '' });
+                              }
                             }
-                          }
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
