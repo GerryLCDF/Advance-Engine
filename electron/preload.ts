@@ -33,6 +33,7 @@ export interface AdvanceAPI {
     minimize: () => void;
     maximize: () => void;
     maximizeEditor: () => void;
+    restore: () => void;
     close: () => void;
   };
 }
@@ -56,6 +57,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
     maximizeEditor: () => ipcRenderer.send('window-maximize-editor'),
+    restore: () => ipcRenderer.send('window-restore'),
     close: () => ipcRenderer.send('window-close'),
   },
 } satisfies AdvanceAPI);

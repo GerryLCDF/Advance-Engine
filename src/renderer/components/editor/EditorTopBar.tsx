@@ -87,9 +87,11 @@ export function EditorTopBar() {
       case 'Nuevo proyecto':
         resetDraft();
         setActiveTab('crear');
+        win?.restore();
         setActiveScreen({ type: 'launcher' });
         break;
       case 'Salir a la lista de proyectos':
+        win?.restore();
         setActiveScreen({ type: 'launcher' });
         break;
       case 'Mundo': setEditorTab('mundo'); break;

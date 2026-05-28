@@ -227,6 +227,9 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.on('window-maximize-editor', () => mainWindow?.maximize());
+ipcMain.on('window-restore', () => {
+  if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+});
 
 // ── App lifecycle ───────────────────────────────────────────────────────────
 
