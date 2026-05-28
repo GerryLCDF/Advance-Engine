@@ -7,6 +7,7 @@ export interface HierarchyItem {
   subtitle?: string;
   color?: string;
   isHeader?: boolean;
+  removable?: boolean;
   actions?: React.ReactNode;
   children?: HierarchyItem[];
 }
@@ -131,7 +132,7 @@ export function HierarchyPanel({
           {node.subtitle && (
             <span style={{ color: '#666', fontSize: 10, flexShrink: 0 }}>{node.subtitle}</span>
           )}
-          {onRemove && (
+          {onRemove && node.removable !== false && (
             <span
               onClick={(e) => { e.stopPropagation(); onRemove(node.id); }}
               style={{

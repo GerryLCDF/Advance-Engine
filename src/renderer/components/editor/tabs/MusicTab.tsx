@@ -139,7 +139,7 @@ export function MusicTab() {
       items: CHANNELS.map((ch) => {
         const cs = channelStates[ch.id] ?? { visible: true, solo: false, muted: false };
         return {
-          id: ch.id, label: ch.name, icon: ch.icon,
+          id: ch.id, label: ch.name, icon: ch.icon, removable: false,
           subtitle: '',
           actions: (
             <>
@@ -189,20 +189,20 @@ export function MusicTab() {
       items: [
         {
           id: '__header-duty', label: 'DUTY', isHeader: true,
-          children: DUTY_PRESETS.map((p) => ({
-            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+            children: DUTY_PRESETS.map((p) => ({
+            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color, removable: false,
           })),
         },
         {
           id: '__header-wave', label: 'WAVE', isHeader: true,
           children: WAVE_PRESETS.map((p) => ({
-            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color, removable: false,
           })),
         },
         {
           id: '__header-noise', label: 'NOISE', isHeader: true,
           children: NOISE_PRESETS.map((p) => ({
-            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color, removable: false,
           })),
         },
       ],
