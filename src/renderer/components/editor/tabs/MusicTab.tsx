@@ -275,9 +275,9 @@ export function MusicTab() {
   const patternSong = selectedPattern ? songs.find((so) => so.patterns.some((p) => p.id === selectedPattern.id)) : currentSong;
   const patternStepCount = patternRows.length;
 
-  // Build all notes across 6 octaves (72 notes, B7 → C2)
+  // Build all notes: C8 → C3 (72 notes, octaves 8-3)
   const ALL_NOTES: { note: string; octave: number; label: string }[] = [];
-  for (let o = 7; o >= 2; o--) {
+  for (let o = 8; o >= 3; o--) {
     for (let i = NOTES.length - 1; i >= 0; i--) {
       ALL_NOTES.push({ note: NOTES[i], octave: o, label: `${NOTES[i]}${o}` });
     }
