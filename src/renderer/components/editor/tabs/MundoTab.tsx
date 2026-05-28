@@ -24,7 +24,7 @@ export function MundoTab() {
   const updateScene = useAppStore((s) => s.updateScene);
   const addConnection = useAppStore((s) => s.addConnection);
 
-  const [tool, setTool] = useState<'select' | 'add' | 'connect'>('select');
+  const [tool, setTool] = useState<'select' | 'add' | 'delete' | 'collision' | 'connect'>('select');
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
 
   // ── Pan / Zoom ──────────────────────────────────────────────────────────
@@ -145,6 +145,8 @@ export function MundoTab() {
         addConnection(connectFrom, sceneId);
         setConnectFrom(null);
       }
+    } else if (tool === 'delete') {
+      handleRemove(sceneId);
     } else {
       setSelectedNodeId(sceneId);
     }
@@ -196,49 +198,48 @@ export function MundoTab() {
       }
       center={
         <>
-          {/* Toolbar */}
+          {/* Toolbar — cápsula de herramientas */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            padding: '6px 10px', background: 'var(--bg-panel)',
+            display: 'flex', alignItems: 'center', gap: 2,
+            padding: '4px 10px', background: 'var(--bg-panel)',
             borderBottom: '1px solid var(--border-color)',
           }}>
-            {([
-              { id: 'select', label: '⬚' },
-              { id: 'add', label: '+' },
-            ] as const).map((t) => (
-              <button
-                key={t.id}
-                onClick={() => { setTool(t.id); setConnectFrom(null); }}
-                style={{
-                  background: tool === t.id ? 'var(--accent)' : 'var(--bg-raised)',
-                  border: 'none', borderRadius: 4,
-                  color: '#fff', fontSize: 13,
-                  width: 28, height: 26, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-                title={t.id === 'select' ? 'Seleccionar' : 'Agregar escena'}
-              >
-                {t.label}
-              </button>
-            ))}
-            <div style={{ width: 1, height: 20, background: 'var(--bg-raised)', margin: '0 6px' }} />
-            <button
-              onClick={() => { setTool('connect'); setConnectFrom(null); }}
-              style={{
-                background: tool === 'connect' ? 'var(--accent)' : 'var(--bg-raised)',
-                border: 'none', borderRadius: 4,
-                color: '#fff', fontSize: 11,
-                padding: '3px 10px', cursor: 'pointer',
-              }}
-            >
-              {connectFrom ? '→ Conectar a...' : '🔗 Conectar'}
-            </button>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 2,
+              background: 'var(--bg-canvas)', borderRadius: 20,
+              padding: '3px 4px',
+            }}>
+              {([
+                { id: 'select', icon: MouseIcon, title: 'Seleccionar' },
+                { id: 'add', icon: PlusIcon, title: 'Agregar' },
+                { id: 'delete', icon: EraserIcon, title: 'Borrar' },
+                { id: 'collision', icon: CollisionIcon, title: 'Colisión' },
+                { id: 'connect', icon: ConnectIcon, title: 'Conectar' },
+              ] as const).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => { setTool(t.id); if (t.id !== 'connect') setConnectFrom(null); }}
+                  style={{
+                    background: tool === t.id ? 'var(--accent)' : 'transparent',
+                    border: 'none', borderRadius: 16,
+                    color: tool === t.id ? '#fff' : 'var(--text-secondary)',
+                    width: 30, height: 28, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'background 0.15s',
+                  }}
+                  title={t.title}
+                >
+                  <t.icon size={16} />
+                </button>
+              ))}
+            </div>
             {connectFrom && (
               <button
                 onClick={() => setConnectFrom(null)}
                 style={{
-                  background: 'var(--red)', border: 'none', borderRadius: 4,
-                  color: '#fff', fontSize: 10, padding: '2px 8px', cursor: 'pointer',
+                  background: 'var(--red)', border: 'none', borderRadius: 12,
+                  color: '#fff', fontSize: 10, padding: '3px 10px', cursor: 'pointer',
+                  marginLeft: 8,
                 }}
               >
                 Cancelar
@@ -350,6 +351,19 @@ export function MundoTab() {
               </div>
             </div>
 
+            {/* Zoom controls */}
+            <div style={{
+              position: 'absolute', top: 8, right: 8,
+              display: 'flex', alignItems: 'center', gap: 2,
+              background: 'var(--bg-panel)', borderRadius: 6,
+              padding: '3px 6px', border: '1px solid var(--bg-raised)',
+              zIndex: 10,
+            }}>
+              <button onClick={() => setZoom((z) => Math.max(MIN_ZOOM, +(z - 0.1).toFixed(2)))} style={zoomBtnStyle}>−</button>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 36, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom((z) => Math.min(MAX_ZOOM, +(z + 0.1).toFixed(2)))} style={zoomBtnStyle}>+</button>
+            </div>
+
             {/* Zoom indicator */}
             <div style={{
               position: 'absolute', bottom: 8, right: 8,
@@ -389,5 +403,67 @@ export function MundoTab() {
         </div>
       }
     />
+  );
+}
+
+const zoomBtnStyle: React.CSSProperties = {
+  background: 'var(--bg-raised)',
+  border: 'none', borderRadius: 3,
+  color: 'var(--text-secondary)', fontSize: 13,
+  width: 22, height: 20, cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+// ── Iconos SVG ─────────────────────────────────────────────────────────
+
+function MouseIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+      <path d="M13 13l6 6" />
+    </svg>
+  );
+}
+
+function PlusIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function EraserIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.6 1.6c.8-.8 2-.8 2.8 0L21 5.4c.8.8.8 2 0 2.8L12 17" />
+      <path d="M6 11l7 7" />
+    </svg>
+  );
+}
+
+function CollisionIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="4" height="4" rx="1" />
+      <rect x="10" y="2" width="4" height="4" rx="1" />
+      <rect x="18" y="2" width="4" height="4" rx="1" />
+      <rect x="2" y="10" width="4" height="4" rx="1" />
+      <rect x="10" y="10" width="4" height="4" rx="1" />
+      <rect x="18" y="10" width="4" height="4" rx="1" />
+      <rect x="2" y="18" width="4" height="4" rx="1" />
+      <rect x="10" y="18" width="4" height="4" rx="1" />
+      <rect x="18" y="18" width="4" height="4" rx="1" />
+    </svg>
+  );
+}
+
+function ConnectIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14" />
+      <path d="M12 5l7 7-7 7" />
+    </svg>
   );
 }
