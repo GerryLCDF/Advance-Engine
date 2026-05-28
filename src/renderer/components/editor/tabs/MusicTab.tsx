@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
@@ -99,6 +99,21 @@ export function MusicTab() {
 
   const CELL_W = 8 * musicZoom;
   const CELL_H = 12 * musicZoom;
+
+  // Zoom con Ctrl+Wheel (como las otras pestañas)
+  const pianoRollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = pianoRollRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setMusicZoom((z) => Math.max(1, Math.min(4, z + (e.deltaY > 0 ? -1 : 1))));
+      }
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
   const [channelStates, setChannelStates] = useState<Record<string, { visible: boolean; solo: boolean; muted: boolean }>>(() => {
     const m: Record<string, { visible: boolean; solo: boolean; muted: boolean }> = {};
     CHANNELS.forEach((ch) => { m[ch.id] = { visible: true, solo: false, muted: false }; });
@@ -392,7 +407,7 @@ export function MusicTab() {
           </div>
 
           {/* Piano Roll */}
-          <div style={{ flex: 1, overflow: 'auto', display: 'flex', position: 'relative' }}>
+          <div ref={pianoRollRef} style={{ flex: 1, overflow: 'auto', display: 'flex', position: 'relative' }}>
             {/* Piano keyboard (sticky left) */}
             <div style={{
               display: 'flex', flexDirection: 'column',
