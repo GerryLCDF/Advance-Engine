@@ -36,7 +36,6 @@ export function CreditosScreen() {
       style={{
         position: 'absolute',
         inset: 0,
-        background: 'linear-gradient(180deg, #1565a0 0%, #4ab0de 40%, #8dd8f0 70%, #c8eefb 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -45,6 +44,22 @@ export function CreditosScreen() {
         zIndex: 10,
       }}
     >
+      {/* Fondo animado de nubes */}
+      <iframe
+        src="/nubes.html"
+        style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%',
+          border: 'none', pointerEvents: 'none', zIndex: 0,
+        }}
+        title="fondo"
+      />
+
+      {/* Capa semitransparente para mejorar legibilidad */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 1,
+        background: 'linear-gradient(180deg, rgba(21,101,160,0.5) 0%, rgba(0,0,0,0.2) 100%)',
+      }} />
+
       {/* Botón volver */}
       <div
         style={{
@@ -81,19 +96,22 @@ export function CreditosScreen() {
       <div
         style={{
           padding: '10px 0 4px',
-          color: '#e8f4ff',
+          color: '#fff',
           fontSize: 13,
           fontWeight: 700,
           letterSpacing: '0.1em',
-          textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+          textShadow: '0 1px 8px rgba(0,0,0,0.6)',
           flexShrink: 0,
+          zIndex: 2,
         }}
       >
         Advance Studio:
       </div>
 
       {/* Créditos scrolling */}
-      <ScrollingCredits credits={credits} onClickEntry={handleClick} />
+      <div style={{ flex: 1, width: '100%', position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column' }}>
+        <ScrollingCredits credits={credits} onClickEntry={handleClick} />
+      </div>
     </motion.div>
   );
 }

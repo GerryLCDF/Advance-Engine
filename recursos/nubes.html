@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Cloudss</title>
+    <link rel="icon" href="back.svg" type="image/svg+xml">
+    <style>
+        :root { --accent: #4facfe; --bg-panel: rgba(15, 15, 20, 0.9); }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+
+        /* --- OVERLAY CON DESENFOQUE --- */
+        #menu-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(0px);
+            opacity: 0; pointer-events: none; transition: 0.4s; z-index: 900;
+        }
+        #nav-container.open ~ #menu-overlay { opacity: 1; pointer-events: auto; backdrop-filter: blur(8px); }
+
+        /* --- NAVEGACIÓN --- */
+        #nav-container { position: fixed; bottom: 20px; left: 20px; z-index: 2000; }
+        #menu-toggle { 
+            width: 50px; height: 50px; background: var(--bg-panel); 
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; 
+            cursor: pointer; display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; gap: 5px; backdrop-filter: blur(10px); 
+        }
+        #menu-toggle span { width: 25px; height: 3px; background: var(--accent); border-radius: 2px; transition: 0.3s; }
+        #menu-items { 
+            position: absolute; bottom: 65px; left: 0; width: 260px; 
+            background: var(--bg-panel); border: 1px solid rgba(255,255,255,0.1); 
+            border-radius: 16px; backdrop-filter: blur(15px); padding: 10px; display: none; flex-direction: column; gap: 5px; 
+        }
+        #nav-container.open #menu-items { display: flex; }
+        #nav-container.open #menu-toggle span:nth-child(1) { transform: translateY(8px) rotate(45deg); }
+        #nav-container.open #menu-toggle span:nth-child(2) { opacity: 0; }
+        #nav-container.open #menu-toggle span:nth-child(3) { transform: translateY(-8px) rotate(-45deg); }
+
+        .menu-item { text-decoration: none; padding: 12px 15px; color: white; font-size: 13px; border-radius: 8px; transition: 0.2s; display: flex; justify-content: space-between; align-items: center; }
+        .menu-item:hover { background: rgba(79, 172, 254, 0.2); color: var(--accent); }
+        .menu-item.active { border-left: 3px solid var(--accent); background: rgba(255,255,255,0.05); font-weight: bold; }
+
+        /* --- UI PANEL --- */
+        #ui { 
+            position: absolute; top: 20px; left: 20px; width: 340px; 
+            background: var(--bg-panel); padding: 25px; border-radius: 20px; 
+            color: white; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(15px); z-index: 100; 
+        }
+        h2 { margin: 0 0 20px 0; font-size: 14px; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; text-align: center; }
+        .group { margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px; }
+        label { display: block; font-size: 10px; margin-bottom: 10px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+        .row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+        .val-indicator { min-width: 45px; font-family: monospace; color: var(--accent); font-size: 12px; text-align: right; }
+        .color-pair { display: flex; align-items: center; gap: 8px; flex: 1; }
+        input[type="color"] { width: 35px; height: 30px; border: none; border-radius: 4px; cursor: pointer; background: none; }
+        input[type="text"] { width: 80px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 5px; border-radius: 4px; font-family: monospace; font-size: 12px; outline: none; }
+        input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+
+        button { width: 100%; border: none; padding: 12px; color: white; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 11px; }
+        .btn-swap { background: rgba(79, 172, 254, 0.15); color: var(--accent); border: 1px solid var(--accent); margin-bottom: 10px; }
+        .btn-sec { background: rgba(255,255,255,0.1); margin-bottom: 10px; }
+        .btn-sec:hover { background: rgba(255,255,255,0.2); }
+        .active-btn { background: var(--accent) !important; color: #000; }
+
+        #recordBtn { background: #ff4757; margin-top: 10px; }
+        #stopBtn { background: #333; color: #ff4757; border: 1px solid #ff4757; display: none; margin-top: 8px; }
+        #status { font-size: 10px; text-align: center; color: var(--accent); font-weight: bold; margin-top:12px; text-transform: uppercase; }
+
+        .kofi-button { position: fixed; bottom: 30px; right: 30px; width: 60px; height: 60px; background: var(--bg-panel); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(15px); }
+    </style>
+</head>
+<body>
+
+<div id="nav-container">
+    <div id="menu-toggle" onclick="this.parentElement.classList.toggle('open')"><span></span><span></span><span></span></div>
+    <div id="menu-items">
+        <a href="index.html" class="menu-item">SVG Motion</a>
+        <a href="Grid Shader.html" class="menu-item">Grid</a>
+        <a href="Discrete Sunset.html" class="menu-item">Discrete Sunset</a>
+        <a href="Fire background.html" class="menu-item">Fire Background</a>
+        <a href="Bubble Dubble.html" class="menu-item">Bubble Dubble</a>
+        <a href="Moving Circles.html" class="menu-item">Moving Circles Pro</a>
+        <a href="Diamond Pattern.html" class="menu-item">Diamond Pattern</a>
+        <a href="#" class="menu-item active">Clouds Pixelated</a>
+        <a href="Jaw Grid.html" class="menu-item">Jaw Grid</a>
+        <a href="Cellular Triangulation.html" class="menu-item">Delaunay Flow</a>         
+        <div class="menu-item locked">other <span class="tag-soon">coming soon...</span></div>
+    </div>
+</div>
+<div id="menu-overlay" onclick="document.getElementById('nav-container').classList.remove('open')"></div>
+
+<div id="ui">
+    <h2>Clouds Pixelated</h2>
+
+    <div class="group">
+        <label>Colores</label>
+        <div class="row">
+            <span style="font-size:11px; width:60px;">Fondo:</span>
+            <div class="color-pair"><input type="color" id="c_bg" value="#006694"><input type="text" id="h_bg" value="#006694"></div>
+        </div>
+        <div class="row">
+            <span style="font-size:11px; width:60px;">Nube:</span>
+            <div class="color-pair"><input type="color" id="c_cloud" value="#2EB2DE"><input type="text" id="h_cloud" value="#2EB2DE"></div>
+        </div>
+        <button class="btn-swap" onclick="swapColors()">INTERCAMBIAR</button>
+    </div>
+
+    <div class="group">
+        <label>Animación</label>
+        <div class="row">
+            <input type="range" id="speed_s" min="0" max="2" step="0.01" value="0.1">
+            <span class="val-indicator" id="speed_v">0.1</span>
+        </div>
+        <button id="reverseBtn" class="btn-sec" onclick="toggleReverse()">INVERTIR MOVIMIENTO</button>
+    </div>
+
+    <button id="recordBtn" onclick="toggleRecording()">GRABAR 3 MINUTOS</button>
+    <button id="stopBtn" onclick="stopRecordingEarly()">DETENER GRABACIÓN</button>
+    <div id="status">LISTO PARA GRABAR</div>
+</div>
+
+<a href="https://ko-fi.com/gerardom86682" target="_blank" class="kofi-button"><svg viewBox="0 0 24 24" width="28" height="28" fill="white"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.724c-.304 0-.55.245-.55.55v13.746c0 .305.246.55.55.55s.55-.245.55-.55V5.481h17.15c.01 0 3.324.086 3.931 3.3.589 3.12-2.146 3.967-3.483 4.09l.063 1.107c.05 0 4.654-.038 5.446-5.03zm-11.233 1.432c-1.122-1.253-2.946-1.253-4.068 0-1.122 1.252-1.122 3.284 0 4.537L10.5 17l1.92-2.083c1.122-1.253 1.122-3.285 0-4.537z"/></svg></a>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    let scene, camera, renderer, material;
+    let mediaRecorder, recordedChunks = [], isRecording = false, timerInterval;
+    let direction = 1.0;
+
+    const fragmentShader = `
+        uniform vec2 u_res; uniform float u_time; 
+        uniform vec3 u_back_color; uniform vec3 u_cloud_color; uniform float u_speed; uniform float u_dir;
+
+        const float TAU = 6.28318530718;
+
+        float Func(float pX) { return 0.6*(0.5*sin(0.1*pX) + 0.5*sin(0.553*pX) + 0.7*sin(1.2*pX)); }
+        float FuncR(float pX) { return 0.5 + 0.25*(1.0 + sin(mod(40.0*pX, TAU))); }
+
+        float Layer(vec2 pQ, float pT) {
+            vec2 Qt = 3.5*pQ;
+            pT *= 0.5;
+            Qt.x += pT * u_dir; // Aplicamos dirección aquí
+            float Xi = floor(Qt.x);
+            float Xf = Qt.x - Xi - 0.5;
+            float D = 1.0 - step(Qt.y, Func(Qt.x));
+            float Yi = Func(Xi + 0.5);
+            vec2 C = vec2(Xf, Qt.y - Yi);
+            D = min(D, length(C) - FuncR(Xi + (pT * u_dir)/80.0));
+            Yi = Func(Xi+1.0 + 0.5);
+            C = vec2(Xf-1.0, Qt.y - Yi);
+            D = min(D, length(C) - FuncR(Xi+1.0+ (pT * u_dir)/80.0));
+            Yi = Func(Xi-1.0 + 0.5);
+            C = vec2(Xf+1.0, Qt.y - Yi);
+            D = min(D, length(C) - FuncR(Xi-1.0+ (pT * u_dir)/80.0));
+            return min(1.0, D);
+        }
+
+        void main() {
+            vec2 uv = 3.0 * (gl_FragCoord.xy / u_res.xy - 0.5);
+            uv.x *= u_res.x / u_res.y;
+            vec3 Color = u_back_color;
+            for(float J = 0.0; J <= 1.0; J += 0.2) {
+                float Lt = u_time * u_speed * (0.5 + 2.0 * J) * (1.0 + 0.1 * sin(226.0 * J)) + 17.0 * J;
+                vec2 Lp = vec2(0.0, 0.3 + 1.5 * (J - 0.5));
+                float L = Layer(uv + Lp, Lt);
+                float Blur = 4.0 * (0.5 * abs(2.0 - 5.0 * J)) / (11.0 - 5.0 * J);
+                float V = mix(0.0, 1.0, 1.0 - smoothstep(0.0, 0.01 + 0.2 * Blur, L));
+                vec3 Lc = mix(u_cloud_color, vec3(1.0), J);
+                Color = mix(Color, Lc, V);
+            }
+            gl_FragColor = vec4(Color, 1.0);
+        }
+    `;
+
+    function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        material = new THREE.ShaderMaterial({
+            uniforms: {
+                u_time: { value: 0 }, u_res: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                u_back_color: { value: new THREE.Color(0x006694) }, u_cloud_color: { value: new THREE.Color(0x2EB2DE) },
+                u_speed: { value: 0.1 }, u_dir: { value: 1.0 }
+            }, fragmentShader
+        });
+
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+        setupUI(); animate();
+    }
+
+    function setupUI() {
+        const u = material.uniforms;
+        const syncColor = (pId, tId, key) => {
+            const p = document.getElementById(pId), t = document.getElementById(tId);
+            p.oninput = (e) => { t.value = e.target.value.toUpperCase(); u[key].value.set(e.target.value); };
+            t.oninput = (e) => { if(/^#[0-9A-F]{6}$/i.test(e.target.value)) { p.value = e.target.value; u[key].value.set(e.target.value); }};
+        };
+        syncColor('c_bg', 'h_bg', 'u_back_color'); syncColor('c_cloud', 'h_cloud', 'u_cloud_color');
+        const s = document.getElementById('speed_s'), v = document.getElementById('speed_v');
+        s.oninput = (e) => { v.innerText = e.target.value; u.u_speed.value = parseFloat(e.target.value); };
+    }
+
+    function toggleReverse() {
+        direction *= -1.0;
+        material.uniforms.u_dir.value = direction;
+        document.getElementById('reverseBtn').classList.toggle('active-btn', direction === -1.0);
+    }
+
+    function swapColors() {
+        const c1 = document.getElementById('c_bg'), c2 = document.getElementById('c_cloud');
+        const tmp = c1.value; c1.value = c2.value; c2.value = tmp;
+        c1.dispatchEvent(new Event('input')); c2.dispatchEvent(new Event('input'));
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        material.uniforms.u_time.value += 0.05;
+        renderer.render(scene, camera);
+    }
+
+    async function toggleRecording() {
+        if (isRecording) return;
+        const btn = document.getElementById('recordBtn'), stop = document.getElementById('stopBtn'), status = document.getElementById('status');
+        const stream = renderer.domElement.captureStream(60);
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 15000000 });
+        recordedChunks = [];
+        mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob), a = document.createElement('a');
+            a.href = url; a.download = `clouds_pixelated_LCDF.webm`; a.click();
+            btn.style.display = "block"; stop.style.display = "none"; isRecording = false; status.innerText = "LISTO PARA GRABAR";
+        };
+        mediaRecorder.start(); isRecording = true;
+        btn.style.display = "none"; stop.style.display = "block";
+        const start = Date.now();
+        timerInterval = setInterval(() => {
+            const rem = 180000 - (Date.now() - start);
+            if (rem <= 0) stopRecordingEarly();
+            else {
+                const m = Math.floor(rem/60000), s = Math.floor((rem%60000)/1000);
+                status.innerText = `TIEMPO: ${m}:${s < 10 ? '0' : ''}${s}`;
+            }
+        }, 1000);
+    }
+
+    function stopRecordingEarly() { if (mediaRecorder && isRecording) { clearInterval(timerInterval); mediaRecorder.stop(); } }
+    window.onresize = () => { renderer.setSize(window.innerWidth, window.innerHeight); material.uniforms.u_res.value.set(window.innerWidth, window.innerHeight); };
+    init();
+</script>
+</body>
+</html>
