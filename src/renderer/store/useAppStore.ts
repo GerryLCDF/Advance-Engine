@@ -161,6 +161,12 @@ interface AppState {
   updateLayer: (bgId: string, layerId: string, patch: Partial<BackgroundLayer>) => void;
   removeLayer: (bgId: string, layerId: string) => void;
 
+  // ── Zoom persistence (across tab switches) ───────────────────────────
+  spriteZoom: number;
+  imagenZoom: number;
+  setSpriteZoom: (z: number) => void;
+  setImagenZoom: (z: number) => void;
+
   // ── Music ──────────────────────────────────────────────────────────────
   songs: Song[];
   addSong: () => void;
@@ -427,6 +433,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     ),
   })),
+
+  // ── Zoom persistence ───────────────────────────────────────────────────
+  spriteZoom: 120,
+  imagenZoom: 1,
+  setSpriteZoom: (z) => set({ spriteZoom: z }),
+  setImagenZoom: (z) => set({ imagenZoom: z }),
 
   // ── Music ──────────────────────────────────────────────────────────────
   songs: [defaultSong()],

@@ -4,6 +4,9 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 
+const PREVIEW_W = 320;
+const PREVIEW_H = 200;
+
 export function ImagenTab() {
   const backgrounds = useAppStore((s) => s.backgrounds);
   const selectedNodeId = useAppStore((s) => s.selectedNodeId);
@@ -18,14 +21,37 @@ export function ImagenTab() {
   const inspectorWidth = useAppStore((s) => s.inspectorWidth);
   const setHierarchyWidth = useAppStore((s) => s.setHierarchyWidth);
   const setInspectorWidth = useAppStore((s) => s.setInspectorWidth);
+  const imagenZoom = useAppStore((s) => s.imagenZoom);
+  const setImagenZoom = useAppStore((s) => s.setImagenZoom);
 
-  const [zoom, setZoom] = useState(1);
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hasMoved = useRef(false);
+
+  // ── Center canvas on mount / zoom change ──────────────────────────────
+  const centerCanvas = useCallback(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const cw = el.clientWidth;
+    const ch = el.clientHeight;
+    setPanX((cw - PREVIEW_W * imagenZoom) / 2);
+    setPanY((ch - PREVIEW_H * imagenZoom) / 2);
+  }, [imagenZoom]);
+
+  useEffect(() => {
+    centerCanvas();
+  }, [centerCanvas]);
+
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => centerCanvas());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [centerCanvas]);
 
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -34,7 +60,7 @@ export function ImagenTab() {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = -e.deltaY * 0.001;
-        setZoom((z) => Math.min(4, Math.max(0.25, z + delta)));
+        setImagenZoom(Math.min(4, Math.max(0.25, +(imagenZoom + delta).toFixed(2))));
       } else if (e.shiftKey) {
         e.preventDefault();
         setPanX((px) => px - e.deltaY);
@@ -45,7 +71,7 @@ export function ImagenTab() {
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
-  }, []);
+  }, [imagenZoom, setImagenZoom]);
 
   const handleMouseDownCanvas = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -162,15 +188,15 @@ export function ImagenTab() {
           >
             {preview ? (
               <div style={{
-                transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+                transform: `translate(${panX}px, ${panY}px) scale(${imagenZoom})`,
                 transformOrigin: '0 0',
                 position: 'absolute', top: 0, left: 0,
                 width: 0, height: 0,
               }}>
                 <div
                   style={{
-                    width: 320,
-                    height: 200,
+                    width: PREVIEW_W,
+                    height: PREVIEW_H,
                     background: 'var(--bg-dark)',
                     border: '1px solid var(--bg-raised)',
                     borderRadius: 4,
@@ -215,9 +241,9 @@ export function ImagenTab() {
               padding: '3px 6px', border: '1px solid var(--bg-raised)',
               zIndex: 10,
             }}>
-              <button onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.1).toFixed(2)))} style={zoomBtnStyle}>−</button>
-              <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 36, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom((z) => Math.min(4, +(z + 0.1).toFixed(2)))} style={zoomBtnStyle}>+</button>
+              <button onClick={() => setImagenZoom(Math.max(0.25, +(imagenZoom - 0.1).toFixed(2)))} style={zoomBtnStyle}>−</button>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 36, textAlign: 'center' }}>{Math.round(imagenZoom * 100)}%</span>
+              <button onClick={() => setImagenZoom(Math.min(4, +(imagenZoom + 0.1).toFixed(2)))} style={zoomBtnStyle}>+</button>
             </div>
 
             {/* Zoom indicator */}
@@ -228,7 +254,7 @@ export function ImagenTab() {
               fontSize: 11, color: '#aaa',
               pointerEvents: 'none', zIndex: 10,
             }}>
-              {Math.round(zoom * 100)}%
+              {Math.round(imagenZoom * 100)}%
             </div>
           </div>
 

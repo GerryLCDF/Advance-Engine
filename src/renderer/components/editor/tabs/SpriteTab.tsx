@@ -4,9 +4,6 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 4;
-
 export function SpriteTab() {
   const spriteSheets = useAppStore((s) => s.spriteSheets);
   const selectedNodeId = useAppStore((s) => s.selectedNodeId);
@@ -23,19 +20,45 @@ export function SpriteTab() {
   const inspectorWidth = useAppStore((s) => s.inspectorWidth);
   const setHierarchyWidth = useAppStore((s) => s.setHierarchyWidth);
   const setInspectorWidth = useAppStore((s) => s.setInspectorWidth);
+  const spriteZoom = useAppStore((s) => s.spriteZoom);
+  const setSpriteZoom = useAppStore((s) => s.setSpriteZoom);
 
-  const [zoomState, setZoomState] = useState(120);
-  const zoomFactor = zoomState / 100;
+  const zoomFactor = spriteZoom / 100;
   const [tilePage, setTilePage] = useState(0);
   const [brushTile, setBrushTile] = useState<number | null>(null);
 
-  // ── Pan / Zoom ──────────────────────────────────────────────────────────
+  // ── Pan ─────────────────────────────────────────────────────────────────
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hasMoved = useRef(false);
+
+  // ── Center canvas on mount / sprite change / zoom change ──────────────
+  const centerCanvas = useCallback(() => {
+    const el = canvasContainerRef.current;
+    const sprite = spriteSheets.find((sp) => sp.id === selectedNodeId);
+    if (!el || !sprite) return;
+    const cw = el.clientWidth;
+    const ch = el.clientHeight;
+    const sw = sprite.cols * sprite.tileWidth * zoomFactor;
+    const sh = sprite.rows * sprite.tileHeight * zoomFactor;
+    setPanX((cw - sw) / 2);
+    setPanY((ch - sh) / 2);
+  }, [spriteSheets, selectedNodeId, zoomFactor]);
+
+  useEffect(() => {
+    centerCanvas();
+  }, [centerCanvas]);
+
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => centerCanvas());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [centerCanvas]);
 
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -44,7 +67,7 @@ export function SpriteTab() {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = -e.deltaY * 0.5;
-        setZoomState((z) => Math.min(400, Math.max(25, z + delta)));
+        setSpriteZoom(Math.min(400, Math.max(25, spriteZoom + delta)));
       } else if (e.shiftKey) {
         e.preventDefault();
         setPanX((px) => px - e.deltaY);
@@ -55,7 +78,7 @@ export function SpriteTab() {
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
-  }, []);
+  }, [spriteZoom, setSpriteZoom]);
 
   const handleMouseDownCanvas = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -96,7 +119,6 @@ export function SpriteTab() {
     ? spriteSheets.find((sp) => sp.animations.some((a) => a.id === selectedAnim.id)) ?? null
     : selectedSprite;
 
-  // Filter animations for the selected sprite
   const filteredAnimations = selectedSprite
     ? selectedSprite.animations
     : [];
@@ -268,9 +290,9 @@ export function SpriteTab() {
               padding: '3px 6px', border: '1px solid var(--bg-raised)',
               zIndex: 10,
             }}>
-              <button onClick={() => setZoomState((z) => Math.max(25, z - 10))} style={zoomBtnStyle}>−</button>
-              <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 32, textAlign: 'center' }}>{zoomState}%</span>
-              <button onClick={() => setZoomState((z) => Math.min(400, z + 10))} style={zoomBtnStyle}>+</button>
+              <button onClick={() => setSpriteZoom(Math.max(25, spriteZoom - 10))} style={zoomBtnStyle}>−</button>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 32, textAlign: 'center' }}>{spriteZoom}%</span>
+              <button onClick={() => setSpriteZoom(Math.min(400, spriteZoom + 10))} style={zoomBtnStyle}>+</button>
             </div>
 
             {/* Zoom indicator */}
@@ -281,7 +303,7 @@ export function SpriteTab() {
               fontSize: 11, color: '#aaa',
               pointerEvents: 'none', zIndex: 10,
             }}>
-              {Math.round(zoomFactor * 100)}%
+              {spriteZoom}%
             </div>
           </div>
 

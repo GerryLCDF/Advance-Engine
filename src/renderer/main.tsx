@@ -38,7 +38,7 @@ function applyThemeVars(bgPanel: string, accent: string, fontSize: number) {
   root.style.setProperty('--accent-light', adjustColor(accent, 0.3));
   root.style.setProperty('--accent-lighter', adjustColor(accent, 0.45));
   root.style.setProperty('--accent-dark', adjustColor(accent, -0.15));
-  root.style.fontSize = `${fontSize}px`;
+  root.style.setProperty('--app-font-size', `${fontSize}px`);
 }
 
 function adjustColor(hex: string, factor: number) {
