@@ -6,8 +6,76 @@ import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { InstrumentType, NoteRow } from '../../../types/editor';
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const OCTAVES = [2, 3, 4, 5, 6, 7, 8];
-const NOTE_KEYS_FLAT = [...NOTES];
+
+interface InstrumentPreset {
+  id: string;
+  name: string;
+  type: InstrumentType;
+  color: string;
+}
+
+const DUTY_PRESETS: InstrumentPreset[] = [
+  { id: 'preset-duty-1', name: 'Duty 12.5%', type: 'duty', color: '#57E4B3' },
+  { id: 'preset-duty-2', name: 'Duty 25%', type: 'duty', color: '#00A9CC' },
+  { id: 'preset-duty-3', name: 'Duty 50%', type: 'duty', color: '#6C7A8E' },
+  { id: 'preset-duty-4', name: 'Duty 75%', type: 'duty', color: '#4A4579' },
+  { id: 'preset-duty-5', name: 'Duty 12.5%', type: 'duty', color: '#1B8C7A' },
+  { id: 'preset-duty-6', name: 'Duty 25%', type: 'duty', color: '#6CC459' },
+  { id: 'preset-duty-7', name: 'Duty 50%', type: 'duty', color: '#A9E464' },
+  { id: 'preset-duty-8', name: 'Duty 75%', type: 'duty', color: '#F5E873' },
+  { id: 'preset-duty-9', name: 'Duty 9', type: 'duty', color: '#F38D56' },
+  { id: 'preset-duty-10', name: 'Duty 10', type: 'duty', color: '#D65576' },
+  { id: 'preset-duty-11', name: 'Duty 11', type: 'duty', color: '#793D85' },
+  { id: 'preset-duty-12', name: 'Duty 12', type: 'duty', color: '#D63475' },
+  { id: 'preset-duty-13', name: 'Duty 13', type: 'duty', color: '#F3B0C3' },
+  { id: 'preset-duty-14', name: 'Duty 14', type: 'duty', color: '#F3BD9D' },
+  { id: 'preset-duty-15', name: 'Duty 15', type: 'duty', color: '#A9A57E' },
+];
+
+const WAVE_PRESETS: InstrumentPreset[] = [
+  { id: 'preset-wave-1', name: '12,5% Pulse', type: 'wave', color: '#57E4B3' },
+  { id: 'preset-wave-2', name: '25% Pulse', type: 'wave', color: '#00A9CC' },
+  { id: 'preset-wave-3', name: '31.25% Pulse', type: 'wave', color: '#6C7A8E' },
+  { id: 'preset-wave-4', name: '37,50% Pulse', type: 'wave', color: '#4A4579' },
+  { id: 'preset-wave-5', name: '43,75% Pulse', type: 'wave', color: '#1B8C7A' },
+  { id: 'preset-wave-6', name: '50% Pulse', type: 'wave', color: '#6CC459' },
+  { id: 'preset-wave-7', name: '50% Pulse (Volume 5)', type: 'wave', color: '#A9E464' },
+  { id: 'preset-wave-8', name: '50% Pulse (Volume 3)', type: 'wave', color: '#F5E873' },
+  { id: 'preset-wave-9', name: '50% Pulse (Volume 1)', type: 'wave', color: '#F38D56' },
+  { id: 'preset-wave-10', name: 'Square Wave with added Square Wave (2 Oktaves high...)', type: 'wave', color: '#D65576' },
+  { id: 'preset-wave-11', name: 'Triangular Wave', type: 'wave', color: '#793D85' },
+  { id: 'preset-wave-12', name: 'Triangular with added Square Wave (2 Oktaves higher)', type: 'wave', color: '#D63475' },
+  { id: 'preset-wave-13', name: 'Saw Wave', type: 'wave', color: '#F3B0C3' },
+  { id: 'preset-wave-14', name: 'Distorted Saw Wave', type: 'wave', color: '#F3BD9D' },
+  { id: 'preset-wave-15', name: '(empty)', type: 'wave', color: '#A9A57E' },
+];
+
+const NOISE_PRESETS: InstrumentPreset[] = [
+  { id: 'preset-noise-1', name: 'Noise 1', type: 'noise', color: '#57E4B3' },
+  { id: 'preset-noise-2', name: 'Noise 2', type: 'noise', color: '#00A9CC' },
+  { id: 'preset-noise-3', name: 'Noise 3', type: 'noise', color: '#6C7A8E' },
+  { id: 'preset-noise-4', name: 'Noise 4', type: 'noise', color: '#4A4579' },
+  { id: 'preset-noise-5', name: 'Noise 5', type: 'noise', color: '#1B8C7A' },
+  { id: 'preset-noise-6', name: 'Noise 6', type: 'noise', color: '#6CC459' },
+  { id: 'preset-noise-7', name: 'Noise 7', type: 'noise', color: '#A9E464' },
+  { id: 'preset-noise-8', name: 'Noise 8', type: 'noise', color: '#F5E873' },
+  { id: 'preset-noise-9', name: 'Noise 9', type: 'noise', color: '#F38D56' },
+  { id: 'preset-noise-10', name: 'Noise 10', type: 'noise', color: '#D65576' },
+  { id: 'preset-noise-11', name: 'Noise 11', type: 'noise', color: '#793D85' },
+  { id: 'preset-noise-12', name: 'Noise 12', type: 'noise', color: '#D63475' },
+  { id: 'preset-noise-13', name: 'Noise 13', type: 'noise', color: '#F3B0C3' },
+  { id: 'preset-noise-14', name: 'Noise 14', type: 'noise', color: '#F3BD9D' },
+  { id: 'preset-noise-15', name: 'Noise 15', type: 'noise', color: '#A9A57E' },
+];
+
+const ALL_PRESETS = [...DUTY_PRESETS, ...WAVE_PRESETS, ...NOISE_PRESETS];
+
+const CHANNELS = [
+  { id: 'ch-pulse1', name: 'Pulse 1', type: 'duty', icon: '◻' },
+  { id: 'ch-pulse2', name: 'Pulse 2', type: 'duty', icon: '◻' },
+  { id: 'ch-wave', name: 'Wave', type: 'wave', icon: '〰' },
+  { id: 'ch-noise', name: 'Noise', type: 'noise', icon: '📢' },
+];
 
 export function MusicTab() {
   const songs = useAppStore((s) => s.songs);
@@ -16,9 +84,6 @@ export function MusicTab() {
   const addSong = useAppStore((s) => s.addSong);
   const removeSong = useAppStore((s) => s.removeSong);
   const updateSong = useAppStore((s) => s.updateSong);
-  const addInstrument = useAppStore((s) => s.addInstrument);
-  const removeInstrument = useAppStore((s) => s.removeInstrument);
-  const updateInstrument = useAppStore((s) => s.updateInstrument);
   const addPattern = useAppStore((s) => s.addPattern);
   const removePattern = useAppStore((s) => s.removePattern);
   const updatePattern = useAppStore((s) => s.updatePattern);
@@ -33,17 +98,9 @@ export function MusicTab() {
 
   const selectedSong = songs.find((so) => so.id === selectedNodeId)
     ?? (selectedNodeId ? null : null);
-  const selectedInst = songs.flatMap((so) => so.instruments).find((i) => i.id === selectedNodeId);
   const selectedPattern = songs.flatMap((so) => so.patterns).find((p) => p.id === (activePattern ?? ''));
 
-  const parentSong = selectedInst
-    ? songs.find((so) => so.instruments.some((i) => i.id === selectedInst.id))
-    : selectedPattern
-    ? songs.find((so) => so.patterns.some((p) => p.id === selectedPattern.id))
-    : selectedSong;
-
   const currentSong = selectedSong
-    ?? (selectedInst ? songs.find((so) => so.instruments.some((i) => i.id === selectedInst.id)) : null)
     ?? (selectedPattern ? songs.find((so) => so.patterns.some((p) => p.id === selectedPattern.id)) : null);
 
   // Auto-select first pattern when song changes
@@ -64,80 +121,96 @@ export function MusicTab() {
       onAdd: addSong,
     },
     {
-      id: 'instruments',
-      title: 'INSTRUMENTS',
-      collapsed: !currentSong,
-      items: currentSong
-        ? [
-            ...currentSong.instruments.filter((i) => i.type === 'duty').map((i) => ({
-              id: i.id, label: i.name, icon: '🔔',
-              subtitle: i.muted ? 'M' : i.solo ? 'S' : '',
-            })),
-            ...currentSong.instruments.filter((i) => i.type === 'wave').map((i) => ({
-              id: i.id, label: i.name, icon: '〰',
-              subtitle: i.muted ? 'M' : i.solo ? 'S' : '',
-            })),
-            ...currentSong.instruments.filter((i) => i.type === 'noise').map((i) => ({
-              id: i.id, label: i.name, icon: '📢',
-              subtitle: i.muted ? 'M' : i.solo ? 'S' : '',
-            })),
-          ]
-        : [],
-      onAdd: currentSong ? () => addInstrument(currentSong.id) : undefined,
+      id: 'channels',
+      title: 'CHANNELS',
+      collapsed: false,
+      items: CHANNELS.map((ch) => ({
+        id: ch.id, label: ch.name, icon: ch.icon,
+        subtitle: '',
+      })),
+    },
+    {
+      id: 'instruments-duty',
+      title: 'DUTY',
+      collapsed: true,
+      items: DUTY_PRESETS.map((p) => ({
+        id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+      })),
+    },
+    {
+      id: 'instruments-wave',
+      title: 'WAVE',
+      collapsed: true,
+      items: WAVE_PRESETS.map((p) => ({
+        id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+      })),
+    },
+    {
+      id: 'instruments-noise',
+      title: 'NOISE',
+      collapsed: true,
+      items: NOISE_PRESETS.map((p) => ({
+        id: p.id, label: p.name, icon: '', subtitle: '', color: p.color,
+      })),
     },
   ];
 
+  const selectedPreset = ALL_PRESETS.find((p) => p.id === selectedNodeId);
+  const selectedChannel = CHANNELS.find((c) => c.id === selectedNodeId);
+
   const inspectorSections: InspectorSection[] = [];
 
-  if (selectedInst) {
-    const inst = selectedInst;
+  if (selectedSong) {
     inspectorSections.push({
-      title: 'Instrumento',
+      title: 'Canción',
       fields: [
-        { label: 'Nombre', type: 'text', value: inst.name, onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { name: v as string }) },
-        { label: 'Tipo', type: 'select', value: inst.type, options: [
-          { value: 'duty', label: 'Duty' },
-          { value: 'wave', label: 'Wave' },
-          { value: 'noise', label: 'Noise' },
-        ], onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { type: v as InstrumentType }) },
-        { label: 'Mute', type: 'toggle', value: inst.muted, onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { muted: v as boolean }) },
-        { label: 'Solo', type: 'toggle', value: inst.solo, onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { solo: v as boolean }) },
+        { label: 'Nombre', type: 'text', value: selectedSong.name, onChange: (v) => updateSong(selectedSong.id, { name: v as string }) },
+        { label: 'BPM', type: 'number', value: selectedSong.bpm, onChange: (v) => updateSong(selectedSong.id, { bpm: v as number }) },
+        { label: 'Patrones', type: 'text', value: String(selectedSong.patterns.length), onChange: () => {} },
       ],
     });
+  } else if (selectedChannel) {
     inspectorSections.push({
-      title: 'Envolvente (ADSR)',
+      title: 'Canal',
       fields: [
-        { label: 'Attack', type: 'number', value: inst.envelope.attack, onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { envelope: { ...inst.envelope, attack: v as number } }) },
-        { label: 'Decay', type: 'number', value: inst.envelope.decay, onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { envelope: { ...inst.envelope, decay: v as number } }) },
-        { label: 'Sustain', type: 'number', value: inst.envelope.sustain, onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { envelope: { ...inst.envelope, sustain: v as number } }) },
-        { label: 'Release', type: 'number', value: inst.envelope.release, onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { envelope: { ...inst.envelope, release: v as number } }) },
-      ],
-    });
-    inspectorSections.push({
-      title: 'Frecuencia',
-      fields: [
+        { label: 'Nombre', type: 'text', value: selectedChannel.name, onChange: () => {} },
+        { label: 'Tipo', type: 'text', value: selectedChannel.type.toUpperCase(), onChange: () => {} },
         { label: 'Volumen', type: 'number', value: 100, onChange: () => {} },
-        { label: 'Frecuencia', type: 'number', value: 440, onChange: () => {} },
+        { label: 'Pan', type: 'number', value: 0, onChange: () => {} },
       ],
     });
+  } else if (selectedPreset) {
     inspectorSections.push({
-      title: 'Duty Cycle',
+      title: 'Preset',
       fields: [
-        { label: 'Onda', type: 'select', value: String(inst.dutyCycle), options: [
-          { value: '0.125', label: '12.5% ▏' },
-          { value: '0.25', label: '25% ▎' },
-          { value: '0.5', label: '50% ▊' },
-          { value: '0.75', label: '75% ▊' },
-        ], onChange: (v) => parentSong && updateInstrument(parentSong.id, inst.id, { dutyCycle: Number(v) }) },
+        { label: 'Nombre', type: 'text', value: selectedPreset.name, onChange: () => {} },
+        { label: 'Tipo', type: 'text', value: selectedPreset.type.toUpperCase(), onChange: () => {} },
+        { label: 'Color', type: 'text', value: selectedPreset.color, onChange: () => {} },
       ],
     });
+    if (selectedPreset.type === 'duty') {
+      inspectorSections.push({
+        title: 'Duty Cycle',
+        fields: [
+          { label: 'Onda', type: 'select', value: '0.5', options: [
+            { value: '0.125', label: '12.5% ▏' },
+            { value: '0.25', label: '25% ▎' },
+            { value: '0.5', label: '50% ▊' },
+            { value: '0.75', label: '75% ▊' },
+          ], onChange: () => {} },
+        ],
+      });
+    }
   }
 
   const handleRemove = (id: string) => {
     if (songs.some((so) => so.id === id)) removeSong(id);
+    else if (CHANNELS.some((c) => c.id === id) || ALL_PRESETS.some((p) => p.id === id)) {
+      // Cannot remove channels or presets
+      return;
+    }
     else {
       for (const so of songs) {
-        if (so.instruments.some((i) => i.id === id)) { removeInstrument(so.id, id); break; }
         if (so.patterns.some((p) => p.id === id)) { removePattern(so.id, id); break; }
       }
     }
@@ -160,7 +233,7 @@ export function MusicTab() {
 
   const [editStepCount, setEditStepCount] = useState(patternStepCount);
   const [selectedInstId, setSelectedInstId] = useState<string>(
-    () => currentSong?.instruments[0]?.id ?? ''
+    () => ALL_PRESETS[0]?.id ?? ''
   );
 
   // Sync editStepCount when pattern changes
@@ -249,12 +322,24 @@ export function MusicTab() {
               style={{
                 background: 'var(--bg-canvas)', border: '1px solid var(--bg-raised)',
                 borderRadius: 3, color: 'var(--text-secondary)', fontSize: 10,
-                padding: '2px 4px',
+                padding: '2px 4px', maxWidth: 140,
               }}
             >
-              {(currentSong?.instruments ?? []).map((i) => (
-                <option key={i.id} value={i.id}>{i.name}</option>
-              ))}
+              <optgroup label="DUTY">
+                {DUTY_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="WAVE">
+                {WAVE_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="NOISE">
+                {NOISE_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
@@ -416,8 +501,8 @@ export function MusicTab() {
             </div>
           )}
 
-          {/* Instrument mute/solo bar */}
-          {currentSong && currentSong.instruments.length > 0 && (
+          {/* Channel mute/solo bar */}
+          {currentSong && (
             <div style={{
               height: 28,
               background: 'var(--bg-canvas)',
@@ -425,26 +510,26 @@ export function MusicTab() {
               display: 'flex', alignItems: 'center', gap: 4,
               padding: '0 10px', flexShrink: 0, overflowX: 'auto',
             }}>
-              {currentSong.instruments.map((inst) => (
+              <span style={{ color: 'var(--accent)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', marginRight: 6 }}>
+                CH
+              </span>
+              {CHANNELS.map((ch) => (
                 <div
-                  key={inst.id}
+                  key={ch.id}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 2,
                     padding: '2px 6px',
-                    background: inst.muted ? '#2a1515' : 'var(--bg-dark)',
+                    background: 'var(--bg-dark)',
                     borderRadius: 3, fontSize: 10,
-                    color: inst.muted ? '#666' : '#aaa',
+                    color: '#aaa',
                     flexShrink: 0,
                   }}
                 >
-                  <span style={{ cursor: 'pointer' }} onClick={() => updateInstrument(currentSong.id, inst.id, { visible: !inst.visible })}>
-                    {inst.visible ? '👁' : '👁‍🗨'}
-                  </span>
-                  <span>{inst.name}</span>
+                  <span style={{ fontSize: 10, marginRight: 2 }}>{ch.icon}</span>
+                  <span>{ch.name}</span>
                   <button
-                    onClick={() => updateInstrument(currentSong.id, inst.id, { muted: !inst.muted })}
                     style={{
-                      background: inst.muted ? 'var(--red)' : 'var(--bg-raised)',
+                      background: 'var(--bg-raised)',
                       border: 'none', borderRadius: 2,
                       color: '#fff', fontSize: 8,
                       padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
@@ -453,12 +538,11 @@ export function MusicTab() {
                     M
                   </button>
                   <button
-                    onClick={() => updateInstrument(currentSong.id, inst.id, { solo: !inst.solo })}
                     style={{
-                      background: inst.solo ? '#fbbf24' : 'var(--bg-raised)',
+                      background: 'var(--bg-raised)',
                       border: 'none', borderRadius: 2,
-                      color: inst.solo ? '#000' : '#fff',
-                      fontSize: 8, padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
+                      color: '#fff', fontSize: 8,
+                      padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
                     }}
                   >
                     S

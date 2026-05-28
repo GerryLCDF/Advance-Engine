@@ -5,6 +5,7 @@ export interface HierarchyItem {
   label: string;
   icon?: string;
   subtitle?: string;
+  color?: string;
   children?: HierarchyItem[];
 }
 
@@ -65,6 +66,12 @@ export function HierarchyPanel({
         }}
       >
         {node.icon && <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{node.icon}</span>}
+        {node.color && !node.icon && (
+          <span style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: node.color, flexShrink: 0, display: 'inline-block',
+          }} />
+        )}
         <span
           style={{
             flex: 1,
