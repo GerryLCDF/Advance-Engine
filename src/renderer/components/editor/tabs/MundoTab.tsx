@@ -103,7 +103,7 @@ export function MundoTab() {
         const to = scenes.find((s) => s.id === c.toSceneId);
         return { id: c.id, label: `${from?.name ?? '?'} → ${to?.name ?? '?'}`, icon: '🔗' };
       }),
-    },
+    },//hello
   ];
 
   const selectedScene = scenes.find((sc) => sc.id === selectedNodeId);

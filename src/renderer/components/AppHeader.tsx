@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../store/useAppStore';
-
-const VERSION = 'V alfa 0.0.05';
+import { VERSION } from '../../version';
 
 export function AppHeader() {
   const setActiveScreen = useAppStore((s) => s.setActiveScreen);
@@ -37,7 +36,7 @@ export function AppHeader() {
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
-        LOGO
+        <img src="/icon.png" alt="Logo" style={{ width: '100%', height: '100%', borderRadius: 10, objectFit: 'cover' }} />
       </div>
 
       {/* Title block */}
@@ -53,7 +52,7 @@ export function AppHeader() {
             marginTop: 2,
           }}
         >
-          {VERSION}
+          V alfa {VERSION}
         </div>
         {/* Sub-nav */}
         <div

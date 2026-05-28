@@ -117,16 +117,30 @@ function ScrollingCredits({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const yRef = useRef(0);
+  const offsetRef = useRef(0);
   const SPEED = 0.5; // px por frame
 
   useAnimationFrame(() => {
     const el = containerRef.current;
     if (!el) return;
-    yRef.current -= SPEED;
-    const totalHeight = el.scrollHeight / 2; // duplicamos el contenido
-    if (Math.abs(yRef.current) >= totalHeight) {
-      yRef.current = 0;
+
+    const parent = el.parentElement;
+    if (!parent) return;
+
+    // Inicializar offset: empujar contenido debajo del viewport
+    if (offsetRef.current === 0) {
+      offsetRef.current = parent.clientHeight;
+      yRef.current = offsetRef.current;
     }
+
+    yRef.current -= SPEED;
+
+    // Altura de UNA copia de créditos (sin el offset)
+    const singleHeight = (el.scrollHeight - offsetRef.current) / 2;
+    if (singleHeight > 0 && yRef.current <= offsetRef.current - singleHeight) {
+      yRef.current = offsetRef.current;
+    }
+
     el.style.transform = `translateY(${yRef.current}px)`;
   });
 
@@ -146,7 +160,7 @@ function ScrollingCredits({
         WebkitMaskImage: 'linear-gradient(transparent 0%, black 12%, black 88%, transparent 100%)',
       }}
     >
-      <div ref={containerRef} style={{ willChange: 'transform', paddingTop: '100%' }}>
+      <div ref={containerRef} style={{ willChange: 'transform' }}>
         {doubled.map((c, i) => (
           <CreditItem key={`${c.id}-${i}`} entry={c} onClick={onClickEntry} />
         ))}
