@@ -411,7 +411,7 @@ export function MusicTab() {
           </div>
 
           {/* Piano Roll */}
-          <div ref={pianoRollRef} style={{ flex: 1, overflow: 'auto', display: 'flex', position: 'relative' }}>
+          <div ref={pianoRollRef} style={{ flex: 1, overflow: 'scroll', display: 'flex', position: 'relative' }}>
             {/* Piano keyboard (sticky left) */}
             <div style={{
               display: 'flex', flexDirection: 'column',
