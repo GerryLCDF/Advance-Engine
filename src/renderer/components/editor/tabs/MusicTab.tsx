@@ -109,7 +109,7 @@ export function MusicTab() {
     const handler = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        setMusicZoom((z) => Math.max(1, Math.min(4, z + (e.deltaY > 0 ? -1 : 1))));
+        setMusicZoom((z) => Math.max(1, Math.min(4, z + (e.deltaY > 0 ? -0.5 : 0.5))));
       } else if (e.shiftKey) {
         e.preventDefault();
         el.scrollLeft += e.deltaY;
@@ -352,7 +352,7 @@ export function MusicTab() {
         />
       }
       center={
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-canvas)' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-canvas)', minHeight: 0 }}>
           {/* Toolbar — estilo cápsula (MundoTab) */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 2,
@@ -413,9 +413,9 @@ export function MusicTab() {
             </div>
             {/* Zoom controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
-              <button onClick={() => setMusicZoom((z) => Math.max(1, z - 1))} style={zoomBtnStyle}>−</button>
+              <button onClick={() => setMusicZoom((z) => Math.max(1, z - 0.5))} style={zoomBtnStyle}>−</button>
               <span style={{ color: 'var(--text-secondary)', fontSize: 10, minWidth: 24, textAlign: 'center' }}>{musicZoom}x</span>
-              <button onClick={() => setMusicZoom((z) => Math.min(4, z + 1))} style={zoomBtnStyle}>+</button>
+              <button onClick={() => setMusicZoom((z) => Math.min(4, z + 0.5))} style={zoomBtnStyle}>+</button>
             </div>
           </div>
 
