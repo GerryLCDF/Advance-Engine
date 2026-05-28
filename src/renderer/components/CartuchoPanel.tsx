@@ -32,7 +32,6 @@ export function CartuchoPanel({
         width: 260,
         flexShrink: 0,
         background: 'var(--accent-light)',
-        borderRadius: '0 0 0 8px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
