@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '../../store/useAppStore';
 import type { EditorTab } from '../../types/editor';
-import { ThemeModal } from './ThemeModal';
+import { SettingsModal } from './SettingsModal';
 
 const TABS: { key: EditorTab; label: string }[] = [
   { key: 'mundo',     label: 'Mundo' },
@@ -52,8 +52,9 @@ const MENU_ITEMS: Record<string, MenuItemDef[]> = {
     { label: 'Music', onClick: () => {} },
     { label: 'Sound', onClick: () => {} },
     { label: 'Dialog', onClick: () => {}, divider: true },
-    { label: 'Tema' },
-    { label: 'Idioma', divider: true },
+    { label: 'General' },
+    { label: 'Tema', divider: true },
+    { label: 'Idioma' },
     { label: 'Mostrar colisiones' },
     { label: 'Mostrar conexiones' },
   ],
@@ -67,7 +68,8 @@ export function EditorTopBar() {
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const win = (window as any).advanceAPI?.window;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string>('general');
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -94,18 +96,20 @@ export function EditorTopBar() {
         win?.restore();
         setActiveScreen({ type: 'launcher' });
         break;
+      case 'Cerrar':
       case 'Salir a la lista de proyectos':
         win?.restore();
         setActiveScreen({ type: 'launcher' });
         break;
-      case 'Mundo': setEditorTab('mundo'); break;
-      case 'Scripting': setEditorTab('scripting'); break;
-      case 'Sprite': setEditorTab('sprite'); break;
-      case 'Imagen': setEditorTab('imagen'); break;
-      case 'Music': setEditorTab('music'); break;
-      case 'Sound': setEditorTab('sound'); break;
-      case 'Dialog': setEditorTab('dialogo'); break;
-      case 'Tema': setShowThemeModal(true); break;
+      case 'Mundo': setEditorTab('mundo'); setSettingsInitialTab('mundo'); setShowSettingsModal(true); break;
+      case 'Scripting': setEditorTab('scripting'); setSettingsInitialTab('scripting'); setShowSettingsModal(true); break;
+      case 'Sprite': setEditorTab('sprite'); setSettingsInitialTab('sprite'); setShowSettingsModal(true); break;
+      case 'Imagen': setEditorTab('imagen'); setSettingsInitialTab('imagen'); setShowSettingsModal(true); break;
+      case 'Music': setEditorTab('music'); setSettingsInitialTab('music'); setShowSettingsModal(true); break;
+      case 'Sound': setEditorTab('sound'); setSettingsInitialTab('sound'); setShowSettingsModal(true); break;
+      case 'Dialog': setEditorTab('dialogo'); setSettingsInitialTab('dialogo'); setShowSettingsModal(true); break;
+      case 'General': setSettingsInitialTab('general'); setShowSettingsModal(true); break;
+      case 'Tema': setSettingsInitialTab('general'); setShowSettingsModal(true); break;
     }
   };
 
@@ -268,7 +272,7 @@ export function EditorTopBar() {
         </div>
       </div>
     </div>
-      {showThemeModal && <ThemeModal onClose={() => setShowThemeModal(false)} />}
+      {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} initialTab={settingsInitialTab} />}
     </>
   );
 }

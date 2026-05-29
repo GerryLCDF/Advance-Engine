@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../store/useAppStore';
 import { EditorTopBar } from '../components/editor/EditorTopBar';
 import { MundoTab } from '../components/editor/tabs/MundoTab';
@@ -63,7 +63,18 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
     >
       <EditorTopBar />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {renderTab()}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={editorTab}
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            style={{ flex: 1, display: 'flex', overflow: 'hidden' }}
+          >
+            {renderTab()}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </motion.div>
   );

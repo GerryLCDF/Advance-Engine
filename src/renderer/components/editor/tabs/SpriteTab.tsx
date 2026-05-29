@@ -442,13 +442,13 @@ export function SpriteTab() {
               overflowX: 'auto',
               flexShrink: 0,
             }}>
-              <button onClick={() => setTilePage(0)} style={pageBtnStyle} title="Primero">|&#60;</button>
-              <button onClick={() => setTilePage((p) => Math.max(0, p - 1))} style={pageBtnStyle} title="Anterior">&#60;</button>
+              <button onClick={() => setTilePage(0)} style={pageBtnStyle} title="Primero"><SkipStartIcon size={10} /></button>
+              <button onClick={() => setTilePage((p) => Math.max(0, p - 1))} style={pageBtnStyle} title="Anterior"><ChevronLeftIcon size={10} /></button>
               <span style={{ color: 'var(--text-muted)', fontSize: 10, minWidth: 30, textAlign: 'center' }}>
                 {clampedPage + 1}/{totalPages}
               </span>
-              <button onClick={() => setTilePage((p) => Math.min(totalPages - 1, p + 1))} style={pageBtnStyle} title="Siguiente">&gt;</button>
-              <button onClick={() => setTilePage(totalPages - 1)} style={pageBtnStyle} title="Último">&gt;|</button>
+              <button onClick={() => setTilePage((p) => Math.min(totalPages - 1, p + 1))} style={pageBtnStyle} title="Siguiente"><ChevronRightIcon size={10} /></button>
+              <button onClick={() => setTilePage(totalPages - 1)} style={pageBtnStyle} title="Último"><SkipEndIcon size={10} /></button>
 
               <div style={{ width: 1, height: 30, background: 'var(--bg-raised)', margin: '0 8px' }} />
 
@@ -490,23 +490,23 @@ export function SpriteTab() {
                 padding: '4px 12px',
                 borderBottom: '1px solid var(--border-color)',
               }}>
-                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.max(0, p - 1)); }} style={transportBtnStyle} title="Frame anterior">⏮</button>
+                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.max(0, p - 1)); }} style={transportBtnStyle} title="Frame anterior"><SkipBackIcon size={13} /></button>
                 <button onClick={() => {
                   if (isPlaying) { setIsPlaying(false); }
                   else { setCurrentFrameIdx(0); setIsPlaying(true); }
                 }} style={{ ...transportBtnStyle, background: isPlaying ? 'var(--accent)' : 'var(--bg-raised)' }} title={isPlaying ? 'Detener' : 'Reproducir'}>
-                  {isPlaying ? '⏸' : '▶'}
+                  {isPlaying ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
                 </button>
-                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.min(anim.frames.length - 1, p + 1)); }} style={transportBtnStyle} title="Frame siguiente">⏭</button>
+                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.min(anim.frames.length - 1, p + 1)); }} style={transportBtnStyle} title="Frame siguiente"><SkipForwardIcon size={13} /></button>
 
                 <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 6px' }} />
 
                 <button onClick={() => setOnionSkin((p) => !p)}
                   style={{ ...transportBtnStyle, background: onionSkin ? 'var(--accent)' : 'var(--bg-raised)' }}
-                  title="Papel cebolla">🧅</button>
+                  title="Papel cebolla"><OnionSkinIcon size={13} /></button>
                 <button onClick={() => setShowGrid((p) => !p)}
                   style={{ ...transportBtnStyle, background: showGrid ? 'var(--accent)' : 'var(--bg-raised)' }}
-                  title="Mostrar cuadrícula">▦</button>
+                  title="Mostrar cuadrícula"><GridIcon size={13} /></button>
 
                 <span style={{ color: 'var(--text-dim)', fontSize: 10, marginLeft: 8 }}>
                   {Math.min(currentFrameIdx + 1, anim.frames.length)}/{anim.frames.length}
@@ -579,10 +579,10 @@ export function SpriteTab() {
           boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
         }}>
           <div onClick={() => doRename(ctxMenu.id)} style={ctxItemStyle}>
-            ✏️ Renombrar
+            <PencilIcon size={13} /> Renombrar
           </div>
           <div onClick={() => doDelete(ctxMenu.id)} style={{ ...ctxItemStyle, color: '#f87171' }}>
-            🗑️ Eliminar
+            <TrashIcon size={13} /> Eliminar
           </div>
         </div>
       )}
@@ -599,6 +599,104 @@ const ctxItemStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
 };
+// ── Iconos SVG ─────────────────────────────────────────────────────────
+function PlayIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  );
+}
+function PauseIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  );
+}
+function SkipBackIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="19 3 11 12 19 21 19 3" />
+      <rect x="5" y="4" width="3" height="16" rx="1" />
+    </svg>
+  );
+}
+function SkipForwardIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="5 3 13 12 5 21 5 3" />
+      <rect x="16" y="4" width="3" height="16" rx="1" />
+    </svg>
+  );
+}
+function SkipStartIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="17 4 9 12 17 20 17 4" />
+      <rect x="6" y="4" width="2" height="16" rx="1" />
+    </svg>
+  );
+}
+function SkipEndIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="7 4 15 12 7 20 7 4" />
+      <rect x="16" y="4" width="2" height="16" rx="1" />
+    </svg>
+  );
+}
+function ChevronLeftIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+function ChevronRightIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+function OnionSkinIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" opacity="0.4" />
+      <rect x="6" y="6" width="12" height="12" rx="1.5" opacity="0.7" />
+      <rect x="9" y="9" width="6" height="6" rx="1" />
+    </svg>
+  );
+}
+function GridIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="3" y1="15" x2="21" y2="15" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+      <line x1="15" y1="3" x2="15" y2="21" />
+    </svg>
+  );
+}
+function PencilIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  );
+}
+function TrashIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
 const zoomBtnStyle: React.CSSProperties = {
   background: 'var(--bg-raised)',
   border: 'none', borderRadius: 3,

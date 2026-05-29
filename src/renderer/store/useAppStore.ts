@@ -128,6 +128,12 @@ interface AppState {
   setTheme: (bgPanel: string, accent: string) => void;
   setFontSize: (px: number) => void;
 
+  // ── Settings ───────────────────────────────────────────────────────────
+  defaultEditorTab: EditorTab;
+  setDefaultEditorTab: (tab: EditorTab) => void;
+  pianoRollBg: 'lines' | 'checkerboard';
+  setPianoRollBg: (val: 'lines' | 'checkerboard') => void;
+
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: Scene[];
   addScene: () => void;
@@ -303,6 +309,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   fontSize: 13,
   setTheme: (bgPanel: string, accent: string) => set({ themeBgPanel: bgPanel, themeAccent: accent }),
   setFontSize: (px) => set({ fontSize: px }),
+
+  // ── Settings ───────────────────────────────────────────────────────────
+  defaultEditorTab: 'mundo',
+  setDefaultEditorTab: (tab) => set({ defaultEditorTab: tab }),
+  pianoRollBg: 'lines',
+  setPianoRollBg: (val) => set({ pianoRollBg: val }),
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: [defaultScene()],

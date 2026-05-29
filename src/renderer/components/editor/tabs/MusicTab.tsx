@@ -422,10 +422,10 @@ export function MusicTab() {
           {/* Piano Roll */}
           <div ref={pianoRollRef} className="music-piano-roll" style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
             <div style={{ display: 'flex', width: 'fit-content', height: 'fit-content' }}>
-              {/* Piano keyboard (sticky left) */}
+              {/* Piano keyboard (sticky left) — estilo teclado real */}
               <div style={{
                 display: 'flex', flexDirection: 'column',
-                background: 'var(--bg-dark)',
+                background: '#1a1a20',
                 borderRight: '1px solid var(--bg-raised)',
                 flexShrink: 0, position: 'sticky', left: 0, zIndex: 2,
               }}>
@@ -436,28 +436,34 @@ export function MusicTab() {
                     <div
                       key={label}
                       style={{
-                        width: 44, height: CELL_H,
-                        borderBottom: '1px solid var(--border-color)',
+                        width: 50, height: CELL_H,
+                        borderBottom: '1px solid #333',
                         display: 'flex', alignItems: 'center',
                         position: 'relative',
-                        background: sharp ? 'var(--bg-canvas)' : isC ? 'var(--bg-inspector)' : '#2d2d33',
+                        background: sharp ? 'transparent' : (isC ? '#f0f0f0' : '#fff'),
                       }}
                     >
+                      {/* Black key overlay (right side) */}
                       {sharp && (
                         <div style={{
                           position: 'absolute', right: 0, top: 0, bottom: 0,
-                          width: 20, background: '#1a1a20',
-                          borderLeft: '1px solid var(--border-color)',
+                          width: 28, background: '#1a1a20',
+                          borderLeft: '1px solid #333',
+                          borderBottom: '1px solid #111',
+                          borderRadius: '0 0 0 3px',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          zIndex: 1,
                         }}>
-                          <span style={{ color: 'var(--text-dim)', fontSize: 6 }}>{label}</span>
+                          <span style={{ color: '#ccc', fontSize: 6, fontWeight: 600 }}>{label}</span>
                         </div>
                       )}
                       {!sharp && (
                         <span style={{
-                          fontSize: 7, marginLeft: 2,
-                          color: isC ? 'var(--accent-light)' : 'var(--text-muted)',
-                          fontWeight: isC ? 600 : 400,
+                          fontSize: 7, marginLeft: 3,
+                          color: isC ? '#7c3aed' : '#444',
+                          fontWeight: isC ? 800 : 600,
+                          zIndex: 0,
+                          textShadow: '0 0 2px rgba(255,255,255,0.8)',
                         }}>
                           {label}
                         </span>
@@ -465,7 +471,8 @@ export function MusicTab() {
                       {isC && (
                         <div style={{
                           position: 'absolute', bottom: -1, left: 0, right: 0,
-                          height: 1, background: 'var(--accent-dark)',
+                          height: 1, background: '#8b5cf6',
+                          opacity: 0.5,
                         }} />
                       )}
                     </div>
@@ -492,12 +499,35 @@ export function MusicTab() {
                     pointerEvents: 'none', zIndex: 1,
                   }} />
                 ))}
-                {/* Beat lines (every 4 steps) */}
-                <div style={{
-                  position: 'absolute', inset: 0, pointerEvents: 'none',
-                  backgroundImage: 'linear-gradient(90deg, var(--border-light) 1px, transparent 1px)',
-                  backgroundSize: `${4 * CELL_W}px 1px`, zIndex: 0,
-                }} />
+                {/* Piano roll background — según configuración */}
+                {(() => {
+                  const bgMode = useAppStore.getState().pianoRollBg;
+                  if (bgMode === 'checkerboard') {
+                    return (
+                      <div style={{
+                        position: 'absolute', inset: 0, pointerEvents: 'none',
+                        backgroundImage:
+                          'linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%), ' +
+                          'linear-gradient(-45deg, rgba(255,255,255,0.04) 25%, transparent 25%), ' +
+                          'linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.04) 75%), ' +
+                          'linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.04) 75%)',
+                        backgroundSize: `${CELL_W * 2}px ${CELL_H * 2}px`,
+                        backgroundPosition: `0 0, 0 ${CELL_H}px, ${CELL_W}px ${CELL_H}px, ${CELL_W}px 0`,
+                        zIndex: 0,
+                      }} />
+                    );
+                  }
+                  return (
+                    <div style={{
+                      position: 'absolute', inset: 0, pointerEvents: 'none',
+                      backgroundImage:
+                        'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), ' +
+                        'linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)',
+                      backgroundSize: `${CELL_W}px ${CELL_H}px`,
+                      zIndex: 0,
+                    }} />
+                  );
+                })()}
                 {/* Note cells */}
                 {ALL_NOTES.map(({ note, octave, label }) => {
                   const sharp = isNoteSharp(note);
@@ -512,13 +542,8 @@ export function MusicTab() {
                               width: CELL_W, height: CELL_H,
                               background: active
                                 ? 'var(--accent)'
-                                : sharp
-                                ? 'transparent'
-                                : step % 2 === 0
-                                ? 'rgba(255,255,255,0.015)'
                                 : 'transparent',
-                              borderBottom: '1px solid var(--border-color)',
-                              borderRight: '1px solid var(--border-color)',
+                              border: 'none',
                               cursor: 'pointer',
                             }}
                             onClick={() => {
