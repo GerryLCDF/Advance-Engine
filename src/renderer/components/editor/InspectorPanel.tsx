@@ -1,6 +1,6 @@
 import React from 'react';
 
-interface InspectorField {
+export interface InspectorField {
   label: string;
   value: string | number | boolean;
   type: 'text' | 'number' | 'color' | 'select' | 'toggle' | 'textarea';

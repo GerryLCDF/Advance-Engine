@@ -14,6 +14,11 @@ interface AdvanceAPI {
   };
   shell: {
     openExternal: (url: string) => void;
+    openPath: (dirPath: string) => Promise<string>;
+  };
+  system: {
+    checkDevkitARM: () => Promise<{ found: boolean; path?: string; version?: string }>;
+    runCommand: (cmd: string, cwd: string) => Promise<{ success: boolean; output: string }>;
   };
   window: {
     minimize: () => void;
@@ -21,6 +26,24 @@ interface AdvanceAPI {
     maximizeEditor: () => void;
     restore: () => void;
     close: () => void;
+  };
+  project: {
+    ensureProjectsDir: () => Promise<string>;
+    save: (projectId: string, data: { name: string; state: any }) => Promise<{ success: boolean; path?: string; reason?: string }>;
+    load: (projectPath: string) => Promise<{ success: boolean; manifest?: any; state?: any; reason?: string }>;
+    listLocal: () => Promise<{ success: boolean; projects?: any[]; reason?: string }>;
+    deleteLocal: (projectPath: string) => Promise<{ success: boolean; reason?: string }>;
+  };
+  file: {
+    readText: (filePath: string) => Promise<{ success: boolean; data?: string; reason?: string }>;
+    writeText: (filePath: string, content: string) => Promise<{ success: boolean; reason?: string }>;
+    copy: (src: string, dest: string) => Promise<{ success: boolean; reason?: string }>;
+    readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; width?: number; height?: number; reason?: string }>;
+    writeBinary: (filePath: string, base64: string) => Promise<{ success: boolean; reason?: string }>;
+  };
+  dir: {
+    create: (dirPath: string) => Promise<{ success: boolean; reason?: string }>;
+    list: (dirPath: string) => Promise<{ success: boolean; entries?: { name: string; isDirectory: boolean; path: string }[]; reason?: string }>;
   };
 }
 

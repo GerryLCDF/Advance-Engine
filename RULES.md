@@ -24,16 +24,23 @@ Definida en `src/version.ts`. **Formato semver**: `X.Y.Z`. Cada modificación su
 - **Todo texto visible en la UI debe estar centralizado** para permitir traducción. Al agregar strings nuevos, crearlos en un objeto/diccionario con soporte para español latino, inglés, japonés y ruso. No hardcodear texto visible.
 
 ## Archivos clave
-- `electron/main.ts` — proceso principal, ventana frameless, IPC, projects.json
-- `electron/preload.ts` — contextBridge (`window.advanceAPI`)
-- `src/renderer/store/useAppStore.ts` — estado global (temas, canciones, presets, settings, editorTab)
-- `src/renderer/components/editor/EditorTopBar.tsx` — barra superior con menús (Archivos, Editar, Juego, Ayuda, Ver) + tabs
-- `src/renderer/components/editor/SettingsModal.tsx` — modal de configuración con pestañas + sidebar
+- `electron/main.ts` — proceso principal, ventana frameless, IPC, projects.json, carpetas de proyecto (backgrounds/, fonts/, music/, sounds/, sprites/, tilesets/, ui/, avatars/, script/, dialog/)
+- `electron/preload.ts` — contextBridge (`window.advanceAPI`) con métodos project, file, dir, system, shell
+- `src/renderer/store/useAppStore.ts` — estado global (temas, canciones, presets, settings, editorTab, backgrounds, spriteSheets, scenes, sceneConnections, pipeline)
+- `src/renderer/components/editor/EditorTopBar.tsx` — barra superior con menús (Archivos, Editar, Juego, Ayuda, Ver) + tabs + menú EXPORT con guardar, exportar GBA, exportar assets
+- `src/renderer/components/editor/SettingsModal.tsx` — modal de configuración con pestañas + sidebar (incluye piano colors, grid toggle/opacidad, image smoothing)
 - `src/renderer/components/editor/InspectorPanel.tsx` — panel genérico con `fields` opcional + `content` para secciones custom
-- `src/renderer/components/editor/tabs/MusicTab.tsx` — piano roll, instrumentos, knobs (Knob component), wave graph
+- `src/renderer/components/editor/tabs/MusicTab.tsx` — piano roll, instrumentos, knobs (Knob component), wave graph, playhead con flechas
 - `src/renderer/components/editor/tabs/SpriteTab.tsx` — editor de sprites con transporte e iconos SVG
+- `src/renderer/components/editor/tabs/MundoTab.tsx` — canvas de escenas con SceneCard arrastrable, mini-mapa 3:2, toolbar cápsula, conexiones, inspector de escena
+- `src/renderer/components/editor/tabs/ImagenTab.tsx` — gestor de imágenes con drag-drop, preview con zoom/pan, jerarquía plana de capas, fillColor picker
+- `src/renderer/components/SetupCheckModal.tsx` — verificación de devkitARM al primer inicio
+- `src/renderer/utils/gba_export.ts` — generación de main.c (metadatos GBA, escenas, sprites, canciones) + Makefile, hexToGBA15
+- `src/renderer/utils/project_persistence.ts` — saveProject, loadProject, saveAsset, loadAsset, copyImageToProject, readImageAsDataUrl
 - `src/renderer/screens/EditorScreen.tsx` — wrapper con AnimatePresence para transiciones de tabs
-- `src/renderer/types/editor.ts` — tipos (Song, EditorTab, Instrument, InstrumentPreset, etc.)
+- `src/renderer/screens/CrearScreen.tsx` — formulario de creación con CartuchoPanel, ruta, plantillas
+- `src/renderer/types/editor.ts` — tipos (Song, EditorTab, Instrument, InstrumentPreset, Background, BackgroundLayer, Scene, SpriteSheet, etc.)
+- `src/version.ts` — versión semver
 - `README.md` — documentación del proyecto
 
 ## Arquitectura / Decisiones
@@ -42,6 +49,11 @@ Definida en `src/version.ts`. **Formato semver**: `X.Y.Z`. Cada modificación su
 - Temas: 7 presets en SettingsModal; se aplican con `setTheme(bgPanel, accent)`.
 - InspectorPanel: `fields` opcional + `content` para ReactNode custom.
 - Ventana frameless con `-webkit-app-region: drag` en zonas no interactivas.
+- Exportación GBA: genera C + Makefile, compila con devkitARM externo vía `make`.
+- Proyectos se guardan en `Documents/AdvanceEngineProjects/<nombre>/` con `project.json` + `editor-state.json`.
+- Estados de editor: `dirty` flag con asterisco en barra de título, Ctrl+S para guardar.
+- ImagenTab: jerarquía plana de capas (sin anidamiento bajo fondos), auto-crea fondo "Assets" al soltar imagen.
+- `loadProject` restaura todos los campos: backgrounds, spriteSheets, songs, sounds, dialogues, scripts.
 
 ## Flujo
 1. Launcher (AppHeader) → Nuevo/Abrir proyecto → EditorScreen

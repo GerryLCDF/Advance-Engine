@@ -27,6 +27,12 @@ export interface AdvanceAPI {
   // Shell
   shell: {
     openExternal: (url: string) => void;
+    openPath: (dirPath: string) => Promise<string>;
+  };
+  // Sistema
+  system: {
+    checkDevkitARM: () => Promise<{ found: boolean; path?: string; version?: string }>;
+    runCommand: (cmd: string, cwd: string) => Promise<{ success: boolean; output: string }>;
   };
   // Ventana
   window: {
@@ -35,6 +41,27 @@ export interface AdvanceAPI {
     maximizeEditor: () => void;
     restore: () => void;
     close: () => void;
+  };
+  // Proyecto local (pipeline)
+  project: {
+    ensureProjectsDir: () => Promise<string>;
+    save: (projectId: string, data: { name: string; state: any }) => Promise<{ success: boolean; path?: string; reason?: string }>;
+    load: (projectPath: string) => Promise<{ success: boolean; manifest?: any; state?: any; reason?: string }>;
+    listLocal: () => Promise<{ success: boolean; projects?: any[]; reason?: string }>;
+    deleteLocal: (projectPath: string) => Promise<{ success: boolean; reason?: string }>;
+  };
+  // Archivos
+  file: {
+    readText: (filePath: string) => Promise<{ success: boolean; data?: string; reason?: string }>;
+    writeText: (filePath: string, content: string) => Promise<{ success: boolean; reason?: string }>;
+    copy: (src: string, dest: string) => Promise<{ success: boolean; reason?: string }>;
+    readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; width?: number; height?: number; reason?: string }>;
+    writeBinary: (filePath: string, base64: string) => Promise<{ success: boolean; reason?: string }>;
+  };
+  // Directorios
+  dir: {
+    create: (dirPath: string) => Promise<{ success: boolean; reason?: string }>;
+    list: (dirPath: string) => Promise<{ success: boolean; entries?: { name: string; isDirectory: boolean; path: string }[]; reason?: string }>;
   };
 }
 
@@ -52,6 +79,11 @@ contextBridge.exposeInMainWorld('advanceAPI', {
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+    openPath: (dirPath: string) => ipcRenderer.invoke('shell:openPath', dirPath),
+  },
+  system: {
+    checkDevkitARM: () => ipcRenderer.invoke('system:checkDevkitARM'),
+    runCommand: (cmd: string, cwd: string) => ipcRenderer.invoke('system:runCommand', cmd, cwd),
   },
   window: {
     minimize: () => ipcRenderer.send('window-minimize'),
@@ -59,5 +91,23 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     maximizeEditor: () => ipcRenderer.send('window-maximize-editor'),
     restore: () => ipcRenderer.send('window-restore'),
     close: () => ipcRenderer.send('window-close'),
+  },
+  project: {
+    ensureProjectsDir: () => ipcRenderer.invoke('project:ensureProjectsDir'),
+    save: (projectId: string, data: { name: string; state: any }) => ipcRenderer.invoke('project:save', projectId, data),
+    load: (projectPath: string) => ipcRenderer.invoke('project:load', projectPath),
+    listLocal: () => ipcRenderer.invoke('project:listLocal'),
+    deleteLocal: (projectPath: string) => ipcRenderer.invoke('project:deleteLocal', projectPath),
+  },
+  file: {
+    readText: (filePath: string) => ipcRenderer.invoke('file:readText', filePath),
+    writeText: (filePath: string, content: string) => ipcRenderer.invoke('file:writeText', filePath, content),
+    copy: (src: string, dest: string) => ipcRenderer.invoke('file:copy', src, dest),
+    readImage: (filePath: string) => ipcRenderer.invoke('file:readImage', filePath),
+    writeBinary: (filePath: string, base64: string) => ipcRenderer.invoke('file:writeBinary', filePath, base64),
+  },
+  dir: {
+    create: (dirPath: string) => ipcRenderer.invoke('dir:create', dirPath),
+    list: (dirPath: string) => ipcRenderer.invoke('dir:list', dirPath),
   },
 } satisfies AdvanceAPI);

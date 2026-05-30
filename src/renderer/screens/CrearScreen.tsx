@@ -29,8 +29,35 @@ export function CrearScreen() {
       coverPath: draftCoverPath,
     });
     if (project) {
+      try {
+        const api = window.advanceAPI;
+        if (api?.project?.save) {
+          const st = useAppStore.getState();
+          const result = await api.project.save(project.id, {
+            name: project.name,
+            state: {
+              scenes: st.scenes,
+              sceneConnections: st.sceneConnections,
+              backgrounds: st.backgrounds ?? [],
+              sprites: st.spriteSheets ?? [],
+              songs: st.songs,
+              sounds: st.sounds ?? [],
+              dialogues: st.dialogues ?? [],
+              scripts: st.scripts ?? [],
+            },
+          });
+          if (result.success && result.path) {
+            st.setProjectDir(result.path);
+            console.log('[Crear] Carpeta creada en:', result.path);
+          } else {
+            console.error('[Crear] Error al guardar:', result.reason);
+          }
+        }
+      } catch (err) {
+        console.error('[Crear] Excepción:', err);
+      }
       resetDraft();
-      setActiveScreen({ type: 'launcher' });
+      setActiveScreen({ type: 'editor', projectId: project.id });
     }
   };
 

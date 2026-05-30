@@ -71,6 +71,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setShowGrid = useAppStore((s) => s.setShowGrid);
   const gridLineOpacity = useAppStore((s) => s.gridLineOpacity);
   const setGridLineOpacity = useAppStore((s) => s.setGridLineOpacity);
+  const imageSmoothing = useAppStore((s) => s.imageSmoothing);
+  const setImageSmoothing = useAppStore((s) => s.setImageSmoothing);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab === 'general' ? 'general' : (initialTab as SettingsTab) || 'general');
   const [activeSection, setActiveSection] = useState<GeneralSection>('theme');
@@ -82,6 +84,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const [localChunkRows, setLocalChunkRows] = useState(chunkRows);
   const [localShowGrid, setLocalShowGrid] = useState(showGrid);
   const [localGridLineOpacity, setLocalGridLineOpacity] = useState(gridLineOpacity);
+  const [localImageSmoothing, setLocalImageSmoothing] = useState(imageSmoothing);
 
   const snapshot = useRef({ bg: storeBg, accent: storeAccent, fontSize: storeFontSize });
 
@@ -118,6 +121,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
 
   function apply() {
     setPianoRollBg(localPianoRollBg);
+    setImageSmoothing(localImageSmoothing);
     onClose();
   }
 
@@ -309,7 +313,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                   </>
                 )}
 
-                {activeSection === 'general' && (
+                  {activeSection === 'general' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 700 }}>General</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -327,6 +331,35 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                           <option key={opt.key} value={opt.key}>{opt.label}</option>
                         ))}
                       </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Suavizar imágenes</label>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
+                        <button
+                          onClick={() => setLocalImageSmoothing(!localImageSmoothing)}
+                          style={{
+                            width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
+                            background: localImageSmoothing ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                          }}
+                        >
+                          <div style={{
+                            position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
+                            background: '#fff', transition: 'left 0.15s',
+                            left: localImageSmoothing ? 24 : 2,
+                          }} />
+                        </button>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localImageSmoothing ? 'Sí' : 'No'}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                      <button onClick={cancel}
+                        style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                        Cancelar
+                      </button>
+                      <button onClick={apply}
+                        style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                        Aplicar
+                      </button>
                     </div>
                   </div>
                 )}

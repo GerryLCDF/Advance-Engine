@@ -27,7 +27,10 @@ export interface Scene {
   name: string;
   width: number;
   height: number;
+  x: number;
+  y: number;
   backgroundColor: string;
+  backgroundImage?: string;
   type: 'platformer' | 'topdown' | 'rpg' | 'fighting';
   actors: Actor[];
   backgroundSong?: string;
@@ -61,6 +64,7 @@ export interface SpriteSheet {
 export interface BackgroundLayer {
   id: string;
   imagePath: string;
+  fillColor?: string;
   parallaxX: number;
   parallaxY: number;
   speed: number;

@@ -20,7 +20,7 @@ const MENU_ITEMS: Record<string, MenuItemDef[]> = {
   Archivos: [
     { label: 'Nuevo proyecto', onClick: () => {} },
     { label: 'Abrir' },
-    { label: 'Guardar' },
+    { label: 'Guardar', shortcut: 'Ctrl+S' },
     { label: 'Guardar como...', divider: true },
     { label: 'Salir a la lista de proyectos', onClick: () => {} },
     { label: 'Recargar' },
@@ -66,15 +66,34 @@ export function EditorTopBar() {
   const setActiveScreen = useAppStore((s) => s.setActiveScreen);
   const resetDraft = useAppStore((s) => s.resetDraft);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const projects = useAppStore((s) => s.projects);
+  const editorProjectId = useAppStore((s) => s.editorProjectId);
+  const dirty = useAppStore((s) => s.dirty);
+  const setDirty = useAppStore((s) => s.setDirty);
   const win = (window as any).advanceAPI?.window;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<string>('general');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [pendingExit, setPendingExit] = useState<(() => void) | null>(null);
+  const exportLog = useAppStore((s) => s.exportLog);
+  const saveProject = useAppStore((s) => s.saveProject);
+  const exportGBA = useAppStore((s) => s.exportGBA);
+  const projectDir = useAppStore((s) => s.projectDir);
+  const currentProject = projects.find((p) => p.id === editorProjectId);
+
+  const openProjectFolder = async () => {
+    if (projectDir) {
+      const api = (window as any).advanceAPI;
+      await api?.shell?.openPath(projectDir);
+    }
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === 's') { e.preventDefault(); useAppStore.getState().saveProject(); return; }
       if (ctrl && e.key === 'z') { e.preventDefault(); useAppStore.getState().undo(); return; }
       if (ctrl && e.key === 'y') { e.preventDefault(); useAppStore.getState().redo(); return; }
       if (ctrl && e.key === 'x') { e.preventDefault(); /* cortar */ return; }
@@ -87,9 +106,32 @@ export function EditorTopBar() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // Auto-detect unsaved changes
+  useEffect(() => {
+    const watchKeys = ['scenes', 'spriteSheets', 'backgrounds', 'songs', 'dialogues', 'sounds', 'scripts', 'sceneConnections'] as const;
+    let prev = watchKeys.map(k => JSON.stringify(useAppStore.getState()[k as keyof typeof useAppStore.getState]));
+    const unsub = useAppStore.subscribe((state) => {
+      const curr = watchKeys.map(k => JSON.stringify((state as any)[k]));
+      if (curr.some((v, i) => v !== prev[i])) {
+        if (!state.dirty) state.setDirty(true);
+        prev = curr;
+      }
+    });
+    return unsub;
+  }, [editorProjectId]);
+
   const handleAction = (action: string) => {
     setOpenMenu(null);
+
+    const confirmExit = (cb: () => void) => {
+      if (!dirty) { cb(); return; }
+      setPendingExit(() => cb);
+    };
+
     switch (action) {
+      case 'Guardar':
+        useAppStore.getState().saveProject();
+        break;
       case 'Deshacer':
         useAppStore.getState().undo();
         break;
@@ -104,8 +146,10 @@ export function EditorTopBar() {
         break;
       case 'Cerrar':
       case 'Salir a la lista de proyectos':
-        win?.restore();
-        setActiveScreen({ type: 'launcher' });
+        confirmExit(() => {
+          win?.restore();
+          setActiveScreen({ type: 'launcher' });
+        });
         break;
       case 'Mundo': setEditorTab('mundo'); setSettingsInitialTab('mundo'); setShowSettingsModal(true); break;
       case 'Scripting': setEditorTab('scripting'); setSettingsInitialTab('scripting'); setShowSettingsModal(true); break;
@@ -154,11 +198,12 @@ export function EditorTopBar() {
               {openMenu === m && (
                 <div
                   style={{
-                    position: 'absolute', top: 32, left: 0,
+                    position: 'absolute', top: '100%', left: 0,
                     background: 'var(--bg-panel)', border: '1px solid var(--bg-raised)',
                     borderRadius: '0 0 6px 6px', minWidth: 180,
                     zIndex: 200, padding: 4,
                   }}
+                  onMouseEnter={() => setOpenMenu(m)}
                   onMouseLeave={() => setOpenMenu(null)}
                 >
                   {MENU_ITEMS[m].map((item, i) => (
@@ -179,7 +224,15 @@ export function EditorTopBar() {
           ))}
         </div>
 
-        <div style={{ flex: 1 }} />
+        {/* Project title */}
+        <div style={{
+          flex: 1, textAlign: 'center', fontSize: 12, color: '#888',
+          fontWeight: 500, letterSpacing: 0.3, overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 8px',
+          WebkitAppRegion: 'drag',
+        } as React.CSSProperties}>
+          {currentProject?.name ?? ''}{dirty ? ' *' : ''}
+        </div>
 
         {/* Window controls */}
         <div style={{ display: 'flex', gap: 2, paddingRight: 6, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -246,22 +299,42 @@ export function EditorTopBar() {
           >
             IMPORTAR
           </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.04 }}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--orange)',
-              borderRadius: 4,
-              color: 'var(--orange)',
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '2px 12px',
-              cursor: 'pointer',
-              marginRight: 6,
-            }}
-          >
-            EXPORT
-          </motion.button>
+          <div style={{ position: 'relative', marginRight: 6 }}>
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              style={{
+                background: showExportMenu ? 'var(--orange)' : 'transparent',
+                border: '1px solid var(--orange)',
+                borderRadius: 4,
+                color: showExportMenu ? '#000' : 'var(--orange)',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '2px 12px',
+                cursor: 'pointer',
+              }}
+            >
+              EXPORT
+            </motion.button>
+            {showExportMenu && (
+              <div
+                style={{
+                  position: 'absolute', top: 24, right: 0,
+                  background: 'var(--bg-panel)', border: '1px solid var(--bg-raised)',
+                  borderRadius: 6, minWidth: 200, zIndex: 200, padding: 4,
+                }}
+                onMouseLeave={() => setShowExportMenu(false)}
+              >
+                <ExportMenuItem label="Guardar proyecto" onClick={async () => { setShowExportMenu(false); await saveProject(); }} />
+                <ExportMenuItem label="Exportar ROM GBA" onClick={async () => { setShowExportMenu(false); await saveProject(); await exportGBA(); openProjectFolder(); }} />
+                <ExportMenuItem label="Exportar canciones" divider />
+                <ExportMenuItem label="Exportar sprites" />
+                <ExportMenuItem label="Exportar fondos" />
+                <ExportMenuItem label="Exportar scripts" divider />
+                <ExportMenuItem label="Abrir carpeta del proyecto" onClick={() => { setShowExportMenu(false); openProjectFolder(); }} />
+              </div>
+            )}
+          </div>
           <motion.button
             whileHover={{ scale: 1.04 }}
             style={{
@@ -281,6 +354,39 @@ export function EditorTopBar() {
       </div>
     </div>
       {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} initialTab={settingsInitialTab} />}
+      {pendingExit && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+          onClick={() => setPendingExit(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 10, padding: 24, minWidth: 300,
+            display: 'flex', flexDirection: 'column', gap: 16,
+          }}>
+            <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>Cambios sin guardar</span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>¿Qué deseas hacer?</span>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setPendingExit(null)}
+                style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 16px', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={() => { const cb = pendingExit; setPendingExit(null); cb(); }}
+                style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--red)', fontSize: 12, fontWeight: 600, padding: '7px 16px', cursor: 'pointer' }}>
+                Salir sin guardar
+              </button>
+              <button onClick={() => { const cb = pendingExit; setPendingExit(null); useAppStore.getState().saveProject().finally(() => cb()); }}
+                style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, padding: '7px 16px', cursor: 'pointer' }}>
+                Guardar y salir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -306,6 +412,25 @@ function MenuItem({ label, shortcut, divider, onClick }: MenuItemDef & { onClick
       >
         <span>{label}</span>
         {shortcut && <span style={{ color: '#666', fontSize: 10, marginLeft: 'auto' }}>{shortcut}</span>}
+      </div>
+      {divider && <div style={{ height: 1, background: 'var(--bg-raised)', margin: '4px 8px' }} />}
+    </>
+  );
+}
+
+function ExportMenuItem({ label, onClick, divider }: { label: string; onClick?: () => void; divider?: boolean }) {
+  return (
+    <>
+      <div
+        onClick={onClick}
+        style={{
+          padding: '5px 12px', color: 'var(--text-secondary)', fontSize: 11,
+          cursor: onClick ? 'pointer' : 'default', borderRadius: 4,
+        }}
+        onMouseEnter={(e) => { if (onClick) e.currentTarget.style.background = 'var(--bg-raised)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        {label}
       </div>
       {divider && <div style={{ height: 1, background: 'var(--bg-raised)', margin: '4px 8px' }} />}
     </>

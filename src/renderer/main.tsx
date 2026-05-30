@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Launcher } from './screens/Launcher';
 import { useAppStore } from './store/useAppStore';
+import { SetupCheckModal } from './components/SetupCheckModal';
 import './index.css';
 
 const THEME_KEY = 'advance-studio-theme';
@@ -110,17 +111,24 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-const rootEl = document.getElementById('root');
-if (!rootEl) {
-  document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace">ERROR: No se encontró el elemento #root</div>';
-} else {
-  ReactDOM.createRoot(rootEl).render(
+function Root() {
+  const [showSetup, setShowSetup] = useState(() => !localStorage.getItem('advance-studio-setup-done'));
+
+  return (
     <React.StrictMode>
       <ErrorBoundary>
         <ThemeApplier>
           <Launcher />
         </ThemeApplier>
+        {showSetup && <SetupCheckModal onClose={() => { localStorage.setItem('advance-studio-setup-done', '1'); setShowSetup(false); }} />}
       </ErrorBoundary>
     </React.StrictMode>
   );
+}
+
+const rootEl = document.getElementById('root');
+if (!rootEl) {
+  document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace">ERROR: No se encontró el elemento #root</div>';
+} else {
+  ReactDOM.createRoot(rootEl).render(<Root />);
 }

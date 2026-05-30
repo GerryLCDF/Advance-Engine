@@ -1,17 +1,21 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
-import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
+import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 
 const PREVIEW_W = 320;
 const PREVIEW_H = 200;
 
+function imgBasename(path: string): string {
+  const parts = path.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1] || '(sin nombre)';
+}
+
 export function ImagenTab() {
   const backgrounds = useAppStore((s) => s.backgrounds);
   const selectedNodeId = useAppStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useAppStore((s) => s.setSelectedNodeId);
-  const addBackground = useAppStore((s) => s.addBackground);
   const removeBackground = useAppStore((s) => s.removeBackground);
   const updateBackground = useAppStore((s) => s.updateBackground);
   const addLayer = useAppStore((s) => s.addLayer);
@@ -23,15 +27,25 @@ export function ImagenTab() {
   const setInspectorWidth = useAppStore((s) => s.setInspectorWidth);
   const imagenZoom = useAppStore((s) => s.imagenZoom);
   const setImagenZoom = useAppStore((s) => s.setImagenZoom);
+  const projectDir = useAppStore((s) => s.projectDir);
+  const imageSmoothing = useAppStore((s) => s.imageSmoothing);
 
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hasMoved = useRef(false);
+  const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
 
-  // ── Center canvas on mount / zoom change ──────────────────────────────
+  const allLayers = backgrounds.flatMap((bg) => bg.layers);
+  const selectedLayer = allLayers.find((l) => l.id === selectedNodeId);
+  const parentBg = selectedLayer
+    ? backgrounds.find((bg) => bg.layers.some((l) => l.id === selectedLayer.id))
+    : null;
+
   const centerCanvas = useCallback(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
@@ -41,9 +55,7 @@ export function ImagenTab() {
     setPanY((ch - PREVIEW_H * imagenZoom) / 2);
   }, [imagenZoom]);
 
-  useEffect(() => {
-    centerCanvas();
-  }, [centerCanvas]);
+  useEffect(() => { centerCanvas(); }, [centerCanvas]);
 
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -73,6 +85,37 @@ export function ImagenTab() {
     return () => el.removeEventListener('wheel', handler);
   }, [imagenZoom, setImagenZoom]);
 
+  // Load images for all layers
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const api = window.advanceAPI;
+      if (!api) return;
+      const paths = new Set<string>();
+      backgrounds.forEach((bg) => bg.layers.forEach((l) => { if (l.imagePath) paths.add(l.imagePath); }));
+      const newUrls: Record<string, string> = {};
+      for (const p of paths) {
+        const r = await api.file.readImage(p);
+        if (!cancelled && r.success && r.dataUrl) newUrls[p] = r.dataUrl;
+      }
+      if (!cancelled && Object.keys(newUrls).length > 0) setImageDataUrls((prev) => ({ ...prev, ...newUrls }));
+    })();
+    return () => { cancelled = true; };
+  }, [backgrounds]);
+
+  // Detectar dimensiones de la imagen seleccionada
+  useEffect(() => {
+    if (!selectedLayer?.imagePath) { setImgSize(null); return; }
+    const url = imageDataUrls[selectedLayer.imagePath];
+    if (!url) { setImgSize(null); return; }
+    const img = new Image();
+    let cancelled = false;
+    img.onload = () => { if (!cancelled) setImgSize({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onerror = () => { if (!cancelled) setImgSize(null); };
+    img.src = url;
+    return () => { cancelled = true; img.src = ''; };
+  }, [selectedNodeId, imageDataUrls, backgrounds]);
+
   const handleMouseDownCanvas = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     setIsPanning(true);
@@ -98,71 +141,116 @@ export function ImagenTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panX, panY]);
 
+  // Auto-create Assets background if none exists
+  const ensureAssetsBg = useCallback(() => {
+    const st = useAppStore.getState();
+    if (st.backgrounds.length === 0) {
+      st.addBackground();
+      const newBg = useAppStore.getState().backgrounds[0];
+      if (newBg) st.updateBackground(newBg.id, { name: 'Assets' });
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const filePath = (file as any).path;
+    if (!filePath) return;
+    const api = window.advanceAPI;
+    if (!api) return;
+    const result = await api.file.readImage(filePath);
+    if (!result.success || !result.dataUrl) return;
+    const st = useAppStore.getState();
+    const pd = st.projectDir;
+
+    // Find or create target layer
+    let targetBgId: string;
+    let targetLayerId: string | null = null;
+
+    if (selectedLayer && parentBg && !selectedLayer.imagePath) {
+      targetBgId = parentBg.id;
+      targetLayerId = selectedLayer.id;
+    } else {
+      // Ensure a background exists
+      if (!st.backgrounds[0]) {
+        st.addBackground();
+        const nb = useAppStore.getState().backgrounds[0];
+        if (nb) st.updateBackground(nb.id, { name: 'Assets' });
+      }
+      const bg = useAppStore.getState().backgrounds[0];
+      if (!bg) return;
+      targetBgId = bg.id;
+      addLayer(targetBgId);
+      const updatedBg = useAppStore.getState().backgrounds.find((b) => b.id === targetBgId);
+      const newLayers = updatedBg?.layers ?? [];
+      const lastLayer = newLayers[newLayers.length - 1];
+      if (lastLayer) targetLayerId = lastLayer.id;
+    }
+
+    const destPath = pd ? `${pd}/backgrounds/${file.name}` : filePath;
+    if (pd) {
+      await api.dir.create(`${pd}/backgrounds`);
+      await api.file.copy(filePath, destPath);
+    }
+
+    if (targetLayerId) {
+      updateLayer(targetBgId, targetLayerId, { imagePath: destPath });
+    }
+    setImageDataUrls((prev) => ({ ...prev, [destPath]: result.dataUrl! }));
+    if (!selectedLayer && targetLayerId) setSelectedNodeId(targetLayerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLayer, parentBg, projectDir]);
+
   const [animTab, setAnimTab] = useState<'view' | 'anim'>('view');
 
+  // Flat hierarchy — layers only, no background nesting
   const hierarchySections: HierarchySection[] = [
     {
       id: 'bgs',
-      title: 'Imágenes de fondo',
-      items: backgrounds.map((bg) => ({
-        id: bg.id,
-        label: bg.name,
-        icon: '🖼',
-        subtitle: `${bg.layers.length} capas`,
-        children: bg.layers.map((l) => ({
-          id: l.id,
-          label: l.imagePath ? l.imagePath.split('/').pop() || '(sin nombre)' : '(vacío)',
-          icon: l.visible ? '👁' : '👁‍🗨',
-        })),
+      title: 'Imágenes',
+      items: allLayers.map((l) => ({
+        id: l.id,
+        label: l.imagePath ? imgBasename(l.imagePath) : '(sin imagen)',
+        icon: l.visible ? '👁' : '👁‍🗨',
+        subtitle: l.imagePath ? '' : 'vacío',
       })),
-      onAdd: addBackground,
     },
   ];
 
-  const selectedBg = backgrounds.find((bg) => bg.id === selectedNodeId)
-    ?? (selectedNodeId ? backgrounds.find((bg) => bg.layers.some((l) => l.id === selectedNodeId)) : null);
-
-  const selectedLayer = backgrounds.flatMap((bg) => bg.layers).find((l) => l.id === selectedNodeId);
-  const parentBg = selectedLayer
-    ? backgrounds.find((bg) => bg.layers.some((l) => l.id === selectedLayer.id))
-    : selectedBg;
-
   const inspectorSections: InspectorSection[] = [];
 
-  if (selectedBg && !selectedLayer) {
-    inspectorSections.push({
-      title: 'Fondo',
-      fields: [
-        { label: 'Nombre', type: 'text', value: selectedBg.name, onChange: (v) => updateBackground(selectedBg.id, { name: v as string }) },
-      ],
-    });
-  }
-
   if (selectedLayer) {
+    const fields: InspectorField[] = [
+      { label: 'Visible', type: 'toggle', value: selectedLayer.visible, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { visible: v as boolean }) },
+      { label: 'Parallax X', type: 'number', value: selectedLayer.parallaxX, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { parallaxX: v as number }) },
+      { label: 'Parallax Y', type: 'number', value: selectedLayer.parallaxY, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { parallaxY: v as number }) },
+      { label: 'Velocidad', type: 'number', value: selectedLayer.speed, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { speed: v as number }) },
+      { label: 'Ruta', type: 'text', value: selectedLayer.imagePath, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { imagePath: v as string }) },
+    ];
+    if (imgSize && (imgSize.w < 240 || imgSize.h < 160)) {
+      fields.push({ label: 'Fondo', type: 'color', value: selectedLayer.fillColor || '#000000', onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { fillColor: v as string }) });
+    }
     inspectorSections.push({
       title: 'Capa',
-      fields: [
-        { label: 'Visible', type: 'toggle', value: selectedLayer.visible, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { visible: v as boolean }) },
-        { label: 'Parallax X', type: 'number', value: selectedLayer.parallaxX, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { parallaxX: v as number }) },
-        { label: 'Parallax Y', type: 'number', value: selectedLayer.parallaxY, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { parallaxY: v as number }) },
-        { label: 'Velocidad', type: 'number', value: selectedLayer.speed, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { speed: v as number }) },
-        { label: 'Ruta', type: 'text', value: selectedLayer.imagePath, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { imagePath: v as string }) },
-      ],
+      fields,
     });
   }
 
   const handleRemove = (id: string) => {
-    const isBg = backgrounds.some((bg) => bg.id === id);
-    if (isBg) removeBackground(id);
-    else {
-      for (const bg of backgrounds) {
-        if (bg.layers.some((l) => l.id === id)) { removeLayer(bg.id, id); break; }
-      }
+    for (const bg of backgrounds) {
+      if (bg.layers.some((l) => l.id === id)) { removeLayer(bg.id, id); break; }
     }
     if (selectedNodeId === id) setSelectedNodeId('');
   };
 
-  const preview = selectedBg || backgrounds[0];
+  const previewLayers = parentBg
+    ? parentBg.layers
+    : backgrounds.length > 0
+      ? backgrounds[0].layers
+      : [];
 
   return (
     <ResizableEditorLayout
@@ -180,13 +268,20 @@ export function ImagenTab() {
       }
       center={
         <>
-          {/* Viewer with zoom/pan */}
           <div
             ref={canvasContainerRef}
-            style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: isPanning ? 'grabbing' : 'grab' }}
+            style={{
+              flex: 1, position: 'relative', overflow: 'hidden',
+              cursor: isPanning ? 'grabbing' : 'grab',
+              outline: dragOver ? '2px dashed var(--accent-light)' : 'none',
+              outlineOffset: -2,
+            }}
             onMouseDown={handleMouseDownCanvas}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
           >
-            {preview ? (
+            {previewLayers.length > 0 ? (
               <div style={{
                 transform: `translate(${panX}px, ${panY}px) scale(${imagenZoom})`,
                 transformOrigin: '0 0',
@@ -204,33 +299,45 @@ export function ImagenTab() {
                     overflow: 'hidden',
                   }}
                 >
-                  {preview.layers.length === 0 && (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                      Sin capas
-                    </div>
-                  )}
-                  {[...preview.layers].reverse().map((l, i) => (
+                  {[...previewLayers].reverse().map((l, i) => (
                     <div
                       key={l.id}
                       style={{
                         position: 'absolute', inset: 0,
-                        background: l.visible
-                          ? `linear-gradient(135deg, hsl(${(i * 60 + 200) % 360}, 30%, 25%), hsl(${(i * 60 + 260) % 360}, 30%, 15%))`
-                          : 'transparent',
+                        background: l.fillColor
+                          ? l.fillColor
+                          : l.visible
+                            ? `linear-gradient(135deg, hsl(${(i * 60 + 200) % 360}, 30%, 25%), hsl(${(i * 60 + 260) % 360}, 30%, 15%))`
+                            : 'transparent',
                         opacity: l.visible ? 1 : 0.15,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#ffffff66', fontSize: 9,
                         borderBottom: '1px dashed #ffffff22',
                       }}
                     >
-                      {l.imagePath ? `📄 ${l.imagePath.split('/').pop()}` : `Capa ${i + 1}`}
+                      {imageDataUrls[l.imagePath] ? (
+                        <img src={imageDataUrls[l.imagePath]} alt=""
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
+                        />
+                      ) : l.imagePath ? (
+                        `📄 ${imgBasename(l.imagePath)}`
+                      ) : `Capa ${i + 1}`}
                       {l.parallaxX !== 1 || l.parallaxY !== 1 ? ` [p:${l.parallaxX},${l.parallaxY}]` : ''}
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <span style={{ color: 'var(--text-muted)', fontSize: 13, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }}>Agrega un fondo</span>
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 8,
+                color: 'var(--text-muted)', fontSize: 13,
+              }}>
+                <span style={{ fontSize: 32, opacity: 0.5 }}>🖼</span>
+                <span>Arrastra una imagen aquí</span>
+              </div>
             )}
 
             {/* Zoom controls */}
@@ -246,7 +353,6 @@ export function ImagenTab() {
               <button onClick={() => setImagenZoom(Math.min(4, +(imagenZoom + 0.1).toFixed(2)))} style={zoomBtnStyle}>+</button>
             </div>
 
-            {/* Zoom indicator */}
             <div style={{
               position: 'absolute', bottom: 8, right: 8,
               background: '#2d2d33cc', borderRadius: 4,
@@ -259,7 +365,7 @@ export function ImagenTab() {
           </div>
 
           {/* Bottom: Animation tab */}
-          {preview && (
+          {previewLayers.length > 0 && (
             <div style={{
               height: 80,
               background: 'var(--bg-panel)',
@@ -267,7 +373,6 @@ export function ImagenTab() {
               display: 'flex', flexDirection: 'column',
               flexShrink: 0,
             }}>
-              {/* Sub-tabs */}
               <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-color)' }}>
                 {(['view', 'anim'] as const).map((t) => (
                   <button
@@ -287,11 +392,10 @@ export function ImagenTab() {
                   </button>
                 ))}
               </div>
-              {/* Content */}
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 12px', gap: 12 }}>
                 {animTab === 'view' ? (
                   <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                    {preview.layers.length} capa(s) · {preview.layers.filter((l) => l.visible).length} visible(s)
+                    {previewLayers.length} capa(s) · {previewLayers.filter((l) => l.visible).length} visible(s)
                   </span>
                 ) : (
                   <>
@@ -316,7 +420,7 @@ export function ImagenTab() {
         <InspectorPanel
           title="Inspector"
           sections={inspectorSections}
-          emptyMessage="Selecciona un fondo o capa"
+          emptyMessage="Selecciona una imagen"
         />
       }
     />

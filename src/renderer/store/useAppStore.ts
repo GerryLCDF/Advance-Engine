@@ -24,7 +24,7 @@ const uid = () => `e${_nextId++}_${Date.now()}`;
 
 const defaultScene = (): Scene => ({
   id: uid(), name: 'Nueva escena', width: 240, height: 160,
-  backgroundColor: '#6b8cff', type: 'platformer', actors: [],
+  x: 60, y: 20, backgroundColor: '#6b8cff', type: 'platformer', actors: [],
 });
 
 const defaultActor = (): Actor => ({
@@ -276,6 +276,8 @@ interface AppState {
   editorProjectId: string;
   editorTab: EditorTab;
   selectedNodeId: string;
+  dirty: boolean;
+  setDirty: (val: boolean) => void;
   setEditorProjectId: (id: string) => void;
   setEditorTab: (tab: EditorTab) => void;
   setSelectedNodeId: (id: string) => void;
@@ -312,7 +314,20 @@ interface AppState {
   showGrid: boolean;
   setShowGrid: (val: boolean) => void;
   gridLineOpacity: number;
+  imageSmoothing: boolean;
+  setImageSmoothing: (val: boolean) => void;
   setGridLineOpacity: (val: number) => void;
+
+  // ── Pipeline / Proyecto ─────────────────────────────────────────────────
+  projectDir: string | null;
+  setProjectDir: (dir: string | null) => void;
+  exportLog: string[];
+  addExportLog: (msg: string) => void;
+  clearExportLog: () => void;
+  generateBuildFiles: () => Promise<boolean>;
+  saveProject: () => Promise<boolean>;
+  loadProject: (path: string) => Promise<boolean>;
+  exportGBA: () => Promise<boolean>;
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: Scene[];
@@ -382,6 +397,12 @@ interface AppState {
   addPage: (dialogueId: string) => void;
   updatePage: (dialogueId: string, pageId: string, patch: Partial<DialogueEntry['pages'][0]>) => void;
   removePage: (dialogueId: string, pageId: string) => void;
+
+  // ── Sound / Script ──────────────────────────────────────────────────────
+  sounds: any[];
+  addSound: () => void;
+  scripts: any[];
+  addScript: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -441,17 +462,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch { /* ignore */ }
     set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
   },
-  openProject: (id) => {
+  openProject: async (id) => {
     try {
       const api = window.advanceAPI;
       if (api) api.projects.setLastOpened(id);
     } catch { /* ignore */ }
+    // Compute correct path from project name
+    const project = get().projects.find((p) => p.id === id);
+    const projectsDir = await window.advanceAPI?.project?.ensureProjectsDir();
+    const computedPath = project && projectsDir
+      ? projectsDir + '\\' + project.name
+      : project?.path || null;
     set((s) => ({
       projects: s.projects.map((p) =>
         p.id === id ? { ...p, lastOpened: new Date().toISOString() } : p
       ),
       activeScreen: { type: 'editor', projectId: id },
+      editorProjectId: id,
+      projectDir: computedPath,
+      scenes: [],
+      sceneConnections: [],
+      spriteSheets: [],
+      backgrounds: [],
+      songs: [],
+      dialogues: [],
+      sounds: [],
+      scripts: [],
+      dirty: false,
+      exportLog: [],
+      selectedNodeId: '',
+      _songsUndoStack: [],
+      _songsRedoStack: [],
     }));
+    // Cargar datos guardados del proyecto
+    const st = get();
+    if (st.projectDir) {
+      get().loadProject(st.projectDir);
+    }
   },
 
   // ── Draft ──────────────────────────────────────────────────────────────
@@ -481,6 +528,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   editorProjectId: '',
   editorTab: 'mundo',
   selectedNodeId: '',
+  dirty: false,
+  setDirty: (val) => set({ dirty: val }),
   setEditorProjectId: (id) => set({ editorProjectId: id }),
   setEditorTab: (tab) => set({ editorTab: tab }),
   setSelectedNodeId: (id) => set({ selectedNodeId: id }),
@@ -517,6 +566,132 @@ export const useAppStore = create<AppState>((set, get) => ({
   setShowGrid: (val) => set({ showGrid: val }),
   gridLineOpacity: 0.08,
   setGridLineOpacity: (val) => set({ gridLineOpacity: val }),
+  imageSmoothing: false,
+  setImageSmoothing: (val) => set({ imageSmoothing: val }),
+
+  // ── Pipeline / Proyecto ─────────────────────────────────────────────────
+  projectDir: null,
+  setProjectDir: (dir) => set({ projectDir: dir }),
+  exportLog: [],
+  addExportLog: (msg) => set((s) => ({ exportLog: [...s.exportLog, msg] })),
+  clearExportLog: () => set({ exportLog: [] }),
+  generateBuildFiles: async () => {
+    try {
+      const state = get();
+      const projectDir = state.projectDir;
+      const project = state.projects.find((p) => p.id === state.editorProjectId);
+      if (!projectDir || !project) return false;
+      const { generateGBAProject, generateMakefile, createLog } = await import('../utils/gba_export');
+      const log = createLog();
+      const cCode = generateGBAProject({
+        scenes: state.scenes,
+        sceneConnections: state.sceneConnections,
+        backgrounds: state.backgrounds ?? [],
+        sprites: state.spriteSheets ?? [],
+        songs: state.songs,
+        sounds: state.sounds ?? [],
+        dialogues: state.dialogues ?? [],
+        scripts: state.scripts ?? [],
+      }, project.name, project.author, log);
+      const makefile = generateMakefile(project.name, log);
+      const api = window.advanceAPI;
+      const buildDir = `${projectDir}/build`;
+      await api.dir.create(buildDir);
+      await api.file.writeText(`${buildDir}/main.c`, cCode);
+      await api.file.writeText(`${buildDir}/Makefile`, makefile);
+      return true;
+    } catch { return false; }
+  },
+  saveProject: async () => {
+    try {
+      const api = window.advanceAPI;
+      const state = get();
+      const project = state.projects.find((p) => p.id === state.editorProjectId);
+      if (!project) { set((s) => ({ exportLog: [...s.exportLog, '[ERROR] No hay proyecto abierto'] })); return false; }
+      const result = await api.project.save(project.id, {
+        name: project.name,
+        state: {
+          scenes: state.scenes,
+          sceneConnections: state.sceneConnections,
+          backgrounds: state.backgrounds ?? [],
+          sprites: state.spriteSheets ?? [],
+          songs: state.songs,
+          sounds: state.sounds ?? [],
+          dialogues: state.dialogues ?? [],
+          scripts: state.scripts ?? [],
+        },
+      });
+      if (result.success) {
+        set({ projectDir: result.path, dirty: false, exportLog: [...get().exportLog, `[OK] Proyecto guardado en ${result.path}`] });
+        get().updateProject(project.id, { path: result.path });
+        get().generateBuildFiles();
+        return true;
+      }
+      set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${result.reason}`] }));
+      return false;
+    } catch (err: any) {
+      set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
+      return false;
+    }
+  },
+  loadProject: async (path) => {
+    try {
+      const api = window.advanceAPI;
+      set((s) => ({ exportLog: [...s.exportLog, `[INFO] Cargando proyecto: ${path}`] }));
+      const result = await api.project.load(path);
+      if (!result.success || !result.state) {
+        set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${result.reason}`] }));
+        return false;
+      }
+      set({
+        projectDir: path,
+        scenes: result.state.scenes ?? [],
+        sceneConnections: result.state.sceneConnections ?? [],
+        backgrounds: result.state.backgrounds ?? [],
+        spriteSheets: result.state.sprites ?? [],
+        songs: result.state.songs ?? [],
+        sounds: result.state.sounds ?? [],
+        dialogues: result.state.dialogues ?? [],
+        scripts: result.state.scripts ?? [],
+        dirty: false,
+        exportLog: [...get().exportLog, `[OK] Proyecto cargado: ${result.manifest?.name ?? 'Sin nombre'}`],
+      });
+      return true;
+    } catch (err: any) {
+      set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
+      return false;
+    }
+  },
+  exportGBA: async () => {
+    try {
+      const state = get();
+      const project = state.projects.find((p) => p.id === state.editorProjectId);
+      const projectDir = state.projectDir;
+      if (!projectDir) {
+        set((s) => ({ exportLog: [...s.exportLog, '[ERROR] Guarda el proyecto antes de exportar'] }));
+        return false;
+      }
+      await get().generateBuildFiles();
+      const { createLog } = await import('../utils/gba_export');
+      const log = createLog();
+      log.add('=== INICIANDO EXPORTACIÓN GBA ===');
+      const api = window.advanceAPI;
+      const buildDir = `${projectDir}/build`;
+      log.add('Compilando ROM...');
+      const result = await api.system.runCommand('make -j4', buildDir);
+      if (result.success) {
+        log.add('=== ROM GENERADA ===');
+        set((s) => ({ exportLog: [...s.exportLog, ...log.messages, `[OK] ROM compilada en ${buildDir}`, result.output ? result.output.split('\n').filter(l => l.trim()).slice(-5).join('\n') : ''] }));
+      } else {
+        log.add(`=== ERROR DE COMPILACIÓN ===`);
+        set((s) => ({ exportLog: [...s.exportLog, ...log.messages, `[ERROR] ${result.output}`] }));
+      }
+      return true;
+    } catch (err: any) {
+      set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
+      return false;
+    }
+  },
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: [defaultScene()],
@@ -810,6 +985,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     ),
   })),
+  sounds: [],
+  addSound: () => set((s) => ({ sounds: [...s.sounds, { id: Date.now().toString(), name: 'Nuevo sonido' }] })),
+  scripts: [],
+  addScript: () => set((s) => ({ scripts: [...s.scripts, { id: Date.now().toString(), name: 'Nuevo script', code: '' }] })),
 }));
 
 export const selectProjects = (state: AppState) => state.projects;
