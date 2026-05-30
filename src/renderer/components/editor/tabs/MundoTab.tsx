@@ -680,10 +680,12 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    e.preventDefault();
     onSelect(scene.id);
     setDragging(true);
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: scene.x, origY: scene.y };
     const handleMove = (ev: MouseEvent) => {
+      ev.preventDefault();
       updateScene(scene.id, {
         x: dragRef.current.origX + (ev.clientX - dragRef.current.startX),
         y: dragRef.current.origY + (ev.clientY - dragRef.current.startY),
@@ -702,7 +704,9 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     <div
       style={{
         position: 'absolute',
-        left: scene.x, top: scene.y,
+        left: 0, top: 0,
+        transform: `translate(${scene.x}px, ${scene.y}px)`,
+        willChange: dragging ? 'transform' : 'auto',
         width: 400,
         background: isConnecting ? '#3a2a6a' : 'var(--bg-panel)',
         border: `2px solid ${selected ? 'var(--accent-light)' : isConnecting ? 'var(--accent-light)' : 'var(--bg-raised)'}`,
@@ -733,7 +737,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
           fontSize: 9, color: '#ffffff88',
         }}>
           {bgImageUrl && (
-            <img src={bgImageUrl} alt=""
+            <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
             />
           )}
