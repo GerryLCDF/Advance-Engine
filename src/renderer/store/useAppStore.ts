@@ -332,7 +332,7 @@ interface AppState {
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: Scene[];
-  addScene: () => void;
+  addScene: (x?: number, y?: number) => void;
   updateScene: (id: string, patch: Partial<Scene>) => void;
   removeScene: (id: string) => void;
   addActor: (sceneId: string) => void;
@@ -707,14 +707,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: [defaultScene()],
-  addScene: () => {
+  addScene: (x?: number, y?: number) => {
     get()._snapshotMundo();
     set((s) => {
       const baseName = 'Escena';
       const names = s.scenes.map((sc) => sc.name);
       let num = 1;
       while (names.includes(`${baseName} ${num}`)) num++;
-      return { scenes: [...s.scenes, { ...defaultScene(), name: `${baseName} ${num}` }] };
+      const posX = x ?? (s.scenes.length * 30 + 60);
+      const posY = y ?? 20;
+      return { scenes: [...s.scenes, { ...defaultScene(), name: `${baseName} ${num}`, x: posX, y: posY }] };
     });
   },
   updateScene: (id, patch) => {

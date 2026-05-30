@@ -112,6 +112,12 @@ export function MundoTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panX, panY]);
 
+  const addSceneAtCursor = useCallback(() => {
+    const wX = (mouseCanvasPos.current.x - panX) / zoom;
+    const wY = (mouseCanvasPos.current.y - panY) / zoom;
+    addScene(wX, wY);
+  }, [addScene, panX, panY, zoom]);
+
   const hierarchySections: HierarchySection[] = [
     {
       id: 'scenes',
@@ -120,7 +126,7 @@ export function MundoTab() {
         id: sc.id, label: sc.name, icon: '🌍',
         subtitle: `${sc.width}x${sc.height}`,
       })),
-      onAdd: addScene,
+      onAdd: addSceneAtCursor,
     },
     {
       id: 'connections',
@@ -421,7 +427,12 @@ export function MundoTab() {
 
   const handleCanvasClick = (e: React.MouseEvent) => {
     if (tool === 'add') {
-      addScene();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const wX = (mx - panX) / zoom;
+      const wY = (my - panY) / zoom;
+      addScene(wX, wY);
     }
   };
 
@@ -514,7 +525,11 @@ export function MundoTab() {
             }}
             onClick={(e) => {
               if (hasMoved.current) return;
-              if (tool === 'add') addScene();
+              if (tool === 'add') {
+                const wX = (mouseCanvasPos.current.x - panX) / zoom;
+                const wY = (mouseCanvasPos.current.y - panY) / zoom;
+                addScene(wX, wY);
+              }
             }}
           >
             {/* Transform wrapper */}
