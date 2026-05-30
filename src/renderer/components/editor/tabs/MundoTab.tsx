@@ -719,7 +719,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
       onClick={() => onSelect(scene.id)}
     >
       <div style={{
-        fontSize: 11, fontWeight: 600, color: '#ccc',
+        fontSize: 14, fontWeight: 600, color: '#ccc',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         marginBottom: 4,
       }}>
