@@ -695,7 +695,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: [defaultScene()],
-  addScene: () => set((s) => ({ scenes: [...s.scenes, defaultScene()] })),
+  addScene: () => set((s) => {
+    const baseName = 'Escena';
+    const names = s.scenes.map((sc) => sc.name);
+    let num = 1;
+    while (names.includes(`${baseName} ${num}`)) num++;
+    return { scenes: [...s.scenes, { ...defaultScene(), name: `${baseName} ${num}` }] };
+  }),
   updateScene: (id, patch) => set((s) => ({
     scenes: s.scenes.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)),
   })),
