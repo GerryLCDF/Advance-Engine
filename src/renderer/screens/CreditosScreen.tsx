@@ -136,34 +136,25 @@ function ScrollingCredits({
   const containerRef = useRef<HTMLDivElement>(null);
   const yRef = useRef(0);
   const offsetRef = useRef(0);
-  const SPEED = 0.5; // px por frame
+  const pausedRef = useRef(false);
+  const SPEED = 0.5;
 
   useAnimationFrame(() => {
+    if (pausedRef.current) return;
     const el = containerRef.current;
     if (!el) return;
 
     const parent = el.parentElement;
     if (!parent) return;
 
-    // Inicializar offset: empujar contenido debajo del viewport
     if (offsetRef.current === 0) {
       offsetRef.current = parent.clientHeight;
       yRef.current = offsetRef.current;
     }
 
     yRef.current -= SPEED;
-
-    // Altura de UNA copia de créditos (sin el offset)
-    const singleHeight = (el.scrollHeight - offsetRef.current) / 2;
-    if (singleHeight > 0 && yRef.current <= offsetRef.current - singleHeight) {
-      yRef.current = offsetRef.current;
-    }
-
     el.style.transform = `translateY(${yRef.current}px)`;
   });
-
-  // Duplicamos la lista para el loop continuo
-  const doubled = [...credits, ...credits];
 
   return (
     <div
@@ -179,8 +170,13 @@ function ScrollingCredits({
       }}
     >
       <div ref={containerRef} style={{ willChange: 'transform' }}>
-        {doubled.map((c, i) => (
-          <CreditItem key={`${c.id}-${i}`} entry={c} onClick={onClickEntry} />
+        {credits.map((c, i) => (
+          <CreditItem
+            key={c.id}
+            entry={c}
+            onClick={onClickEntry}
+            onHover={(h) => { pausedRef.current = h; }}
+          />
         ))}
       </div>
     </div>
@@ -190,15 +186,19 @@ function ScrollingCredits({
 function CreditItem({
   entry,
   onClick,
+  onHover,
 }: {
   entry: CreditEntry;
   onClick: (url: string, linkEnabled: boolean) => void;
+  onHover: (hovering: boolean) => void;
 }) {
   const isClickable = entry.linkEnabled && !!entry.url;
 
   return (
     <motion.div
       onClick={() => onClick(entry.url ?? '', entry.linkEnabled)}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
       whileHover={{
         textShadow: '0 0 16px rgba(255,255,180,0.9), 0 0 32px rgba(255,220,80,0.5)',
         color: '#fffde0',
@@ -220,3 +220,5 @@ function CreditItem({
     </motion.div>
   );
 }
+
+

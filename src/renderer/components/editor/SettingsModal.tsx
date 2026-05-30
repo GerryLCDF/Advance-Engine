@@ -58,10 +58,30 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setDefaultEditorTab = useAppStore((s) => s.setDefaultEditorTab);
   const pianoRollBg = useAppStore((s) => s.pianoRollBg);
   const setPianoRollBg = useAppStore((s) => s.setPianoRollBg);
+  const defaultMusicView = useAppStore((s) => s.defaultMusicView);
+  const setDefaultMusicView = useAppStore((s) => s.setDefaultMusicView);
+  const keyWhiteColor = useAppStore((s) => s.keyWhiteColor);
+  const keyBlackColor = useAppStore((s) => s.keyBlackColor);
+  const setKeyColors = useAppStore((s) => s.setKeyColors);
+  const chunkCols = useAppStore((s) => s.chunkCols);
+  const setChunkCols = useAppStore((s) => s.setChunkCols);
+  const chunkRows = useAppStore((s) => s.chunkRows);
+  const setChunkRows = useAppStore((s) => s.setChunkRows);
+  const showGrid = useAppStore((s) => s.showGrid);
+  const setShowGrid = useAppStore((s) => s.setShowGrid);
+  const gridLineOpacity = useAppStore((s) => s.gridLineOpacity);
+  const setGridLineOpacity = useAppStore((s) => s.setGridLineOpacity);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab === 'general' ? 'general' : (initialTab as SettingsTab) || 'general');
   const [activeSection, setActiveSection] = useState<GeneralSection>('theme');
   const [localPianoRollBg, setLocalPianoRollBg] = useState<'lines' | 'checkerboard'>(pianoRollBg);
+  const [localDefaultView, setLocalDefaultView] = useState<'tracker' | 'piano'>(defaultMusicView);
+  const [localKeyWhite, setLocalKeyWhite] = useState(keyWhiteColor);
+  const [localKeyBlack, setLocalKeyBlack] = useState(keyBlackColor);
+  const [localChunkCols, setLocalChunkCols] = useState(chunkCols);
+  const [localChunkRows, setLocalChunkRows] = useState(chunkRows);
+  const [localShowGrid, setLocalShowGrid] = useState(showGrid);
+  const [localGridLineOpacity, setLocalGridLineOpacity] = useState(gridLineOpacity);
 
   const snapshot = useRef({ bg: storeBg, accent: storeAccent, fontSize: storeFontSize });
 
@@ -103,6 +123,12 @@ export function SettingsModal({ onClose, initialTab }: Props) {
 
   function applyMusic() {
     setPianoRollBg(localPianoRollBg);
+    setDefaultMusicView(localDefaultView);
+    setKeyColors(localKeyWhite, localKeyBlack);
+    setChunkCols(localChunkCols);
+    setChunkRows(localChunkRows);
+    setShowGrid(localShowGrid);
+    setGridLineOpacity(localGridLineOpacity);
     onClose();
   }
 
@@ -348,13 +374,100 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                     position: 'absolute', left: 0, top: 0, bottom: 0, width: 16,
                     background: '#1a1a20', borderRight: '1px solid #333',
                   }}>
-                    <div style={{ height: 10, background: '#fff', borderBottom: '1px solid #ccc' }} />
-                    <div style={{ height: 10, background: '#fff', borderBottom: '1px solid #ccc' }} />
-                    <div style={{ height: 10, background: '#1a1a20', width: 8, marginLeft: 8, borderBottom: '1px solid #111' }} />
-                    <div style={{ height: 10, background: '#fff', borderBottom: '1px solid #ccc' }} />
-                    <div style={{ height: 10, background: '#fff', borderBottom: '1px solid #ccc' }} />
-                    <div style={{ height: 10, background: '#1a1a20', width: 8, marginLeft: 8, borderBottom: '1px solid #111' }} />
-                    <div style={{ height: 10, background: '#fff', borderBottom: '1px solid #ccc' }} />
+                    <div style={{ height: 10, background: localKeyWhite, borderBottom: '1px solid #ccc' }} />
+                    <div style={{ height: 10, background: localKeyWhite, borderBottom: '1px solid #ccc' }} />
+                    <div style={{ height: 10, background: localKeyBlack, width: 8, marginLeft: 8, borderBottom: '1px solid #111' }} />
+                    <div style={{ height: 10, background: localKeyWhite, borderBottom: '1px solid #ccc' }} />
+                    <div style={{ height: 10, background: localKeyWhite, borderBottom: '1px solid #ccc' }} />
+                    <div style={{ height: 10, background: localKeyBlack, width: 8, marginLeft: 8, borderBottom: '1px solid #111' }} />
+                    <div style={{ height: 10, background: localKeyWhite, borderBottom: '1px solid #ccc' }} />
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Vista predeterminada</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => setLocalDefaultView('tracker')}
+                    style={{
+                      background: localDefaultView === 'tracker' ? 'var(--accent)' : 'var(--bg-raised)',
+                      border: 'none', borderRadius: 6,
+                      color: localDefaultView === 'tracker' ? '#fff' : 'var(--text-secondary)',
+                      fontSize: 11, fontWeight: 600, padding: '5px 14px', cursor: 'pointer',
+                    }}
+                  >Tracker</button>
+                  <button
+                    onClick={() => setLocalDefaultView('piano')}
+                    style={{
+                      background: localDefaultView === 'piano' ? 'var(--accent)' : 'var(--bg-raised)',
+                      border: 'none', borderRadius: 6,
+                      color: localDefaultView === 'piano' ? '#fff' : 'var(--text-secondary)',
+                      fontSize: 11, fontWeight: 600, padding: '5px 14px', cursor: 'pointer',
+                    }}
+                  >Piano</button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 24 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color teclas blancas</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="color" value={localKeyWhite} onChange={(e) => setLocalKeyWhite(e.target.value)}
+                      style={{ width: 36, height: 28, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }} />
+                    <input value={localKeyWhite} onChange={(e) => setLocalKeyWhite(e.target.value)}
+                      style={{ width: 80, background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '4px 6px', outline: 'none', fontFamily: 'monospace' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color teclas negras</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="color" value={localKeyBlack} onChange={(e) => setLocalKeyBlack(e.target.value)}
+                      style={{ width: 36, height: 28, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }} />
+                    <input value={localKeyBlack} onChange={(e) => setLocalKeyBlack(e.target.value)}
+                      style={{ width: 80, background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '4px 6px', outline: 'none', fontFamily: 'monospace' }} />
+                  </div>
+                </div>
+              </div>
+              {/* Board settings */}
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Chunk columnas (steps)</label>
+                  <input type="number" min={1} max={64} value={localChunkCols}
+                    onChange={(e) => setLocalChunkCols(Math.max(1, Number(e.target.value)))}
+                    title="los valores se multiplican por 2"
+                    style={{ width: 60, background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)', borderRadius: 4, color: 'var(--text)', fontSize: 12, padding: '4px 6px', outline: 'none' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Chunk filas (notas)</label>
+                  <input type="number" min={1} max={72} value={localChunkRows}
+                    onChange={(e) => setLocalChunkRows(Math.max(1, Number(e.target.value)))}
+                    title="los valores se multiplican por 2"
+                    style={{ width: 60, background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)', borderRadius: 4, color: 'var(--text)', fontSize: 12, padding: '4px 6px', outline: 'none' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Mostrar cuadricula</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
+                    <button
+                      onClick={() => setLocalShowGrid(!localShowGrid)}
+                      style={{
+                        width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
+                        background: localShowGrid ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
+                        background: '#fff', transition: 'left 0.15s',
+                        left: localShowGrid ? 24 : 2,
+                      }} />
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Opacidad cuadricula</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
+                    <input type="range" min={0} max={0.5} step={0.01} value={localGridLineOpacity}
+                      onChange={(e) => setLocalGridLineOpacity(Number(e.target.value))}
+                      style={{ width: 80, accentColor: 'var(--accent)', cursor: 'pointer' }} />
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace', minWidth: 32 }}>{localGridLineOpacity.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

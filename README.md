@@ -115,13 +115,21 @@ advance-engine/
 - Parallax, velocidad y visibilidad por capa
 
 ### Music
-- Piano roll con teclado tipo piano real (teclas blancas/negras)
+- Piano roll (PNO) con teclado tipo piano real + grid, o vista tracker (TRK) compacta
+- Botón de cambio PNO/TRK junto al zoom; vista predeterminada configurable en Ajustes
+- Celdas coloreadas por color del instrumento (no por canal)
+- Reproducción GBA real: 4-bit DAC, envelope, LFSR 15-bit noise, polyBLEP anti-aliasing
+- Caché de buffers de audio para reproducción sin lag
+- Secuenciación multi-patrón con loop; playhead arrastrable
+- 5 patrones de demo con distintos moods: Alegre, Oscura, Terror, Agua, Bosque
+- Botones Play/Stop en toolbar (antes no funcionaban)
+- Undo/Redo (Ctrl+Z / Ctrl+Y) para todas las operaciones musicales
 - Patrones redimensionables (16/32/48/64 pasos)
 - Instrumentos por canal: Duty, Wave, Noise
 - Modos: lápiz, seleccionar, borrador
 - Zoom con Ctrl+Wheel, scroll horizontal con Shift+Wheel
 - Fondo configurable: cuadrícula o ajedrez
-- Atajos de teclado (Ctrl+Z/Y/X/C/V/A, Del)
+- Atajos de teclado (Ctrl+Z/Y/X/C/V/A, Del, Espacio play/pause, R reset)
 
 ### Diálogo
 - Editor de diálogos con múltiples páginas
@@ -151,4 +159,4 @@ Usa `activeScreen` + `AnimatePresence` (sin React Router). Las pantallas se supe
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.2.0**
+Definida en `src/version.ts` — semver. Actual: **0.5.0**

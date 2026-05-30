@@ -30,6 +30,7 @@ export interface Scene {
   backgroundColor: string;
   type: 'platformer' | 'topdown' | 'rpg' | 'fighting';
   actors: Actor[];
+  backgroundSong?: string;
 }
 
 // ── Sprite ────────────────────────────────────────────────────────────────
@@ -104,12 +105,13 @@ export interface NoteRow {
 export interface Pattern {
   id: string;
   name: string;
-  rows: NoteRow[];
+  rows: Record<string, NoteRow>[]; // step -> { channelId: NoteRow }
 }
 
 export interface Song {
   id: string;
   name: string;
+  artist: string;
   bpm: number;
   instruments: Instrument[];
   patterns: Pattern[];

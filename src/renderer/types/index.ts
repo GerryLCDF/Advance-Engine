@@ -3,9 +3,9 @@
 export type TemplateId = 'cartucho' | 'cartuchotransparente' | 'cartucho_color';
 
 export const TEMPLATES: { id: TemplateId; label: string; file: string }[] = [
-  { id: 'cartucho',              label: 'Transparente',       file: '/recursos/cartuchotransparente.png' },
-  { id: 'cartucho_color',        label: 'Color plano',        file: '/recursos/cartucho_color.png' },
-  { id: 'cartuchotransparente',  label: 'Color Transparente', file: '/recursos/cartucho.png' },
+  { id: 'cartucho',              label: 'Clásico',       file: '/recursos/cartucho.png' },
+  { id: 'cartucho_color',        label: 'Color plano',   file: '/recursos/cartucho_color.png' },
+  { id: 'cartuchotransparente',  label: 'Transparente',  file: '/recursos/cartuchotransparente.png' },
 ];
 
 export interface Project {

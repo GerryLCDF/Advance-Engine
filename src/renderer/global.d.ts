@@ -1,21 +1,10 @@
-// Tipos del API expuesto por el preload via contextBridge
-// Debe mantenerse sincronizado con electron/preload.ts
-
-interface AdvanceAPIProject {
-  id: string;
-  name: string;
-  author: string;
-  path: string;
-  template: string;
-  coverPath: string;
-  lastOpened: string;
-}
+import type { Project } from './types';
 
 interface AdvanceAPI {
   projects: {
-    getAll: () => Promise<AdvanceAPIProject[]>;
-    create: (data: Omit<AdvanceAPIProject, 'id' | 'lastOpened'>) => Promise<{ success: boolean; project?: AdvanceAPIProject; reason?: string }>;
-    update: (id: string, data: Partial<AdvanceAPIProject>) => Promise<{ success: boolean; project?: AdvanceAPIProject; reason?: string }>;
+    getAll: () => Promise<Project[]>;
+    create: (data: Omit<Project, 'id' | 'lastOpened'>) => Promise<{ success: boolean; project?: Project; reason?: string }>;
+    update: (id: string, data: Partial<Project>) => Promise<{ success: boolean; project?: Project; reason?: string }>;
     delete: (id: string) => Promise<{ success: boolean }>;
     setLastOpened: (id: string) => Promise<{ success: boolean }>;
   };
@@ -30,6 +19,7 @@ interface AdvanceAPI {
     minimize: () => void;
     maximize: () => void;
     maximizeEditor: () => void;
+    restore: () => void;
     close: () => void;
   };
 }

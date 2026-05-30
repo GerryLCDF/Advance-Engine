@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
@@ -11,6 +11,7 @@ const MAX_ZOOM = 4;
 export function MundoTab() {
   const scenes = useAppStore((s) => s.scenes);
   const connections = useAppStore((s) => s.sceneConnections);
+  const songs = useAppStore((s) => s.songs);
   const selectedNodeId = useAppStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useAppStore((s) => s.setSelectedNodeId);
   const hierarchyWidth = useAppStore((s) => s.hierarchyWidth);
@@ -107,6 +108,28 @@ export function MundoTab() {
   ];
 
   const selectedScene = scenes.find((sc) => sc.id === selectedNodeId);
+  const [songSearch, setSongSearch] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredSongs = useMemo(() => {
+    if (!songSearch) return songs;
+    const q = songSearch.toLowerCase();
+    return songs.filter((so) => so.name.toLowerCase().includes(q));
+  }, [songs, songSearch]);
+
+  // Cerrar dropdown al hacer clic fuera
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+        setSongSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dropdownOpen]);
 
   const inspectorSections: InspectorSection[] = [];
   if (selectedScene) {
@@ -128,6 +151,74 @@ export function MundoTab() {
           onChange: (v) => updateScene(selectedScene.id, { type: v as 'platformer' | 'topdown' | 'rpg' | 'fighting' }),
         },
       ],
+    });
+    // Canción de fondo
+    const selectedBgSong = songs.find((so) => so.id === selectedScene.backgroundSong);
+    inspectorSections.push({
+      title: 'Canción de fondo',
+      content: (
+        <div ref={dropdownRef} style={{ position: 'relative' }}>
+          <div
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+              borderRadius: 4, color: selectedScene.backgroundSong ? '#fff' : 'var(--text-muted)',
+            }}
+          >
+            <span>{selectedBgSong?.name ?? 'Ninguna'}</span>
+            <span style={{ fontSize: 8, opacity: 0.6 }}>{dropdownOpen ? '▲' : '▼'}</span>
+          </div>
+          {dropdownOpen && (
+            <div style={{
+              position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 2,
+              background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+              borderRadius: 4, padding: 4, zIndex: 100, maxHeight: 200, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}>
+              <input
+                type="text"
+                value={songSearch}
+                onChange={(e) => setSongSearch(e.target.value)}
+                placeholder="Buscar canción..."
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                style={{
+                  width: '100%', padding: '4px 6px', fontSize: 11, boxSizing: 'border-box',
+                  background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+                  borderRadius: 4, color: '#fff', outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto', maxHeight: 140 }}>
+                <div
+                  onClick={() => { updateScene(selectedScene.id, { backgroundSong: '' }); setDropdownOpen(false); setSongSearch(''); }}
+                  style={{
+                    padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                    background: !selectedScene.backgroundSong ? 'var(--accent)' : 'transparent',
+                    color: !selectedScene.backgroundSong ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  Ninguna
+                </div>
+                {filteredSongs.map((so) => (
+                  <div
+                    key={so.id}
+                    onClick={() => { updateScene(selectedScene.id, { backgroundSong: so.id }); setDropdownOpen(false); setSongSearch(''); }}
+                    style={{
+                      padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                      background: selectedScene.backgroundSong === so.id ? 'var(--accent)' : 'transparent',
+                      color: selectedScene.backgroundSong === so.id ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {so.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ),
     });
   }
 

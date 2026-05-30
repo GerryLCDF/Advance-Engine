@@ -7,8 +7,9 @@ import type {
 } from '../types/editor';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
-  { id: '1', name: 'Tu Nombre', role: 'Desarrollador principal', url: '', linkEnabled: false },
-  { id: '2', name: 'Advance Studio', role: 'Motor', url: 'https://github.com', linkEnabled: true },
+  { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
+  { id: '2', name: 'Naomi rodiges', role: 'Design Consultant ', url: 'https://github.com', linkEnabled: false },
+  { id: '3', name: 'Ian Tapia', role: 'Asistente de desarrollo', url: '', linkEnabled: false },
 ];
 
 const DEMO_PROJECTS: Project[] = [
@@ -56,7 +57,7 @@ const defaultInstrument = (): Instrument => ({
 });
 
 const defaultPattern = (): Pattern => ({
-  id: uid(), name: 'Patrón 1', rows: Array.from({ length: 64 }, () => defaultNoteRow()),
+  id: uid(), name: 'Patrón 1', rows: Array.from({ length: 64 }, () => ({})),
 });
 
 const defaultNoteRow = (): NoteRow => ({
@@ -64,9 +65,175 @@ const defaultNoteRow = (): NoteRow => ({
 });
 
 const defaultSong = (): Song => ({
-  id: uid(), name: 'Nueva canción', bpm: 120,
+  id: uid(), name: 'Nueva canción', artist: '', bpm: 120,
   instruments: [defaultInstrument()],
   patterns: [defaultPattern()],
+});
+
+const mkn = (note: string, octave: number, instrumentId: string, effect = ''): NoteRow => ({ note, octave, instrumentId, effect });
+
+const demoSong = (): Song => ({
+  id: uid(), name: 'Demo Melody', artist: 'Advance Studio', bpm: 140,
+  instruments: [defaultInstrument()],
+  patterns: [
+    // ── Alegre ──────────────────────────────────────────────────────────
+    {
+      id: uid(), name: 'Alegre',
+      rows: Array.from({ length: 32 }, (_, step) => {
+        const row: Record<string, NoteRow> = {};
+        const melSteps = [0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30];
+        const melNotes = ['C','D','E','G','A','G','E','D','C','E','G','A','C','A','G','E'];
+        const melOcts  = [5,5,5,5,5,5,5,5,5,5,5,5,6,5,5,5];
+        const mi = melSteps.indexOf(step);
+        if (mi >= 0) row['ch-pulse1'] = mkn(melNotes[mi], melOcts[mi], 'preset-duty-7');
+        if (step % 4 === 0) row['ch-pulse2'] = mkn(['C','G','A','F'][Math.floor(step/4)%4], 4, 'preset-duty-8');
+        if (step % 8 === 0) row['ch-wave'] = mkn(['C','G','A','F'][Math.floor(step/8)%4], 2, 'preset-wave-11');
+        if (step % 4 === 0) row['ch-noise'] = mkn('C', 3, 'preset-noise-1');
+        return row;
+      }),
+    },
+    // ── Oscura ───────────────────────────────────────────────────────────
+    {
+      id: uid(), name: 'Oscura',
+      rows: Array.from({ length: 32 }, (_, step) => {
+        const row: Record<string, NoteRow> = {};
+        const melSteps = [0,3,6,9,12,15,18,21,24,27,30];
+        const melNotes = ['D','F','G','A#','D','F','G','A#','D','F','G'];
+        const melOcts  = [4,4,4,4,5,4,4,4,5,4,4];
+        const mi = melSteps.indexOf(step);
+        if (mi >= 0) row['ch-pulse1'] = mkn(melNotes[mi], melOcts[mi], 'preset-duty-3');
+        if (step % 8 === 0) row['ch-pulse2'] = mkn('D', 3, 'preset-duty-10');
+        if (step % 6 === 0) row['ch-wave'] = mkn('D', 2, 'preset-wave-6');
+        if (step % 8 === 4) row['ch-noise'] = mkn('C', 3, 'preset-noise-8');
+        return row;
+      }),
+    },
+    // ── Terror ───────────────────────────────────────────────────────────
+    {
+      id: uid(), name: 'Terror',
+      rows: Array.from({ length: 32 }, (_, step) => {
+        const row: Record<string, NoteRow> = {};
+        const melSteps = [0,5,10,15,20,25,30];
+        const melNotes = ['C','C#','D#','C','C#','D#','C'];
+        const melOcts  = [4,4,4,5,4,4,5];
+        const mi = melSteps.indexOf(step);
+        if (mi >= 0) row['ch-pulse1'] = mkn(melNotes[mi], melOcts[mi], 'preset-duty-13');
+        if (step % 12 === 0) row['ch-pulse2'] = mkn('C', 2, 'preset-duty-11');
+        if (step === 0 || step === 16) row['ch-wave'] = mkn('C', 3, 'preset-wave-14');
+        if (step % 4 === 2) row['ch-noise'] = mkn('C', 3, 'preset-noise-3');
+        return row;
+      }),
+    },
+    // ── Agua ─────────────────────────────────────────────────────────────
+    {
+      id: uid(), name: 'Agua',
+      rows: Array.from({ length: 32 }, (_, step) => {
+        const row: Record<string, NoteRow> = {};
+        const melSteps = [0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30];
+        const melNotes = ['E','F#','G','F#','E','D','C','D','E','F#','G','A','B','A','G','F#'];
+        const melOcts  = [5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5];
+        const mi = melSteps.indexOf(step);
+        if (mi >= 0) row['ch-pulse1'] = mkn(melNotes[mi], melOcts[mi], 'preset-duty-1');
+        if (step % 6 === 0) row['ch-pulse2'] = mkn('E', 3, 'preset-duty-2');
+        if (step % 8 === 0) row['ch-wave'] = mkn('E', 2, 'preset-wave-11');
+        if (step % 6 === 3) row['ch-noise'] = mkn('C', 3, 'preset-noise-6');
+        return row;
+      }),
+    },
+    // ── Bosque ───────────────────────────────────────────────────────────
+    {
+      id: uid(), name: 'Bosque',
+      rows: Array.from({ length: 32 }, (_, step) => {
+        const row: Record<string, NoteRow> = {};
+        const melSteps = [0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30];
+        const melNotes = ['G','A','B','C','D','C','B','A','G','A','B','C','D','C','B','A'];
+        const melOcts  = [4,4,4,5,5,5,4,4,4,4,4,5,5,5,4,4];
+        const mi = melSteps.indexOf(step);
+        if (mi >= 0) row['ch-pulse1'] = mkn(melNotes[mi], melOcts[mi], 'preset-duty-4');
+        if (step % 8 === 0) row['ch-pulse2'] = mkn('G', 3, 'preset-duty-5');
+        if (step % 4 === 0) row['ch-wave'] = mkn('G', 2, 'preset-wave-3');
+        if (step % 8 === 6) row['ch-noise'] = mkn('C', 3, 'preset-noise-5');
+        return row;
+      }),
+    },
+  ],
+});
+
+const marioSong = (): Song => ({
+  id: uid(), name: 'Super Mario World', artist: 'Nintendo (cover)', bpm: 146,
+  instruments: [defaultInstrument()],
+  patterns: [
+    {
+      id: uid(), name: 'Theme A',
+      rows: Array.from({ length: 32 }, (_, step) => {
+        const row: Record<string, NoteRow> = {};
+
+        // Lead melody (Pulse 1 - bright 12.5%)
+        const leadSteps = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,24,25,26,28,29,30];
+        const leadNotes = ['C','E','G','C','B','G','E','C','D','F','A','D','C','A','F','D','C','E','G','E','C','E','G','A','C','E','A','G','E','C'];
+        const leadOcts  = [5,5,5,6,5,5,5,5,5,5,5,6,6,5,5,5,5,5,5,5,5,5,5,4,5,5,5,5,5,5];
+        const li = leadSteps.indexOf(step);
+        if (li >= 0) row['ch-pulse1'] = mkn(leadNotes[li], leadOcts[li], 'preset-duty-7');
+
+        // Harmony (Pulse 2 - 25%)
+        if (step % 2 === 0) {
+          const harmNotes = ['C','C','G','G','D','D','A','A','C','C','G','G','E','E','G','G']
+            .map((n, i) => ({ note: n, oct: Math.floor(i/4) < 2 ? 5 : 4, idx: i }));
+          const hi = Math.floor(step / 2) % 16;
+          if (hi < harmNotes.length) row['ch-pulse2'] = mkn(harmNotes[hi].note, harmNotes[hi].oct, 'preset-duty-8');
+        }
+
+        // Bass (Wave - triangular)
+        if (step % 4 === 0) {
+          const bassNotes = ['C','C','D','D','C','C','A','A'];
+          const bassOcts  = [3,3,3,3,3,3,2,2];
+          const bi = Math.floor(step / 4) % 8;
+          row['ch-wave'] = mkn(bassNotes[bi], bassOcts[bi], 'preset-wave-11');
+        }
+
+        // Percussion (Noise)
+        if (step % 4 === 0) row['ch-noise'] = mkn('C', 3, 'preset-noise-4');
+        if (step % 4 === 2) row['ch-noise'] = mkn('C', 3, 'preset-noise-5');
+
+        return row;
+      }),
+    },
+    {
+      id: uid(), name: 'Theme B',
+      rows: Array.from({ length: 32 }, (_, step) => {
+        const row: Record<string, NoteRow> = {};
+
+        // Lead melody (Pulse 1)
+        const leadSteps = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,16,17,18,20,21,22,24,25,26,28,29,30];
+        const leadNotes = ['G','B','D','G','E','D','C','B','C','E','G','C','A','G','F','D','G','B','C','B','A','E','C','B','G','E','C'];
+        const leadOcts  = [4,4,5,5,5,5,5,4,5,5,5,6,5,5,5,5,4,5,6,5,5,5,6,5,5,5,5];
+        const li = leadSteps.indexOf(step);
+        if (li >= 0) row['ch-pulse1'] = mkn(leadNotes[li], leadOcts[li], 'preset-duty-7');
+
+        // Harmony (Pulse 2)
+        if (step % 2 === 0) {
+          const harmNotes = ['G','G','E','E','C','C','D','D','E','E','C','C','D','D','G','G']
+            .map((n, i) => ({ note: n, oct: 4, idx: i }));
+          const hi = Math.floor(step / 2) % 16;
+          if (hi < harmNotes.length) row['ch-pulse2'] = mkn(harmNotes[hi].note, harmNotes[hi].oct, 'preset-duty-8');
+        }
+
+        // Bass (Wave)
+        if (step % 4 === 0) {
+          const bassNotes = ['G','G','C','C','F','F','E','E'];
+          const bassOcts  = [3,3,3,3,2,2,2,2];
+          const bi = Math.floor(step / 4) % 8;
+          row['ch-wave'] = mkn(bassNotes[bi], bassOcts[bi], 'preset-wave-11');
+        }
+
+        // Percussion
+        if (step % 4 === 0) row['ch-noise'] = mkn('C', 3, 'preset-noise-4');
+        if (step % 4 === 2) row['ch-noise'] = mkn('C', 3, 'preset-noise-5');
+
+        return row;
+      }),
+    },
+  ],
 });
 
 const defaultDialogueEntry = (): DialogueEntry => ({
@@ -133,6 +300,19 @@ interface AppState {
   setDefaultEditorTab: (tab: EditorTab) => void;
   pianoRollBg: 'lines' | 'checkerboard';
   setPianoRollBg: (val: 'lines' | 'checkerboard') => void;
+  defaultMusicView: 'tracker' | 'piano';
+  setDefaultMusicView: (val: 'tracker' | 'piano') => void;
+  keyWhiteColor: string;
+  keyBlackColor: string;
+  setKeyColors: (white: string, black: string) => void;
+  chunkCols: number;
+  chunkRows: number;
+  setChunkCols: (val: number) => void;
+  setChunkRows: (val: number) => void;
+  showGrid: boolean;
+  setShowGrid: (val: boolean) => void;
+  gridLineOpacity: number;
+  setGridLineOpacity: (val: number) => void;
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: Scene[];
@@ -184,7 +364,15 @@ interface AppState {
   addPattern: (songId: string) => void;
   updatePattern: (songId: string, patId: string, patch: Partial<Pattern>) => void;
   removePattern: (songId: string, patId: string) => void;
-  updateNoteRow: (songId: string, patId: string, rowIdx: number, patch: Partial<NoteRow>) => void;
+  updateNoteRow: (songId: string, patId: string, rowIdx: number, channelId: string, patch: Partial<NoteRow>) => void;
+  removeNoteRow: (songId: string, patId: string, rowIdx: number, channelId: string) => void;
+
+  // ── Undo / Redo for songs ──────────────────────────────────────────────
+  _songsUndoStack: Song[][];
+  _songsRedoStack: Song[][];
+  _snapshotSongs: () => void;
+  undo: () => void;
+  redo: () => void;
 
   // ── Dialogo ────────────────────────────────────────────────────────────
   dialogues: DialogueEntry[];
@@ -209,7 +397,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadProjects: async () => {
     set({ isLoadingProjects: true });
     try {
-      const api = (window as any).advanceAPI;
+      const api = window.advanceAPI;
       if (api) {
         const loaded: Project[] = await api.projects.getAll();
         set({ projects: loaded.length > 0 ? loaded : DEMO_PROJECTS });
@@ -221,12 +409,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   addProject: async (data) => {
     try {
-      const api = (window as any).advanceAPI;
+      const api = window.advanceAPI;
       if (api) {
         const res = await api.projects.create(data);
         if (res.success && res.project) {
-          set((s) => ({ projects: [res.project, ...s.projects] }));
-          return res.project;
+          const project = res.project;
+          set((s) => ({ projects: [project, ...s.projects] }));
+          return project;
         }
       } else {
         const project: Project = { ...data, id: Date.now().toString(), lastOpened: new Date().toISOString() };
@@ -238,7 +427,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateProject: async (id, data) => {
     try {
-      const api = (window as any).advanceAPI;
+      const api = window.advanceAPI;
       if (api) await api.projects.update(id, data);
       set((s) => ({
         projects: s.projects.map((p) => (p.id === id ? { ...p, ...data } : p)),
@@ -247,14 +436,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   deleteProject: async (id) => {
     try {
-      const api = (window as any).advanceAPI;
+      const api = window.advanceAPI;
       if (api) await api.projects.delete(id);
     } catch { /* ignore */ }
     set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
   },
   openProject: (id) => {
     try {
-      const api = (window as any).advanceAPI;
+      const api = window.advanceAPI;
       if (api) api.projects.setLastOpened(id);
     } catch { /* ignore */ }
     set((s) => ({
@@ -315,6 +504,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   setDefaultEditorTab: (tab) => set({ defaultEditorTab: tab }),
   pianoRollBg: 'lines',
   setPianoRollBg: (val) => set({ pianoRollBg: val }),
+  defaultMusicView: 'piano',
+  setDefaultMusicView: (val) => set({ defaultMusicView: val }),
+  keyWhiteColor: '#e8e4db',
+  keyBlackColor: '#1a1a1a',
+  setKeyColors: (white, black) => set({ keyWhiteColor: white, keyBlackColor: black }),
+  chunkCols: 4,
+  chunkRows: 6,
+  setChunkCols: (val) => set({ chunkCols: val }),
+  setChunkRows: (val) => set({ chunkRows: val }),
+  showGrid: true,
+  setShowGrid: (val) => set({ showGrid: val }),
+  gridLineOpacity: 0.08,
+  setGridLineOpacity: (val) => set({ gridLineOpacity: val }),
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: [defaultScene()],
@@ -453,67 +655,130 @@ export const useAppStore = create<AppState>((set, get) => ({
   setImagenZoom: (z) => set({ imagenZoom: z }),
 
   // ── Music ──────────────────────────────────────────────────────────────
-  songs: [defaultSong()],
-  addSong: () => set((s) => ({ songs: [...s.songs, defaultSong()] })),
-  updateSong: (id, patch) => set((s) => ({
+  songs: [defaultSong(), demoSong(), marioSong()],
+  addSong: () => { get()._snapshotSongs(); set((s) => ({ songs: [...s.songs, defaultSong()] })); },
+
+  updateSong: (id, patch) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) => (so.id === id ? { ...so, ...patch } : so)),
-  })),
-  removeSong: (id) => set((s) => ({ songs: s.songs.filter((so) => so.id !== id) })),
-  addInstrument: (songId) => set((s) => ({
+  })); },
+
+  removeSong: (id) => { get()._snapshotSongs(); set((s) => ({ songs: s.songs.filter((so) => so.id !== id) })); },
+
+  addInstrument: (songId) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) =>
       so.id === songId ? { ...so, instruments: [...so.instruments, defaultInstrument()] } : so
     ),
-  })),
-  updateInstrument: (songId, instId, patch) => set((s) => ({
+  })); },
+
+  updateInstrument: (songId, instId, patch) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) =>
       so.id !== songId ? so : {
         ...so,
         instruments: so.instruments.map((i) => (i.id === instId ? { ...i, ...patch } : i)),
       }
     ),
-  })),
-  removeInstrument: (songId, instId) => set((s) => ({
+  })); },
+
+  removeInstrument: (songId, instId) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) =>
       so.id !== songId ? so : {
         ...so,
         instruments: so.instruments.filter((i) => i.id !== instId),
       }
     ),
-  })),
-  addPattern: (songId) => set((s) => ({
+  })); },
+
+  addPattern: (songId) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) =>
       so.id === songId ? { ...so, patterns: [...so.patterns, defaultPattern()] } : so
     ),
-  })),
-  updatePattern: (songId, patId, patch) => set((s) => ({
+  })); },
+
+  updatePattern: (songId, patId, patch) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) =>
       so.id !== songId ? so : {
         ...so,
         patterns: so.patterns.map((p) => (p.id === patId ? { ...p, ...patch } : p)),
       }
     ),
-  })),
-  removePattern: (songId, patId) => set((s) => ({
+  })); },
+
+  removePattern: (songId, patId) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) =>
       so.id !== songId ? so : {
         ...so,
         patterns: so.patterns.filter((p) => p.id !== patId),
       }
     ),
-  })),
-  updateNoteRow: (songId, patId, rowIdx, patch) => set((s) => ({
+  })); },
+
+  updateNoteRow: (songId, patId, rowIdx, channelId, patch) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) =>
       so.id !== songId ? so : {
         ...so,
         patterns: so.patterns.map((p) =>
           p.id !== patId ? p : {
             ...p,
-            rows: p.rows.map((r, i) => (i === rowIdx ? { ...r, ...patch } : r)),
+            rows: p.rows.map((r, i) =>
+              i !== rowIdx ? r : {
+                ...r,
+                [channelId]: { ...(r[channelId] ?? { note: '', octave: 4, instrumentId: '', effect: '' }), ...patch },
+              }
+            ),
           }
         ),
       }
     ),
+  })); },
+
+  removeNoteRow: (songId, patId, rowIdx, channelId) => { get()._snapshotSongs(); set((s) => ({
+    songs: s.songs.map((so) =>
+      so.id !== songId ? so : {
+        ...so,
+        patterns: so.patterns.map((p) =>
+          p.id !== patId ? p : {
+            ...p,
+            rows: p.rows.map((r, i) => {
+              if (i !== rowIdx) return r;
+              const { [channelId]: _, ...rest } = r;
+              return rest;
+            }),
+          }
+        ),
+      }
+    ),
+  })); },
+
+  // ── Undo / Redo for songs ──────────────────────────────────────────────
+  _songsUndoStack: [],
+  _songsRedoStack: [],
+
+  _snapshotSongs: () => set((s) => ({
+    _songsUndoStack: [...(s._songsUndoStack ?? []).slice(-49), s.songs],
+    _songsRedoStack: [],
   })),
+
+  undo: () => set((s) => {
+    const stack = s._songsUndoStack ?? [];
+    if (stack.length === 0) return s;
+    const prev = stack[stack.length - 1];
+    return {
+      songs: prev,
+      _songsUndoStack: stack.slice(0, -1),
+      _songsRedoStack: [...(s._songsRedoStack ?? []), s.songs],
+    };
+  }),
+
+  redo: () => set((s) => {
+    const stack = s._songsRedoStack ?? [];
+    if (stack.length === 0) return s;
+    const next = stack[stack.length - 1];
+    return {
+      songs: next,
+      _songsRedoStack: stack.slice(0, -1),
+      _songsUndoStack: [...(s._songsUndoStack ?? []), s.songs],
+    };
+  }),
 
   // ── Dialogo ────────────────────────────────────────────────────────────
   dialogues: [defaultDialogueEntry()],

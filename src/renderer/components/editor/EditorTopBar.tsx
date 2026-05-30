@@ -75,8 +75,8 @@ export function EditorTopBar() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key === 'z') { e.preventDefault(); /* deshacer */ return; }
-      if (ctrl && e.key === 'y') { e.preventDefault(); /* rehacer */ return; }
+      if (ctrl && e.key === 'z') { e.preventDefault(); useAppStore.getState().undo(); return; }
+      if (ctrl && e.key === 'y') { e.preventDefault(); useAppStore.getState().redo(); return; }
       if (ctrl && e.key === 'x') { e.preventDefault(); /* cortar */ return; }
       if (ctrl && e.key === 'c') { e.preventDefault(); /* copiar */ return; }
       if (ctrl && e.key === 'v') { e.preventDefault(); /* pegar */ return; }
@@ -90,6 +90,12 @@ export function EditorTopBar() {
   const handleAction = (action: string) => {
     setOpenMenu(null);
     switch (action) {
+      case 'Deshacer':
+        useAppStore.getState().undo();
+        break;
+      case 'Rehacer':
+        useAppStore.getState().redo();
+        break;
       case 'Nuevo proyecto':
         resetDraft();
         setActiveTab('crear');
@@ -121,11 +127,12 @@ export function EditorTopBar() {
         borderBottom: '1px solid var(--border-color)',
         flexShrink: 0,
         userSelect: 'none',
-      }}
+        WebkitAppRegion: 'drag',
+      } as React.CSSProperties}
     >
       {/* Row 1: Menus + Window controls */}
       <div style={{ display: 'flex', alignItems: 'center', height: 32 }}>
-        <div style={{ display: 'flex' }}>
+        <div style={{ display: 'flex', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {Object.keys(MENU_ITEMS).map((m) => (
             <div key={m} style={{ position: 'relative' }}>
               <button
@@ -175,7 +182,7 @@ export function EditorTopBar() {
         <div style={{ flex: 1 }} />
 
         {/* Window controls */}
-        <div style={{ display: 'flex', gap: 2, paddingRight: 6 }}>
+        <div style={{ display: 'flex', gap: 2, paddingRight: 6, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <WinBtn label="─" onClick={() => win?.minimize()} />
           <WinBtn label="□" onClick={() => win?.maximize()} />
           <WinBtn label="✕" onClick={() => win?.close()} danger />
@@ -187,7 +194,8 @@ export function EditorTopBar() {
         display: 'flex', alignItems: 'center', height: 30,
         borderTop: '1px solid var(--border-color)',
         position: 'relative',
-      }}>
+        WebkitAppRegion: 'no-drag',
+      } as React.CSSProperties}>
         {/* Spacer left so EXPORT/PLAY stays right */}
         <div style={{ flex: 1 }} />
 

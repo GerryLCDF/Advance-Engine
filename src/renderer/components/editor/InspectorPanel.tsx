@@ -10,7 +10,8 @@ interface InspectorField {
 
 export interface InspectorSection {
   title: string;
-  fields: InspectorField[];
+  fields?: InspectorField[];
+  content?: React.ReactNode;
 }
 
 interface InspectorPanelProps {
@@ -57,7 +58,7 @@ export function InspectorPanel({ title, sections, emptyMessage }: InspectorPanel
           <div style={{ color: 'var(--accent-light)', fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
             {sec.title}
           </div>
-          {sec.fields.map((f) => (
+          {sec.content ?? (sec.fields ?? []).map((f) => (
             <FieldRow key={f.label} field={f} />
           ))}
         </div>

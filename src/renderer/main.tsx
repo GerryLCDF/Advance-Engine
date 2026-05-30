@@ -49,6 +49,14 @@ function adjustColor(hex: string, factor: number) {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }
 
+function brightness(hex: string) {
+  const num = parseInt(hex.slice(1), 16);
+  const r = (num >> 16) & 0xff;
+  const g = (num >> 8) & 0xff;
+  const b = num & 0xff;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
 function ThemeApplier({ children }: { children: React.ReactNode }) {
   const themeBgPanel = useAppStore((s) => s.themeBgPanel);
   const themeAccent = useAppStore((s) => s.themeAccent);
