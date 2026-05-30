@@ -195,7 +195,34 @@ export function MusicTab() {
       }
     };
     el.addEventListener('wheel', handler, { passive: false });
-    return () => el.removeEventListener('wheel', handler);
+
+    // Middle-mouse drag to scroll
+    let midDragStart: { x: number; y: number; sx: number; sy: number } | null = null;
+    const onMidDown = (e: MouseEvent) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      el.style.cursor = 'grabbing';
+      midDragStart = { x: e.clientX, y: e.clientY, sx: el.scrollLeft, sy: el.scrollTop };
+    };
+    const onMidMove = (e: MouseEvent) => {
+      if (!midDragStart) return;
+      el.scrollLeft = midDragStart.sx - (e.clientX - midDragStart.x);
+      el.scrollTop = midDragStart.sy - (e.clientY - midDragStart.y);
+    };
+    const onMidUp = () => {
+      if (!midDragStart) return;
+      midDragStart = null;
+      el.style.cursor = '';
+    };
+    el.addEventListener('mousedown', onMidDown);
+    window.addEventListener('mousemove', onMidMove);
+    window.addEventListener('mouseup', onMidUp);
+    return () => {
+      el.removeEventListener('wheel', handler);
+      el.removeEventListener('mousedown', onMidDown);
+      window.removeEventListener('mousemove', onMidMove);
+      window.removeEventListener('mouseup', onMidUp);
+    };
   }, []);
   const [channelStates, setChannelStates] = useState<Record<string, { visible: boolean; solo: boolean; muted: boolean }>>(() => {
     const m: Record<string, { visible: boolean; solo: boolean; muted: boolean }> = {};
