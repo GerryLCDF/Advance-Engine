@@ -397,7 +397,7 @@ interface AppState {
   mundoUndo: () => void;
   mundoRedo: () => void;
   copyScene: (id: string) => void;
-  pasteScene: () => void;
+  pasteScene: (x?: number, y?: number) => void;
 
   // ── Dialogo ────────────────────────────────────────────────────────────
   dialogues: DialogueEntry[];
@@ -1031,7 +1031,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const scene = get().scenes.find((s) => s.id === id);
     if (scene) _copiedScene = { ...scene, id: uid(), name: scene.name + ' (copia)' };
   },
-  pasteScene: () => {
+  pasteScene: (x?: number, y?: number) => {
     if (!_copiedScene) return;
     get()._snapshotMundo();
     const base = _copiedScene.name.replace(/\s*\(copia\)\s*$/, '');
@@ -1039,8 +1039,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     let name = base;
     let num = 2;
     while (names.includes(name)) { name = `${base} ${num}`; num++; }
+    const posX = x ?? (get().scenes.length * 30 + 60);
+    const posY = y ?? 20;
     set((s) => ({
-      scenes: [...s.scenes, { ..._copiedScene!, id: uid(), name, x: s.scenes.length * 30 + 60, y: 20 }],
+      scenes: [...s.scenes, { ..._copiedScene!, id: uid(), name, x: posX, y: posY }],
     }));
   },
 

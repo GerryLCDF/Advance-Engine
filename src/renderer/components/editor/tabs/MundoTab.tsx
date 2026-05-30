@@ -41,6 +41,7 @@ export function MundoTab() {
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hasMoved = useRef(false);
+  const mouseCanvasPos = useRef({ x: 0, y: 0 });
 
   // ── Panel resize is managed by ResizableEditorLayout ────────────────────
 
@@ -75,11 +76,16 @@ export function MundoTab() {
       if (ctrl && e.key === 'c' && selectedNodeId && scenes.some((s) => s.id === selectedNodeId)) {
         e.preventDefault(); useAppStore.getState().copyScene(selectedNodeId);
       }
-      if (ctrl && e.key === 'v') { e.preventDefault(); useAppStore.getState().pasteScene(); }
+      if (ctrl && e.key === 'v') {
+        e.preventDefault();
+        const wX = (mouseCanvasPos.current.x - panX) / zoom;
+        const wY = (mouseCanvasPos.current.y - panY) / zoom;
+        useAppStore.getState().pasteScene(wX, wY);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedNodeId, scenes]);
+  }, [selectedNodeId, scenes, panX, panY, zoom]);
 
   const handleMouseDownCanvas = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -501,6 +507,10 @@ export function MundoTab() {
               if (tool === 'select' || tool === 'add') {
                 handleMouseDownCanvas(e);
               }
+            }}
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              mouseCanvasPos.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
             }}
             onClick={(e) => {
               if (hasMoved.current) return;
