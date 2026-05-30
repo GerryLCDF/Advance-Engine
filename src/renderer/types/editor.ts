@@ -36,6 +36,17 @@ export interface Scene {
   backgroundSong?: string;
 }
 
+// ── SplashScreen ─────────────────────────────────────────────────────────
+export interface SplashScreen {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  backgroundImage?: string;
+  backgroundSong?: string;
+  duration: number; // 1-5 seconds for static images
+}
+
 // ── Sprite ────────────────────────────────────────────────────────────────
 export interface AnimationFrame {
   tileIndex: number;

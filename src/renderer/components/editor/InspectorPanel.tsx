@@ -5,6 +5,9 @@ export interface InspectorField {
   value: string | number | boolean;
   type: 'text' | 'number' | 'color' | 'select' | 'toggle' | 'textarea';
   options?: { value: string; label: string }[];
+  min?: number;
+  max?: number;
+  step?: number;
   onChange: (val: string | number | boolean) => void;
 }
 
@@ -168,6 +171,9 @@ function FieldRow({ field }: { field: InspectorField }) {
       {label}
       <input
         type={field.type}
+        min={field.min}
+        max={field.max}
+        step={field.step}
         value={field.value as string | number}
         onChange={(e) => field.onChange(field.type === 'number' ? Number(e.target.value) : e.target.value)}
         style={{

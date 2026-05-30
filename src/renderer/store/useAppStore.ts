@@ -3,7 +3,7 @@ import type { Project, ActiveScreen, LauncherTab, CreditEntry, TemplateId } from
 import type {
   EditorTab, Scene, SceneConnection, SpriteSheet, Background,
   Song, DialogueEntry, Actor, Animation, AnimationFrame,
-  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope,
+  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen,
 } from '../types/editor';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
@@ -26,6 +26,11 @@ let _copiedScene: Scene | null = null;
 const defaultScene = (): Scene => ({
   id: uid(), name: 'Nueva escena', width: 240, height: 160,
   x: 60, y: 20, backgroundColor: '#6b8cff', type: 'platformer', actors: [],
+});
+
+const defaultSplashScreen = (): SplashScreen => ({
+  id: '__splash__', name: 'SplashScreen', x: 60, y: -120,
+  duration: 3,
 });
 
 const defaultActor = (): Actor => ({
@@ -342,6 +347,10 @@ interface AppState {
   addConnection: (fromSceneId: string, toSceneId: string) => void;
   removeConnection: (id: string) => void;
 
+  // ── SplashScreen ────────────────────────────────────────────────────────
+  splashScreen: SplashScreen;
+  updateSplashScreen: (patch: Partial<SplashScreen>) => void;
+
   // ── Sprite ─────────────────────────────────────────────────────────────
   spriteSheets: SpriteSheet[];
   addSpriteSheet: () => void;
@@ -492,6 +501,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       projectDir: computedPath,
       scenes: [],
       sceneConnections: [],
+      splashScreen: defaultSplashScreen(),
       spriteSheets: [],
       backgrounds: [],
       songs: [],
@@ -631,6 +641,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           sounds: state.sounds ?? [],
           dialogues: state.dialogues ?? [],
           scripts: state.scripts ?? [],
+          splashScreen: state.splashScreen,
         },
       });
       if (result.success) {
@@ -659,6 +670,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         projectDir: path,
         scenes: result.state.scenes ?? [],
         sceneConnections: result.state.sceneConnections ?? [],
+        splashScreen: result.state.splashScreen ?? defaultSplashScreen(),
         backgrounds: result.state.backgrounds ?? [],
         spriteSheets: result.state.sprites ?? [],
         songs: result.state.songs ?? [],
@@ -707,6 +719,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: [defaultScene()],
+  splashScreen: defaultSplashScreen(),
   addScene: (x?: number, y?: number) => {
     get()._snapshotMundo();
     set((s) => {
@@ -772,6 +785,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       sceneConnections: s.sceneConnections.filter((c) => c.id !== id),
     }));
   },
+
+  // ── SplashScreen ────────────────────────────────────────────────────────
+  updateSplashScreen: (patch) => set((s) => ({
+    splashScreen: { ...s.splashScreen, ...patch },
+  })),
 
   // ── Sprite ─────────────────────────────────────────────────────────────
   spriteSheets: [defaultSpriteSheet()],

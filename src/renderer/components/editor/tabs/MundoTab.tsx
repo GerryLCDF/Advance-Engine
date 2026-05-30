@@ -3,7 +3,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
-import type { Scene } from '../../../types/editor';
+import type { Scene, SplashScreen } from '../../../types/editor';
 
 const GBA_W = 240;
 const GBA_H = 160;
@@ -29,6 +29,8 @@ export function MundoTab() {
   const addConnection = useAppStore((s) => s.addConnection);
   const backgrounds = useAppStore((s) => s.backgrounds);
   const exportLog = useAppStore((s) => s.exportLog);
+  const splashScreen = useAppStore((s) => s.splashScreen);
+  const updateSplashScreen = useAppStore((s) => s.updateSplashScreen);
 
   const [tool, setTool] = useState<'select' | 'add' | 'connect' | 'remove' | 'collision' | 'move'>('select');
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
@@ -121,6 +123,15 @@ export function MundoTab() {
 
   const hierarchySections: HierarchySection[] = [
     {
+      id: 'splashScreen',
+      title: 'SplashScreen',
+      items: [{
+        id: splashScreen.id, label: splashScreen.name, icon: '🏠',
+        subtitle: `${splashScreen.duration}s`,
+      }],
+      onAdd: undefined,
+    },
+    {
       id: 'scenes',
       title: 'Escenas',
       items: scenes.map((sc) => ({
@@ -142,6 +153,7 @@ export function MundoTab() {
   ];
 
   const selectedScene = scenes.find((sc) => sc.id === selectedNodeId);
+  const selectedSplash = selectedNodeId === splashScreen.id ? splashScreen : null;
   const [songSearch, setSongSearch] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -426,6 +438,154 @@ export function MundoTab() {
     });
   }
 
+  // ── SplashScreen inspector ─────────────────────────────────────────────
+  if (selectedSplash) {
+    inspectorSections.push({
+      title: 'SplashScreen',
+      fields: [
+        {
+          label: 'Duración (s)', type: 'number', value: selectedSplash.duration,
+          min: 1, max: 5, step: 1,
+          onChange: (v) => updateSplashScreen({ duration: v as number }),
+        },
+      ],
+    });
+    const splashBgSong = songs.find((so) => so.id === selectedSplash.backgroundSong);
+    inspectorSections.push({
+      title: 'Canción de fondo',
+      content: (
+        <div ref={dropdownRef} style={{ position: 'relative' }}>
+          <div
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+              borderRadius: 4, color: selectedSplash.backgroundSong ? '#fff' : 'var(--text-muted)',
+            }}
+          >
+            <span>{splashBgSong?.name ?? 'Ninguna'}</span>
+            <span style={{ fontSize: 8, opacity: 0.6 }}>{dropdownOpen ? '▲' : '▼'}</span>
+          </div>
+          {dropdownOpen && (
+            <div style={{
+              position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 2,
+              background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+              borderRadius: 4, padding: 4, zIndex: 100, maxHeight: 200, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}>
+              <input
+                type="text"
+                value={songSearch}
+                onChange={(e) => setSongSearch(e.target.value)}
+                placeholder="Buscar canción..."
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                style={{
+                  width: '100%', padding: '4px 6px', fontSize: 11, boxSizing: 'border-box',
+                  background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+                  borderRadius: 4, color: '#fff', outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto', maxHeight: 140 }}>
+                <div
+                  onClick={() => { updateSplashScreen({ backgroundSong: '' }); setDropdownOpen(false); setSongSearch(''); }}
+                  style={{
+                    padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                    background: !selectedSplash.backgroundSong ? 'var(--accent)' : 'transparent',
+                    color: !selectedSplash.backgroundSong ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  Ninguna
+                </div>
+                {filteredSongs.map((so) => (
+                  <div
+                    key={so.id}
+                    onClick={() => { updateSplashScreen({ backgroundSong: so.id }); setDropdownOpen(false); setSongSearch(''); }}
+                    style={{
+                      padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                      background: selectedSplash.backgroundSong === so.id ? 'var(--accent)' : 'transparent',
+                      color: selectedSplash.backgroundSong === so.id ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {so.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ),
+    });
+    const splashBgImg = imageOptions.find((img) => img.value === selectedSplash.backgroundImage);
+    inspectorSections.push({
+      title: 'Imagen de fondo',
+      content: (
+        <div ref={imgDropdownRef} style={{ position: 'relative' }}>
+          <div
+            onClick={() => setImgDropdownOpen(!imgDropdownOpen)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+              borderRadius: 4, color: selectedSplash.backgroundImage ? '#fff' : 'var(--text-muted)',
+            }}
+          >
+            <span>{splashBgImg?.label ?? 'Ninguna'}</span>
+            <span style={{ fontSize: 8, opacity: 0.6 }}>{imgDropdownOpen ? '▲' : '▼'}</span>
+          </div>
+          {imgDropdownOpen && (
+            <div style={{
+              position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 2,
+              background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+              borderRadius: 4, padding: 4, zIndex: 100, maxHeight: 200, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}>
+              <input
+                type="text"
+                value={imgSearch}
+                onChange={(e) => setImgSearch(e.target.value)}
+                placeholder="Buscar imagen..."
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                style={{
+                  width: '100%', padding: '4px 6px', fontSize: 11, boxSizing: 'border-box',
+                  background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+                  borderRadius: 4, color: '#fff', outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto', maxHeight: 140 }}>
+                <div
+                  onClick={() => { updateSplashScreen({ backgroundImage: '' }); setImgDropdownOpen(false); setImgSearch(''); }}
+                  style={{
+                    padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                    background: !selectedSplash.backgroundImage ? 'var(--accent)' : 'transparent',
+                    color: !selectedSplash.backgroundImage ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  Ninguna
+                </div>
+                {filteredImages.map((img) => (
+                  <div
+                    key={img.value}
+                    onClick={() => { updateSplashScreen({ backgroundImage: img.value }); setImgDropdownOpen(false); setImgSearch(''); }}
+                    style={{
+                      padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                      background: selectedSplash.backgroundImage === img.value ? 'var(--accent)' : 'transparent',
+                      color: selectedSplash.backgroundImage === img.value ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {img.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ),
+    });
+  }
+
   const handleCanvasClick = (e: React.MouseEvent) => {
     if (tool === 'add') {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -438,6 +598,10 @@ export function MundoTab() {
   };
 
   const handleSceneBoxClick = (sceneId: string) => {
+    if (sceneId === splashScreen.id) {
+      setSelectedNodeId(sceneId);
+      return;
+    }
     if (tool === 'connect') {
       if (connectFrom === null) {
         setConnectFrom(sceneId);
@@ -454,6 +618,7 @@ export function MundoTab() {
   };
 
   const handleRemove = (id: string) => {
+    if (id === splashScreen.id) return;
     removeScene(id);
     if (selectedNodeId === id) setSelectedNodeId('');
   };
@@ -564,20 +729,29 @@ export function MundoTab() {
                   );
                 })}
               </svg>
+              {/* SplashScreen card */}
+                    <SplashCard
+                      splash={splashScreen}
+                      selected={selectedNodeId === splashScreen.id}
+                      onSelect={() => { if (!hasMoved.current) setSelectedNodeId(splashScreen.id); }}
+                      updateSplashScreen={updateSplashScreen}
+                      dragZoom={zoom}
+                    />
               {/* Scene cards */}
               {scenes.map((sc) => {
                 const isConnecting = connectFrom === sc.id;
                 return (
-                  <SceneCard
-                    key={sc.id}
-                    scene={sc}
-                    selected={selectedNodeId === sc.id}
-                    isConnecting={isConnecting}
-                    tool={tool}
-                    connectFrom={connectFrom}
-                    onSelect={(id) => { if (!hasMoved.current) handleSceneBoxClick(id); }}
-                    updateScene={updateScene}
-                  />
+                    <SceneCard
+                      key={sc.id}
+                      scene={sc}
+                      selected={selectedNodeId === sc.id}
+                      isConnecting={isConnecting}
+                      tool={tool}
+                      connectFrom={connectFrom}
+                      onSelect={(id) => { if (!hasMoved.current) handleSceneBoxClick(id); }}
+                      updateScene={updateScene}
+                      dragZoom={zoom}
+                    />
                 );
               })}
             </div>
@@ -653,11 +827,12 @@ function ToolBtn({ children, active, onClick, title }: { children: React.ReactNo
   );
 }
 
-function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, updateScene }: {
+function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, updateScene, dragZoom }: {
   scene: Scene; selected: boolean; isConnecting: boolean;
   tool: string; connectFrom: string | null;
   onSelect: (id: string) => void;
   updateScene: (id: string, patch: Partial<Scene>) => void;
+  dragZoom: number;
 }) {
   const imageSmoothing = useAppStore((s) => s.imageSmoothing);
   const [dragging, setDragging] = useState(false);
@@ -681,14 +856,15 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    e.stopPropagation();
     onSelect(scene.id);
     setDragging(true);
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: scene.x, origY: scene.y };
     const handleMove = (ev: MouseEvent) => {
       ev.preventDefault();
       updateScene(scene.id, {
-        x: dragRef.current.origX + (ev.clientX - dragRef.current.startX),
-        y: dragRef.current.origY + (ev.clientY - dragRef.current.startY),
+        x: dragRef.current.origX + (ev.clientX - dragRef.current.startX) / dragZoom,
+        y: dragRef.current.origY + (ev.clientY - dragRef.current.startY) / dragZoom,
       });
     };
     const handleUp = () => {
@@ -698,7 +874,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     };
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleUp);
-  }, [scene.id, scene.x, scene.y, onSelect, updateScene]);
+  }, [scene.id, scene.x, scene.y, onSelect, updateScene, dragZoom]);
 
   return (
     <div
@@ -754,6 +930,112 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
       {scene.backgroundSong && (
         <div style={{ fontSize: 9, color: '#6b8cff', marginTop: 2 }}>
           🎵 {scene.backgroundSong}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }: {
+  splash: SplashScreen; selected: boolean;
+  onSelect: () => void;
+  updateSplashScreen: (patch: Partial<SplashScreen>) => void;
+  dragZoom: number;
+}) {
+  const imageSmoothing = useAppStore((s) => s.imageSmoothing);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef({ startX: 0, startY: 0, origX: 0, origY: 0 });
+  const [bgImageUrl, setBgImageUrl] = useState('');
+
+  useEffect(() => {
+    if (!splash.backgroundImage) { setBgImageUrl(''); return; }
+    let cancelled = false;
+    (async () => {
+      const api = window.advanceAPI;
+      if (!api) return;
+      const result = await api.file.readImage(splash.backgroundImage!);
+      if (!cancelled && result.success && result.dataUrl) {
+        setBgImageUrl(result.dataUrl);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [splash.backgroundImage]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect();
+    setDragging(true);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: splash.x, origY: splash.y };
+    const handleMove = (ev: MouseEvent) => {
+      ev.preventDefault();
+      updateSplashScreen({
+        x: dragRef.current.origX + (ev.clientX - dragRef.current.startX) / dragZoom,
+        y: dragRef.current.origY + (ev.clientY - dragRef.current.startY) / dragZoom,
+      });
+    };
+    const handleUp = () => {
+      setDragging(false);
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+    };
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+  }, [splash.x, splash.y, onSelect, updateSplashScreen, dragZoom]);
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0, top: 0,
+        transform: `translate(${splash.x}px, ${splash.y}px)`,
+        willChange: dragging ? 'transform' : 'auto',
+        width: 400,
+        background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+        border: `2px solid ${selected ? 'var(--accent-light)' : '#3a3a5a'}`,
+        borderRadius: 8, padding: 10,
+        cursor: dragging ? 'grabbing' : 'grab',
+        zIndex: dragging ? 10 : 1,
+        userSelect: 'none',
+      }}
+      onMouseDown={handleMouseDown}
+      onClick={onSelect}
+    >
+      <div style={{
+        fontSize: 14, fontWeight: 600, color: '#f0c040',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        marginBottom: 4,
+      }}>
+        {splash.name}
+      </div>
+      <div style={{
+        width: '100%', paddingBottom: '66.67%', position: 'relative',
+        borderRadius: 4, marginBottom: 4, overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: '#0d0d1a',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 9, color: '#ffffff88',
+        }}>
+          {bgImageUrl && (
+            <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
+            />
+          )}
+          <span style={{ position: 'relative', zIndex: 1, background: '#00000066', padding: '2px 6px', borderRadius: 4 }}>
+            Splash — {splash.duration}s
+          </span>
+          <div style={{
+            position: 'absolute', inset: 0,
+            border: '2px solid rgba(255,255,255,0.1)', borderRadius: 2, pointerEvents: 'none',
+          }} />
+        </div>
+      </div>
+      {splash.backgroundSong && (
+        <div style={{ fontSize: 9, color: '#6b8cff', marginTop: 2 }}>
+          🎵 {splash.backgroundSong}
         </div>
       )}
     </div>
