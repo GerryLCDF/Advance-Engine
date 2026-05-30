@@ -88,7 +88,8 @@ export function MundoTab() {
   }, [selectedNodeId, scenes, panX, panY, zoom]);
 
   const handleMouseDownCanvas = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 && e.button !== 1) return;
+    e.preventDefault();
     setIsPanning(true);
     hasMoved.current = false;
     panStart.current = { x: e.clientX, y: e.clientY, panX, panY };
@@ -515,7 +516,7 @@ export function MundoTab() {
             ref={canvasContainerRef}
             style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: isPanning ? 'grabbing' : 'grab', minHeight: 0 }}
             onMouseDown={(e) => {
-              if (tool === 'select' || tool === 'add') {
+              if (e.button === 1 || tool === 'select' || tool === 'add') {
                 handleMouseDownCanvas(e);
               }
             }}
