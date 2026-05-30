@@ -65,6 +65,22 @@ export function MundoTab() {
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === 'z') { e.preventDefault(); useAppStore.getState().mundoUndo(); }
+      if (ctrl && e.key === 'y') { e.preventDefault(); useAppStore.getState().mundoRedo(); }
+      if (ctrl && e.key === 'c' && selectedNodeId && scenes.some((s) => s.id === selectedNodeId)) {
+        e.preventDefault(); useAppStore.getState().copyScene(selectedNodeId);
+      }
+      if (ctrl && e.key === 'v') { e.preventDefault(); useAppStore.getState().pasteScene(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedNodeId, scenes]);
+
   const handleMouseDownCanvas = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     setIsPanning(true);

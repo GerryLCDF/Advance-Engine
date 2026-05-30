@@ -21,6 +21,7 @@ const DEMO_PROJECTS: Project[] = [
 // ── Helpers ──────────────────────────────────────────────────────────────
 let _nextId = 1;
 const uid = () => `e${_nextId++}_${Date.now()}`;
+let _copiedScene: Scene | null = null;
 
 const defaultScene = (): Scene => ({
   id: uid(), name: 'Nueva escena', width: 240, height: 160,
@@ -389,6 +390,15 @@ interface AppState {
   undo: () => void;
   redo: () => void;
 
+  // ── Undo / Redo for Mundo ──────────────────────────────────────────────
+  _mundoUndoStack: { scenes: Scene[]; sceneConnections: SceneConnection[] }[];
+  _mundoRedoStack: { scenes: Scene[]; sceneConnections: SceneConnection[] }[];
+  _snapshotMundo: () => void;
+  mundoUndo: () => void;
+  mundoRedo: () => void;
+  copyScene: (id: string) => void;
+  pasteScene: () => void;
+
   // ── Dialogo ────────────────────────────────────────────────────────────
   dialogues: DialogueEntry[];
   addDialogue: () => void;
@@ -493,6 +503,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedNodeId: '',
       _songsUndoStack: [],
       _songsRedoStack: [],
+      _mundoUndoStack: [],
+      _mundoRedoStack: [],
     }));
     // Cargar datos guardados del proyecto
     const st = get();
@@ -695,45 +707,69 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: [defaultScene()],
-  addScene: () => set((s) => {
-    const baseName = 'Escena';
-    const names = s.scenes.map((sc) => sc.name);
-    let num = 1;
-    while (names.includes(`${baseName} ${num}`)) num++;
-    return { scenes: [...s.scenes, { ...defaultScene(), name: `${baseName} ${num}` }] };
-  }),
-  updateScene: (id, patch) => set((s) => ({
-    scenes: s.scenes.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)),
-  })),
-  removeScene: (id) => set((s) => ({ scenes: s.scenes.filter((sc) => sc.id !== id) })),
-  addActor: (sceneId) => set((s) => ({
-    scenes: s.scenes.map((sc) =>
-      sc.id === sceneId ? { ...sc, actors: [...sc.actors, defaultActor()] } : sc
-    ),
-  })),
-  updateActor: (sceneId, actorId, patch) => set((s) => ({
-    scenes: s.scenes.map((sc) =>
-      sc.id !== sceneId ? sc : {
-        ...sc,
-        actors: sc.actors.map((a) => (a.id === actorId ? { ...a, ...patch } : a)),
-      }
-    ),
-  })),
-  removeActor: (sceneId, actorId) => set((s) => ({
-    scenes: s.scenes.map((sc) =>
-      sc.id !== sceneId ? sc : {
-        ...sc,
-        actors: sc.actors.filter((a) => a.id !== actorId),
-      }
-    ),
-  })),
+  addScene: () => {
+    get()._snapshotMundo();
+    set((s) => {
+      const baseName = 'Escena';
+      const names = s.scenes.map((sc) => sc.name);
+      let num = 1;
+      while (names.includes(`${baseName} ${num}`)) num++;
+      return { scenes: [...s.scenes, { ...defaultScene(), name: `${baseName} ${num}` }] };
+    });
+  },
+  updateScene: (id, patch) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      scenes: s.scenes.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)),
+    }));
+  },
+  removeScene: (id) => {
+    get()._snapshotMundo();
+    set((s) => ({ scenes: s.scenes.filter((sc) => sc.id !== id) }));
+  },
+  addActor: (sceneId) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      scenes: s.scenes.map((sc) =>
+        sc.id === sceneId ? { ...sc, actors: [...sc.actors, defaultActor()] } : sc
+      ),
+    }));
+  },
+  updateActor: (sceneId, actorId, patch) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      scenes: s.scenes.map((sc) =>
+        sc.id !== sceneId ? sc : {
+          ...sc,
+          actors: sc.actors.map((a) => (a.id === actorId ? { ...a, ...patch } : a)),
+        }
+      ),
+    }));
+  },
+  removeActor: (sceneId, actorId) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      scenes: s.scenes.map((sc) =>
+        sc.id !== sceneId ? sc : {
+          ...sc,
+          actors: sc.actors.filter((a) => a.id !== actorId),
+        }
+      ),
+    }));
+  },
   sceneConnections: [],
-  addConnection: (fromSceneId, toSceneId) => set((s) => ({
-    sceneConnections: [...s.sceneConnections, { id: uid(), fromSceneId, toSceneId, label: '' }],
-  })),
-  removeConnection: (id) => set((s) => ({
-    sceneConnections: s.sceneConnections.filter((c) => c.id !== id),
-  })),
+  addConnection: (fromSceneId, toSceneId) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      sceneConnections: [...s.sceneConnections, { id: uid(), fromSceneId, toSceneId, label: '' }],
+    }));
+  },
+  removeConnection: (id) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      sceneConnections: s.sceneConnections.filter((c) => c.id !== id),
+    }));
+  },
 
   // ── Sprite ─────────────────────────────────────────────────────────────
   spriteSheets: [defaultSpriteSheet()],
@@ -933,6 +969,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ── Undo / Redo for songs ──────────────────────────────────────────────
   _songsUndoStack: [],
   _songsRedoStack: [],
+  _mundoUndoStack: [],
+  _mundoRedoStack: [],
 
   _snapshotSongs: () => set((s) => ({
     _songsUndoStack: [...(s._songsUndoStack ?? []).slice(-49), s.songs],
@@ -960,6 +998,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       _songsUndoStack: [...(s._songsUndoStack ?? []), s.songs],
     };
   }),
+
+  // ── Undo / Redo for Mundo ──────────────────────────────────────────────
+  _snapshotMundo: () => set((s) => ({
+    _mundoUndoStack: [...(s._mundoUndoStack ?? []).slice(-49), { scenes: s.scenes, sceneConnections: s.sceneConnections }],
+    _mundoRedoStack: [],
+  })),
+  mundoUndo: () => set((s) => {
+    const stack = s._mundoUndoStack ?? [];
+    if (stack.length === 0) return s;
+    const prev = stack[stack.length - 1];
+    return {
+      scenes: prev.scenes,
+      sceneConnections: prev.sceneConnections,
+      _mundoUndoStack: stack.slice(0, -1),
+      _mundoRedoStack: [...(s._mundoRedoStack ?? []), { scenes: s.scenes, sceneConnections: s.sceneConnections }],
+    };
+  }),
+  mundoRedo: () => set((s) => {
+    const stack = s._mundoRedoStack ?? [];
+    if (stack.length === 0) return s;
+    const next = stack[stack.length - 1];
+    return {
+      scenes: next.scenes,
+      sceneConnections: next.sceneConnections,
+      _mundoRedoStack: stack.slice(0, -1),
+      _mundoUndoStack: [...(s._mundoUndoStack ?? []), { scenes: s.scenes, sceneConnections: s.sceneConnections }],
+    };
+  }),
+
+  copyScene: (id) => {
+    const scene = get().scenes.find((s) => s.id === id);
+    if (scene) _copiedScene = { ...scene, id: uid(), name: scene.name + ' (copia)' };
+  },
+  pasteScene: () => {
+    if (!_copiedScene) return;
+    get()._snapshotMundo();
+    const base = _copiedScene.name.replace(/\s*\(copia\)\s*$/, '');
+    const names = get().scenes.map((s) => s.name);
+    let name = base;
+    let num = 2;
+    while (names.includes(name)) { name = `${base} ${num}`; num++; }
+    set((s) => ({
+      scenes: [...s.scenes, { ..._copiedScene!, id: uid(), name, x: s.scenes.length * 30 + 60, y: 20 }],
+    }));
+  },
 
   // ── Dialogo ────────────────────────────────────────────────────────────
   dialogues: [defaultDialogueEntry()],
