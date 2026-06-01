@@ -323,6 +323,12 @@ interface AppState {
   imageSmoothing: boolean;
   setImageSmoothing: (val: boolean) => void;
   setGridLineOpacity: (val: number) => void;
+  mundoShowGrid: boolean;
+  setMundoShowGrid: (val: boolean) => void;
+  mundoGridSize: number;
+  setMundoGridSize: (val: number) => void;
+  mundoGridOpacity: number;
+  setMundoGridOpacity: (val: number) => void;
 
   // ── Pipeline / Proyecto ─────────────────────────────────────────────────
   projectDir: string | null;
@@ -590,6 +596,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGridLineOpacity: (val) => set({ gridLineOpacity: val }),
   imageSmoothing: false,
   setImageSmoothing: (val) => set({ imageSmoothing: val }),
+  mundoShowGrid: true,
+  setMundoShowGrid: (val) => set({ mundoShowGrid: val }),
+  mundoGridSize: 16,
+  setMundoGridSize: (val) => set({ mundoGridSize: val }),
+  mundoGridOpacity: 0.15,
+  setMundoGridOpacity: (val) => set({ mundoGridOpacity: val }),
 
   // ── Pipeline / Proyecto ─────────────────────────────────────────────────
   projectDir: null,
@@ -605,6 +617,43 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!projectDir || !project) return false;
       const { generateGBAProject, generateMakefile, createLog } = await import('../utils/gba_export');
       const log = createLog();
+
+      let splashCArray: string | undefined;
+      let splashDuration: number | undefined;
+      if (state.splashScreen?.backgroundImage && state.splashScreen.duration > 0) {
+        try {
+          const api = window.advanceAPI;
+          const imgPath = state.splashScreen.backgroundImage;
+          log.add(`SplashScreen: convirtiendo "${imgPath}"...`);
+          const gbaResult = await api.file.convertImageToGbaBase64(imgPath);
+          if (gbaResult.success && gbaResult.base64) {
+            const binaryStr = atob(gbaResult.base64);
+            const pixelCount = Math.floor(binaryStr.length / 2);
+            log.add(`SplashScreen: ${gbaResult.width}x${gbaResult.height} original, ${pixelCount} píxeles GBA`);
+            const values: string[] = [];
+            for (let i = 0; i < binaryStr.length; i += 2) {
+              const lo = binaryStr.charCodeAt(i);
+              const hi = binaryStr.charCodeAt(i + 1);
+              const val = (hi << 8) | lo;
+              values.push(`0x${val.toString(16).padStart(4, '0')}`);
+            }
+            const lines: string[] = [];
+            for (let i = 0; i < values.length; i += 16) {
+              lines.push('  ' + values.slice(i, i + 16).join(', '));
+            }
+            splashCArray = '{\n' + lines.join(',\n') + '\n}';
+            splashDuration = state.splashScreen.duration;
+            log.add(`SplashScreen: array C generado (${values.length} u16, ${splashDuration}s)`);
+          } else {
+            log.add(`[WARN] SplashScreen: falló conversión — ${gbaResult.reason || 'desconocido'}`);
+          }
+        } catch (err: any) {
+          log.add(`[WARN] SplashScreen: error — ${String(err)}`);
+        }
+      } else {
+        log.add('SplashScreen: sin imagen o duración 0, saltando');
+      }
+
       const cCode = generateGBAProject({
         scenes: state.scenes,
         sceneConnections: state.sceneConnections,
@@ -614,13 +663,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         sounds: state.sounds ?? [],
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
-      }, project.name, project.author, log);
+      }, project.name, project.author, log, splashCArray, splashDuration);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
       await api.dir.create(buildDir);
       await api.file.writeText(`${buildDir}/main.c`, cCode);
       await api.file.writeText(`${buildDir}/Makefile`, makefile);
+
+      // Publish log to the terminal
+      set((s) => ({ exportLog: [...s.exportLog, ...log.messages] }));
       return true;
     } catch { return false; }
   },

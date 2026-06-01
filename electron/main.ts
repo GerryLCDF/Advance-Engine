@@ -261,6 +261,78 @@ ipcMain.handle('file:writeBinary', async (_e, filePath: string, base64: string) 
   }
 });
 
+ipcMain.handle('file:readBinary', async (_e, filePath: string) => {
+  try {
+    const buf = fs.readFileSync(filePath);
+    return { success: true, base64: buf.toString('base64') };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
+ipcMain.handle('file:delete', async (_e, filePath: string) => {
+  try {
+    const resolved = path.resolve(filePath);
+    if (fs.existsSync(resolved)) {
+      fs.unlinkSync(resolved);
+    }
+    // Also delete companion .gba.raw if it exists
+    const rawPath = resolved.replace(/\.\w+$/, '.gba.raw');
+    if (fs.existsSync(rawPath)) {
+      fs.unlinkSync(rawPath);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
+const GBA_SCREEN_W = 240;
+const GBA_SCREEN_H = 160;
+const GBA_PIXEL_COUNT = GBA_SCREEN_W * GBA_SCREEN_H;
+
+function convertToGbaBitmapBuffer(imagePath: string): { buffer: Buffer; width: number; height: number } | null {
+  const resolvedPath = path.resolve(imagePath);
+  if (!fs.existsSync(resolvedPath)) return null;
+  const img = nativeImage.createFromPath(resolvedPath);
+  if (img.isEmpty()) return null;
+  const origSize = img.getSize();
+  const resized = img.resize({ width: GBA_SCREEN_W, height: GBA_SCREEN_H });
+  const bitmap = resized.toBitmap();
+  const gbaBuf = Buffer.alloc(GBA_PIXEL_COUNT * 2);
+  for (let i = 0; i < GBA_PIXEL_COUNT; i++) {
+    const off = i * 4;
+    const b = bitmap[off];
+    const g = bitmap[off + 1];
+    const r = bitmap[off + 2];
+    const gbaColor = ((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10)) & 0x7FFF;
+    gbaBuf.writeUInt16LE(gbaColor, i * 2);
+  }
+  return { buffer: gbaBuf, width: origSize.width, height: origSize.height };
+}
+
+ipcMain.handle('file:convertImageToGbaBitmap', async (_e, imagePath: string, outputPath: string) => {
+  try {
+    const result = convertToGbaBitmapBuffer(imagePath);
+    if (!result) return { success: false, reason: 'No se pudo cargar la imagen' };
+    ensureDir(path.dirname(outputPath));
+    fs.writeFileSync(outputPath, result.buffer);
+    return { success: true, width: result.width, height: result.height };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
+ipcMain.handle('file:convertImageToGbaBase64', async (_e, imagePath: string) => {
+  try {
+    const result = convertToGbaBitmapBuffer(imagePath);
+    if (!result) return { success: false, reason: 'No se pudo cargar la imagen' };
+    return { success: true, base64: result.buffer.toString('base64'), width: result.width, height: result.height };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
 ipcMain.handle('dir:create', async (_e, dirPath: string) => {
   try {
     ensureDir(dirPath);

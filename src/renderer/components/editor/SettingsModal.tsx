@@ -73,6 +73,9 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setGridLineOpacity = useAppStore((s) => s.setGridLineOpacity);
   const imageSmoothing = useAppStore((s) => s.imageSmoothing);
   const setImageSmoothing = useAppStore((s) => s.setImageSmoothing);
+  const setMundoShowGrid = useAppStore((s) => s.setMundoShowGrid);
+  const setMundoGridSize = useAppStore((s) => s.setMundoGridSize);
+  const setMundoGridOpacity = useAppStore((s) => s.setMundoGridOpacity);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab === 'general' ? 'general' : (initialTab as SettingsTab) || 'general');
   const [activeSection, setActiveSection] = useState<GeneralSection>('theme');
@@ -85,6 +88,16 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const [localShowGrid, setLocalShowGrid] = useState(showGrid);
   const [localGridLineOpacity, setLocalGridLineOpacity] = useState(gridLineOpacity);
   const [localImageSmoothing, setLocalImageSmoothing] = useState(imageSmoothing);
+  const [localMundoShowGrid, setLocalMundoShowGrid] = useState(false);
+  const [localMundoGridSize, setLocalMundoGridSize] = useState(16);
+  const [localMundoGridOpacity, setLocalMundoGridOpacity] = useState(0.15);
+
+  // Initialize local Mundo grid settings from store
+  useEffect(() => {
+    setLocalMundoShowGrid(useAppStore.getState().mundoShowGrid);
+    setLocalMundoGridSize(useAppStore.getState().mundoGridSize);
+    setLocalMundoGridOpacity(useAppStore.getState().mundoGridOpacity);
+  }, []);
 
   const snapshot = useRef({ bg: storeBg, accent: storeAccent, fontSize: storeFontSize });
 
@@ -119,10 +132,34 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     onClose();
   }
 
-  function apply() {
-    setPianoRollBg(localPianoRollBg);
-    setImageSmoothing(localImageSmoothing);
+  function applyTheme() {
     onClose();
+  }
+
+  function applyIdioma() {
+    onClose();
+  }
+
+  function applyGeneral() {
+    setImageSmoothing(localImageSmoothing);
+    applyMundo();
+  }
+
+  function apply() {
+    switch (activeSection) {
+      case 'theme':
+        applyTheme();
+        break;
+      case 'idioma':
+        applyIdioma();
+        break;
+      case 'general':
+        applyGeneral();
+        break;
+      case 'mundo':
+        applyMundo();
+        break;
+    }
   }
 
   function applyMusic() {
@@ -133,6 +170,13 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setChunkRows(localChunkRows);
     setShowGrid(localShowGrid);
     setGridLineOpacity(localGridLineOpacity);
+    onClose();
+  }
+
+  function applyMundo() {
+    setMundoShowGrid(localMundoShowGrid);
+    setMundoGridSize(localMundoGridSize);
+    setMundoGridOpacity(localMundoGridOpacity);
     onClose();
   }
 
@@ -350,6 +394,56 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                         </button>
                         <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localImageSmoothing ? 'Sí' : 'No'}</span>
                       </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Mostrar cuadrícula</label>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
+                        <button
+                          onClick={() => setLocalMundoShowGrid(!localMundoShowGrid)}
+                          style={{
+                            width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
+                            background: localMundoShowGrid ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                          }}
+                        >
+                          <div style={{
+                            position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
+                            background: '#fff', transition: 'left 0.15s',
+                            left: localMundoShowGrid ? 24 : 2,
+                          }} />
+                        </button>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localMundoShowGrid ? 'Sí' : 'No'}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Tamaño de celda</label>
+                      <input
+                        type="number"
+                        value={localMundoGridSize}
+                        onChange={(e) => setLocalMundoGridSize(parseInt(e.target.value) || 1)}
+                        min={1}
+                        max={64}
+                        style={{
+                          width: 60, height: 24, borderRadius: 4, border: '1px solid var(--border-color)',
+                          background: 'var(--bg-dark)', color: 'var(--text)', padding: '0 6px',
+                          fontSize: 12, textAlign: 'center',
+                        }}
+                      />
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>píxeles</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Opacidad de líneas</label>
+                      <input
+                        type="range"
+                        value={localMundoGridOpacity}
+                        onChange={(e) => setLocalMundoGridOpacity(parseFloat(e.target.value))}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        style={{ width: '100%' }}
+                      />
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>
+                        {Math.round(localMundoGridOpacity * 100)}%
+                      </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                       <button onClick={cancel}

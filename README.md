@@ -7,6 +7,7 @@ Motor de desarrollo visual para Game Boy Advance hecho con Electron + React + Vi
 - Node.js 18+
 - npm 9+
 - Windows 10/11
+- devkitARM (para exportar ROMs GBA) — https://devkitpro.org
 
 ## Instalación
 
@@ -73,6 +74,8 @@ advance-engine/
 │   ├── icon.ico                 # Icono para empaquetado Windows
 │   ├── nubes.html               # Shader WebGL de nubes para créditos
 │   └── recursos/                # Assets del cartucho GBA
+├── tools/
+│   └── gba_quantize.lua         # Script Aseprite para cuantizar a BGR555
 ├── .gitignore
 ├── index.html
 ├── vite.config.ts
@@ -113,6 +116,9 @@ advance-engine/
 ### Imagen
 - Editor de fondos con múltiples capas
 - Parallax, velocidad y visibilidad por capa
+- Preview individual por capa seleccionada (no el stack completo)
+- Eliminación física de archivos del disco al remover capas
+- Carga de imágenes desde diálogo nativo, con limpieza automática de URLs obsoletas
 
 ### Music
 - Piano roll (PNO) con teclado tipo piano real + grid, o vista tracker (TRK) compacta
@@ -156,6 +162,16 @@ Usa `activeScreen` + `AnimatePresence` (sin React Router). Las pantallas se supe
 - **Zustand** — estado global
 - **Framer Motion** — animaciones
 - **Vite** — bundler del renderer
+- **devkitARM** — toolchain GBA (Makefile + arm-none-eabi-gcc)
+
+## Exportación GBA
+
+Advance Studio puede generar una ROM `.gba` directamente desde el editor:
+
+- **Splash Screen personalizado**: imagen de fondo (redimensionada a 240×160) con duración configurable en segundos. Se convierte a formato BGR555 (15-bit) y se incluye como array C en el código fuente.
+- **Compilación**: genera `main.c` y `Makefile`, luego ejecuta `make` mediante `devkitARM` para producir el `.elf` y el `.gba`.
+- La conversión de píxeles usa `R>>3 | G>>3<<5 | B>>3<<10` para mapear RGB888 → BGR555.
+- Tool auxiliar: `tools/gba_quantize.lua` (script Aseprite) para cuantizar sprites al espacio de color GBA de 32768 colores, con dithering Floyd-Steinberg opcional.
 
 ## Versión
 

@@ -10,6 +10,7 @@ export interface EditorState {
   sounds: any[];
   dialogues: any[];
   scripts: any[];
+  splashScreen?: any;
 }
 
 export async function saveProject(projectId: string, name: string, state: EditorState): Promise<string | null> {

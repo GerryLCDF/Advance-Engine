@@ -786,9 +786,22 @@ export function MundoTab() {
           color: 'var(--terminal-green)',
           height: '100%',
           overflow: 'auto',
+          userSelect: 'text',
         }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: 9, textTransform: 'uppercase', marginBottom: 4 }}>
-            Terminal — Pipeline
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 9, textTransform: 'uppercase' }}>
+              Terminal — Pipeline
+            </span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => navigator.clipboard.writeText(exportLog.join('\n'))} style={{
+                background: 'transparent', border: '1px solid var(--border-color)', borderRadius: 4,
+                color: 'var(--text-secondary)', fontSize: 10, cursor: 'pointer', padding: '2px 6px',
+              }}>Copiar</button>
+              <button onClick={() => useAppStore.getState().clearExportLog()} style={{
+                background: 'transparent', border: '1px solid var(--border-color)', borderRadius: 4,
+                color: 'var(--text-secondary)', fontSize: 10, cursor: 'pointer', padding: '2px 6px',
+              }}>Limpiar</button>
+            </div>
           </div>
           {exportLog.length === 0 ? (
             <div style={{ color: 'var(--text-dim)' }}>{'>'} Listo para compilar</div>

@@ -85,16 +85,25 @@ export function ImagenTab() {
     return () => el.removeEventListener('wheel', handler);
   }, [imagenZoom, setImagenZoom]);
 
-  // Load images for all layers
+  // Load images for all layers and clean up removed ones
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const api = window.advanceAPI;
       if (!api) return;
-      const paths = new Set<string>();
-      backgrounds.forEach((bg) => bg.layers.forEach((l) => { if (l.imagePath) paths.add(l.imagePath); }));
+      const activePaths = new Set<string>();
+      backgrounds.forEach((bg) => bg.layers.forEach((l) => { if (l.imagePath) activePaths.add(l.imagePath); }));
+      // Remove stale URLs (e.g. when a layer is deleted)
+      setImageDataUrls((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (!activePaths.has(key)) delete next[key];
+        }
+        return next;
+      });
+      // Load current images
       const newUrls: Record<string, string> = {};
-      for (const p of paths) {
+      for (const p of activePaths) {
         const r = await api.file.readImage(p);
         if (!cancelled && r.success && r.dataUrl) newUrls[p] = r.dataUrl;
       }
@@ -194,6 +203,12 @@ export function ImagenTab() {
     if (pd) {
       await api.dir.create(`${pd}/backgrounds`);
       await api.file.copy(filePath, destPath);
+      try {
+        const bitmapPath = destPath.replace(/\.\w+$/, '.gba.raw');
+        await api.file.convertImageToGbaBitmap(destPath, bitmapPath);
+      } catch {
+        // Error en conversión GBA no debe bloquear la importación
+      }
     }
 
     if (targetLayerId) {
@@ -239,15 +254,23 @@ export function ImagenTab() {
     });
   }
 
-  const handleRemove = (id: string) => {
+  const handleRemove = async (id: string) => {
+    const api = window.advanceAPI;
     for (const bg of backgrounds) {
-      if (bg.layers.some((l) => l.id === id)) { removeLayer(bg.id, id); break; }
+      const layer = bg.layers.find((l) => l.id === id);
+      if (layer) {
+        if (layer.imagePath && api) {
+          await api.file.delete(layer.imagePath);
+        }
+        removeLayer(bg.id, id);
+        break;
+      }
     }
     if (selectedNodeId === id) setSelectedNodeId('');
   };
 
-  const previewLayers = parentBg
-    ? parentBg.layers
+  const previewLayers = selectedLayer
+    ? [selectedLayer]
     : backgrounds.length > 0
       ? backgrounds[0].layers
       : [];
