@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { exec } from 'child_process';
 import { pathToFileURL } from 'url';
+import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning } from './emuWindow';
 
 // isDev: true cuando se corre con NODE_ENV=development (npm run dev)
 // app.isPackaged es seguro de leer en cualquier momento del proceso principal
@@ -512,6 +513,30 @@ ipcMain.handle('system:runCommand', async (_e, cmd: string, cwd: string) => {
   } catch (err) {
     return { success: false, output: String(err) };
   }
+});
+
+// ── IPC: Emulador ───────────────────────────────────────────────────────────
+
+ipcMain.handle('emu:play', async (_e, romPath: string) => {
+  try {
+    if (!fs.existsSync(romPath)) {
+      return { success: false, reason: `ROM no encontrada: ${romPath}` };
+    }
+    closeEmulatorWindow();
+    createEmulatorWindow(romPath);
+    return { success: true };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
+ipcMain.handle('emu:stop', () => {
+  closeEmulatorWindow();
+  return { success: true };
+});
+
+ipcMain.handle('emu:isRunning', () => {
+  return isEmulatorRunning();
 });
 
 // ── IPC: Ventana ────────────────────────────────────────────────────────────

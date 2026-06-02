@@ -245,6 +245,9 @@ export function ImagenTab() {
       { label: 'Velocidad', type: 'number', value: selectedLayer.speed, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { speed: v as number }) },
       { label: 'Ruta', type: 'text', value: selectedLayer.imagePath, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { imagePath: v as string }) },
     ];
+    if (selectedLayer.imagePath) {
+      fields.push({ label: 'Reescalar', type: 'toggle', value: !!selectedLayer.rescale, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { rescale: v as boolean }) });
+    }
     if (imgSize && (imgSize.w < 240 || imgSize.h < 160)) {
       fields.push({ label: 'Fondo', type: 'color', value: selectedLayer.fillColor || '#000000', onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { fillColor: v as string }) });
     }
@@ -274,6 +277,12 @@ export function ImagenTab() {
     : backgrounds.length > 0
       ? backgrounds[0].layers
       : [];
+
+  // Dynamic preview size: when rescale=false and image known, match image dimensions
+  const singleLayer = selectedLayer;
+  const useActualSize = singleLayer && !singleLayer.rescale && imgSize && singleLayer.imagePath;
+  const previewW = useActualSize ? imgSize!.w : PREVIEW_W;
+  const previewH = useActualSize ? imgSize!.h : PREVIEW_H;
 
   return (
     <ResizableEditorLayout
@@ -313,8 +322,8 @@ export function ImagenTab() {
               }}>
                 <div
                   style={{
-                    width: PREVIEW_W,
-                    height: PREVIEW_H,
+                    width: previewW,
+                    height: previewH,
                     background: 'var(--bg-dark)',
                     border: '1px solid var(--bg-raised)',
                     borderRadius: 4,
@@ -340,7 +349,14 @@ export function ImagenTab() {
                     >
                       {imageDataUrls[l.imagePath] ? (
                         <img src={imageDataUrls[l.imagePath]} alt=""
-                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
+                          style={{
+                            maxWidth: useActualSize && l.id === singleLayer?.id ? 'none' : '100%',
+                            maxHeight: useActualSize && l.id === singleLayer?.id ? 'none' : '100%',
+                            width: useActualSize && l.id === singleLayer?.id ? imgSize!.w : undefined,
+                            height: useActualSize && l.id === singleLayer?.id ? imgSize!.h : undefined,
+                            objectFit: useActualSize && l.id === singleLayer?.id ? 'none' : 'contain',
+                            imageRendering: imageSmoothing ? 'auto' : 'pixelated',
+                          }}
                         />
                       ) : l.imagePath ? (
                         `📄 ${imgBasename(l.imagePath)}`

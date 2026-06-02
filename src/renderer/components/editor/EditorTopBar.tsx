@@ -37,8 +37,9 @@ const MENU_ITEMS: Record<string, MenuItemDef[]> = {
     { label: 'Settings' },
   ],
   Juego: [
-    { label: 'Iniciar' },
-    { label: 'Exportar como' },
+    { label: 'Iniciar (Play)', onClick: () => useAppStore.getState().playEmulator() },
+    { label: 'Detener (Stop)', onClick: () => useAppStore.getState().stopEmulator() },
+    { label: 'Exportar ROM GBA', divider: true, onClick: () => {} },
   ],
   Plugin: [
     { label: 'Plugin Manager' },
@@ -337,8 +338,10 @@ export function EditorTopBar() {
           </div>
           <motion.button
             whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => useAppStore.getState().playEmulator()}
             style={{
-              background: 'transparent',
+              background: 'rgba(80,200,80,0.15)',
               border: '1px solid var(--green)',
               borderRadius: 4,
               color: 'var(--green)',
@@ -346,9 +349,27 @@ export function EditorTopBar() {
               fontWeight: 700,
               padding: '2px 12px',
               cursor: 'pointer',
+              marginRight: 4,
             }}
           >
-            PLAY
+            ▶ PLAY
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => useAppStore.getState().stopEmulator()}
+            style={{
+              background: 'rgba(200,80,80,0.15)',
+              border: '1px solid var(--red)',
+              borderRadius: 4,
+              color: 'var(--red)',
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '2px 12px',
+              cursor: 'pointer',
+            }}
+          >
+            ■ STOP
           </motion.button>
         </div>
       </div>

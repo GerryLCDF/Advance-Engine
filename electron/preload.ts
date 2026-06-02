@@ -11,6 +11,12 @@ export interface Project {
 }
 
 export interface AdvanceAPI {
+  // Emulador GBA
+  emu: {
+    play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
+    stop: () => Promise<{ success: boolean }>;
+    isRunning: () => Promise<boolean>;
+  };
   // Proyectos
   projects: {
     getAll: () => Promise<Project[]>;
@@ -70,6 +76,11 @@ export interface AdvanceAPI {
 }
 
 contextBridge.exposeInMainWorld('advanceAPI', {
+  emu: {
+    play: (romPath: string) => ipcRenderer.invoke('emu:play', romPath),
+    stop: () => ipcRenderer.invoke('emu:stop'),
+    isRunning: () => ipcRenderer.invoke('emu:isRunning'),
+  },
   projects: {
     getAll: () => ipcRenderer.invoke('projects:getAll'),
     create: (data: Omit<Project, 'id' | 'lastOpened'>) => ipcRenderer.invoke('projects:create', data),

@@ -80,6 +80,7 @@ export interface BackgroundLayer {
   parallaxY: number;
   speed: number;
   visible: boolean;
+  rescale?: boolean;
 }
 
 export interface Background {

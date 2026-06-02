@@ -1,6 +1,11 @@
 import type { Project } from './types';
 
 interface AdvanceAPI {
+  emu: {
+    play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
+    stop: () => Promise<{ success: boolean }>;
+    isRunning: () => Promise<boolean>;
+  };
   projects: {
     getAll: () => Promise<Project[]>;
     create: (data: Omit<Project, 'id' | 'lastOpened'>) => Promise<{ success: boolean; project?: Project; reason?: string }>;

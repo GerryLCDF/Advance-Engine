@@ -52,7 +52,7 @@ const defaultBackground = (): Background => ({
 });
 
 const defaultLayer = (): BackgroundLayer => ({
-  id: uid(), imagePath: '', parallaxX: 1, parallaxY: 1, speed: 1, visible: true,
+  id: uid(), imagePath: '', parallaxX: 1, parallaxY: 1, speed: 1, visible: true, rescale: false,
 });
 
 const defaultEnvelope = (): ADSREnvelope => ({ attack: 0, decay: 0, sustain: 1, release: 0 });
@@ -340,6 +340,8 @@ interface AppState {
   saveProject: () => Promise<boolean>;
   loadProject: (path: string) => Promise<boolean>;
   exportGBA: () => Promise<boolean>;
+  playEmulator: () => Promise<boolean>;
+  stopEmulator: () => Promise<boolean>;
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: Scene[];
@@ -767,6 +769,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
       return false;
     }
+  },
+  playEmulator: async () => {
+    try {
+      const state = get();
+      const project = state.projects.find((p) => p.id === state.editorProjectId);
+      const projectDir = state.projectDir;
+      if (!projectDir || !project) {
+        set((s) => ({ exportLog: [...s.exportLog, '[ERROR] Guarda el proyecto antes de ejecutar'] }));
+        return false;
+      }
+      const api = window.advanceAPI;
+      const buildDir = `${projectDir}/build`;
+      const romPath = `${buildDir}/${project.name.replace(/\s+/g, '_')}.gba`;
+
+      // Close existing emulator
+      await api.emu.stop();
+
+      // Compile
+      set((s) => ({ exportLog: [...s.exportLog, '[INFO] Generando build files…'] }));
+      await get().generateBuildFiles();
+      set((s) => ({ exportLog: [...s.exportLog, '[INFO] Compilando ROM…'] }));
+      const result = await api.system.runCommand('make -j4', buildDir);
+      if (!result.success) {
+        set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${result.output}`] }));
+        return false;
+      }
+      set((s) => ({ exportLog: [...s.exportLog, '[OK] ROM compilada, lanzando emulador…'] }));
+
+      // Launch emulator
+      const emuResult = await api.emu.play(romPath);
+      if (!emuResult.success) {
+        set((s) => ({ exportLog: [...s.exportLog, `[ERROR] Emulador: ${emuResult.reason}`] }));
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
+      return false;
+    }
+  },
+  stopEmulator: async () => {
+    try {
+      await window.advanceAPI.emu.stop();
+      return true;
+    } catch { return false; }
   },
 
   // ── Mundo ──────────────────────────────────────────────────────────────

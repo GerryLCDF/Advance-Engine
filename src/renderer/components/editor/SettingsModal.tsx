@@ -8,7 +8,7 @@ interface Props {
 }
 
 type SettingsTab = 'mundo' | 'scripting' | 'sprite' | 'imagen' | 'music' | 'sound' | 'dialogo' | 'general';
-type GeneralSection = 'theme' | 'idioma' | 'general';
+type GeneralSection = 'theme' | 'idioma' | 'general' | 'mundo';
 
 const EDITOR_TAB_OPTIONS: { key: EditorTab; label: string }[] = [
   { key: 'mundo', label: 'Mundo' },
@@ -35,6 +35,7 @@ const SIDEBAR_ITEMS: { key: GeneralSection; label: string; icon: string }[] = [
   { key: 'general', label: 'General', icon: '⚙' },
   { key: 'theme', label: 'Apariencia', icon: '🎨' },
   { key: 'idioma', label: 'Idioma', icon: '🌐' },
+  { key: 'mundo', label: 'Mundo', icon: '🌍' },
 ];
 
 const THEME_PRESETS: { name: string; bgPanel: string; accent: string }[] = [

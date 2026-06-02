@@ -30,13 +30,14 @@ npm install
 advance-engine/
 ├── electron/                    # Proceso principal de Electron
 │   ├── main.ts                  # BrowserWindow, IPC handlers, persistencia, snap
-│   └── preload.ts               # contextBridge → window.advanceAPI
+│   ├── preload.ts               # contextBridge → window.advanceAPI
+│   └── emuWindow.ts             # Ventana frameless del emulador GBA
 ├── src/
 │   ├── version.ts               # Versión actual (semver)
 │   └── renderer/
 │       ├── main.tsx             # Entry point React con ThemeApplier + ErrorBoundary
 │       ├── index.css            # Variables CSS globales
-│       ├── global.d.ts          # Tipos de advanceAPI
+│       ├── global.d.ts          # Tipos de advanceAPI (emu.play, emu.stop, etc.)
 │       ├── types/               # Project, TemplateId, ActiveScreen, editor types
 │       ├── store/useAppStore.ts # Estado global Zustand (proyectos, editor, setting)
 │       ├── components/
@@ -45,7 +46,7 @@ advance-engine/
 │       │   ├── CartuchoDisplay.tsx  # Renderizado por capas del cartucho GBA
 │       │   ├── CartuchoPanel.tsx    # Panel lateral del cartucho
 │       │   └── editor/
-│       │       ├── EditorTopBar.tsx # Menú Archivos/Editar/Juego/Plugin/Help
+│       │       ├── EditorTopBar.tsx # Menú Archivos/Editar/Juego/Plugin/Help + PLAY/STOP
 │       │       ├── SettingsModal.tsx # Modal de configuración con pestañas y sidebar
 │       │       ├── ThemeModal.tsx    # Modal de personalización de tema (legacy)
 │       │       ├── HierarchyPanel.tsx
@@ -53,9 +54,9 @@ advance-engine/
 │       │       ├── ResizableEditorLayout.tsx
 │       │       ├── TabBar.tsx
 │       │       └── tabs/
-│       │           ├── MundoTab.tsx      # Editor de escenas y actores
+│       │           ├── MundoTab.tsx      # Editor de escenas con grid, zoom, contexto
 │       │           ├── SpriteTab.tsx     # Editor de sprites y animaciones
-│       │           ├── ImagenTab.tsx     # Editor de fondos y capas
+│       │           ├── ImagenTab.tsx     # Editor de fondos y capas con rescale
 │       │           ├── MusicTab.tsx      # Piano roll con patrones e instrumentos
 │       │           ├── DialogoTab.tsx    # Editor de diálogos
 │       │           └── ComingSoonTab.tsx # Placeholder (Scripting, Sound)
@@ -73,6 +74,7 @@ advance-engine/
 │   ├── icon.png                 # Icono de la aplicación (1024×1024)
 │   ├── icon.ico                 # Icono para empaquetado Windows
 │   ├── nubes.html               # Shader WebGL de nubes para créditos
+│   ├── emulator/                # UI del emulador GBA interno (index.html)
 │   └── recursos/                # Assets del cartucho GBA
 ├── tools/
 │   └── gba_quantize.lua         # Script Aseprite para cuantizar a BGR555
@@ -103,8 +105,12 @@ advance-engine/
 
 ### Mundo
 - Editor visual de escenas con zoom/pan y drag
-- Herramientas: seleccionar, añadir escena, conectar escenas
-- Escenas con actores, propiedades y dimensiones
+- Herramientas: mover, añadir escena, conectar escenas, eliminar, pintar colisión
+- SceneCards con mini-map, grid pixel configurable (1×1 a 64×64), hover y selección
+- Menú contextual (Renombrar/Eliminar) en canvas y jerarquía
+- Zoom centrado en escena seleccionada (Ctrl+wheel)
+- Escenas con actores, propiedades, dimensiones, imagen de fondo y canción
+- Terminal del pipeline con auto-scroll y botones Copiar/Limpiar
 
 ### Sprite
 - Editor de spritesheets y animaciones
@@ -115,8 +121,8 @@ advance-engine/
 
 ### Imagen
 - Editor de fondos con múltiples capas
-- Parallax, velocidad y visibilidad por capa
-- Preview individual por capa seleccionada (no el stack completo)
+- Parallax, velocidad, visibilidad y rescale por capa
+- Preview individual por capa seleccionada con tamaño real (rescale=false) o escalado (rescale=true)
 - Eliminación física de archivos del disco al remover capas
 - Carga de imágenes desde diálogo nativo, con limpieza automática de URLs obsoletas
 
@@ -175,4 +181,4 @@ Advance Studio puede generar una ROM `.gba` directamente desde el editor:
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.5.0**
+Definida en `src/version.ts` — semver. Actual: **0.34.0**

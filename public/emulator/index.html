@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emulador GBA</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #0f0f1a; color: #ccc; user-select: none; }
+
+#titlebar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 32px; padding: 0 12px; background: #1a1a2e;
+  -webkit-app-region: drag;
+}
+#titlebar span { font-size: 12px; color: #888; letter-spacing: 0.5px; }
+#titlebar button {
+  -webkit-app-region: no-drag;
+  background: none; border: none; color: #666; font-size: 16px; cursor: pointer;
+  width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+#titlebar button:hover { background: #c33; color: #fff; }
+
+#container {
+  display: flex; flex-direction: column; align-items: center;
+  height: calc(100% - 32px); padding: 16px; gap: 12px;
+}
+
+#screen-wrapper {
+  position: relative; width: 720px; height: 480px;
+  background: #000; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 0 30px rgba(0,0,0,0.5), inset 0 0 60px rgba(0,0,0,0.3);
+  flex-shrink: 0;
+}
+#screen-wrapper.loading::after {
+  content: 'Cargando ROM…'; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: #555; letter-spacing: 1px;
+}
+#screen { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+#error-overlay {
+  display: none; position: absolute; inset: 0;
+  background: rgba(0,0,0,0.85); align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px; padding: 20px; text-align: center;
+}
+#error-overlay.visible { display: flex; }
+#error-overlay .icon { font-size: 36px; }
+#error-overlay .msg { font-size: 13px; color: #f88; max-width: 400px; line-height: 1.4; }
+#error-overlay .actions { display: flex; gap: 8px; margin-top: 8px; }
+#error-overlay button {
+  padding: 8px 24px; border: none; border-radius: 6px;
+  background: #444; color: #fff; font-size: 12px; cursor: pointer; transition: background 0.15s;
+}
+#error-overlay button:hover { background: #666; }
+
+#controls {
+  display: flex; gap: 24px; align-items: center; flex-wrap: wrap; justify-content: center;
+}
+
+#dpad { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+#dpad button {
+  position: absolute; width: 36px; height: 36px; border: none; border-radius: 4px;
+  background: #2a2a3e; color: #888; font-size: 14px; cursor: pointer;
+  transition: background 0.1s, transform 0.1s; display: flex; align-items: center; justify-content: center;
+}
+#dpad button:active, #dpad button.pressed { background: #446; color: #aae; transform: scale(0.92); }
+#dpad-up { top: 0; left: 42px; }
+#dpad-down { bottom: 0; left: 42px; }
+#dpad-left { left: 0; top: 42px; }
+#dpad-right { right: 0; top: 42px; }
+
+#face-buttons { display: flex; gap: 8px; }
+#face-buttons button {
+  width: 48px; height: 48px; border-radius: 50%; border: none;
+  font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.1s, transform 0.1s;
+}
+#face-buttons button:active, #face-buttons button.pressed { transform: scale(0.88); }
+#btn-a { background: #2a3a3e; color: #8cf; }
+#btn-a:active, #btn-a.pressed { background: #1a4a5e; color: #aef; }
+#btn-b { background: #3e2a2a; color: #f8a; }
+#btn-b:active, #btn-b.pressed { background: #5e1a1a; color: #fcc; }
+
+#shoulder-buttons { display: flex; gap: 6px; }
+#shoulder-buttons button {
+  width: 44px; height: 28px; border: none; border-radius: 6px 6px 0 0;
+  background: #2a2a3e; color: #888; font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: background 0.1s, transform 0.1s;
+}
+#shoulder-buttons button:active, #shoulder-buttons button.pressed { background: #446; color: #aae; transform: scaleY(0.9); }
+
+#sys-buttons { display: flex; gap: 10px; }
+#sys-buttons button {
+  padding: 6px 14px; border: none; border-radius: 4px;
+  background: #2a2a3e; color: #888; font-size: 10px; font-weight: 600; cursor: pointer; letter-spacing: 0.5px;
+  transition: background 0.1s;
+}
+#sys-buttons button:active, #sys-buttons button.pressed { background: #554; color: #ee4; }
+
+#status { font-size: 10px; color: #555; text-align: center; }
+#status .fps { color: #484; margin-left: 12px; }
+#keys-hint { font-size: 9px; color: #3a3a4a; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="titlebar">
+  <span>🎮 Emulador GBA</span>
+  <button id="btn-close" title="Cerrar (Esc)">✕</button>
+</div>
+
+<div id="container">
+  <div id="screen-wrapper" class="loading">
+    <canvas id="screen" width="720" height="480"></canvas>
+    <div id="error-overlay">
+      <div class="icon">⚠️</div>
+      <div class="msg" id="error-msg">Error desconocido</div>
+      <div class="actions">
+        <button id="btn-retry">Reintentar</button>
+        <button id="btn-close-err">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div id="shoulder-buttons">
+      <button id="btn-l">L</button>
+      <button id="btn-r">R</button>
+    </div>
+    <div id="dpad">
+      <button id="dpad-up">▲</button>
+      <button id="dpad-down">▼</button>
+      <button id="dpad-left">◀</button>
+      <button id="dpad-right">▶</button>
+    </div>
+    <div id="face-buttons">
+      <button id="btn-b">B</button>
+      <button id="btn-a">A</button>
+    </div>
+    <div id="sys-buttons">
+      <button id="btn-select">SELECT</button>
+      <button id="btn-start">START</button>
+    </div>
+  </div>
+
+  <div id="status">
+    <span id="status-rom">—</span>
+    <span class="fps" id="status-fps">— FPS</span>
+  </div>
+  <div id="keys-hint">
+    Z=A &nbsp; X=B &nbsp; A=L &nbsp; S=R &nbsp; Enter=Start &nbsp; \=Select &nbsp; Flechas=D-Pad
+  </div>
+</div>
+
+<script>
+const GameBoyAdvance = require('gbajs');
+const fs = require('fs');
+
+const params = new URLSearchParams(window.location.search);
+const romPath = params.get('rom');
+
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const screenWrapper = document.getElementById('screen-wrapper');
+const errorOverlay = document.getElementById('error-overlay');
+const errorMsg = document.getElementById('error-msg');
+const statusRom = document.getElementById('status-rom');
+const statusFps = document.getElementById('status-fps');
+
+let gba = null;
+const keysDown = new Set();
+let fpsCount = 0;
+
+setInterval(() => { statusFps.textContent = fpsCount + ' FPS'; fpsCount = 0; }, 1000);
+
+// ── GBA init ──────────────────────────────────────────────────────────
+function initGBA() {
+  const g = new GameBoyAdvance();
+  g.logLevel = g.LOG_ERROR;
+  g.keypad.eatInput = true;
+  g.setCanvas(canvas);
+
+  g.video.drawCallback = function() {
+    if (g.indirectCanvas) {
+      ctx.drawImage(g.indirectCanvas, 0, 0, canvas.width, canvas.height);
+    }
+  };
+
+  // Wrap advanceFrame: count FPS + catch errors
+  const origAF = g.advanceFrame;
+  g.advanceFrame = function() {
+    try {
+      origAF.call(g);
+      fpsCount++;
+    } catch (err) {
+      showError('Error en emulación: ' + (err.message || String(err)).slice(0, 200));
+      try { g.pause(); } catch {}
+    }
+  };
+
+  return g;
+}
+
+function createMinimalBios() {
+  // 16KB BIOS que salta a ROM (0x08000000)
+  // Basado en gbajs/bios.S: "mov pc, #0x8000000"
+  var size = 0x4000; // 16KB
+  var buf = new ArrayBuffer(size);
+  var view = new DataView(buf);
+  // MOV PC, #0x08000000 → 0xE3A0F408 (little-endian: 08 F4 A0 E3)
+  view.setUint32(0, 0xE3A0F408, true);
+  return buf;
+}
+
+function loadRom(path) {
+  gba = initGBA();
+  screenWrapper.classList.add('loading');
+  errorOverlay.classList.remove('visible');
+  statusRom.textContent = path.split(/[\\/]/).pop();
+
+  try {
+    // setBios ANTES de setRom (reset() copia this.bios a memory[0])
+    gba.setBios(createMinimalBios(), true);
+
+    const data = fs.readFileSync(path);
+    const arrBuf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+    const success = gba.setRom(arrBuf);
+    if (!success) {
+      showError('Formato de ROM inválido');
+      return;
+    }
+    // CPU arranca desde BIOS (addr 0) que salta a ROM (0x08000000)
+    screenWrapper.classList.remove('loading');
+    gba.audio.pause(false);
+    gba.runStable();
+  } catch (err) {
+    showError(String(err));
+  }
+}
+
+function showError(msg) {
+  screenWrapper.classList.remove('loading');
+  errorMsg.textContent = msg;
+  errorOverlay.classList.add('visible');
+  if (gba) { try { gba.pause(); } catch {} }
+}
+
+function closeEmulator() {
+  if (gba) { try { gba.pause(); } catch {} }
+  window.close();
+}
+
+// ── Input mapping ─────────────────────────────────────────────────────
+const BTN = {
+  a: 0, b: 1, select: 2, start: 3,
+  right: 4, left: 5, up: 6, down: 7, r: 8, l: 9,
+};
+function press(b) { if (gba) gba.keypad.keydown(b); }
+function release(b) { if (gba) gba.keypad.keyup(b); }
+
+function setupButton(id, btnConst) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('pressed'); press(btnConst); });
+  el.addEventListener('pointerup', (e) => { e.preventDefault(); el.classList.remove('pressed'); release(btnConst); });
+  el.addEventListener('pointerleave', () => { el.classList.remove('pressed'); release(btnConst); });
+}
+setupButton('btn-a', BTN.a);
+setupButton('btn-b', BTN.b);
+setupButton('btn-select', BTN.select);
+setupButton('btn-start', BTN.start);
+setupButton('dpad-up', BTN.up);
+setupButton('dpad-down', BTN.down);
+setupButton('dpad-left', BTN.left);
+setupButton('dpad-right', BTN.right);
+setupButton('btn-l', BTN.l);
+setupButton('btn-r', BTN.r);
+
+// ── Keyboard ──────────────────────────────────────────────────────────
+const KEY_MAP = {
+  'KeyZ': BTN.a, 'KeyX': BTN.b, 'Enter': BTN.start,
+  'Backslash': BTN.select, 'KeyA': BTN.l, 'KeyS': BTN.r,
+  'ArrowUp': BTN.up, 'ArrowDown': BTN.down,
+  'ArrowLeft': BTN.left, 'ArrowRight': BTN.right,
+};
+const VISUAL_MAP = {
+  'KeyZ': 'btn-a', 'KeyX': 'btn-b', 'Enter': 'btn-start',
+  'Backslash': 'btn-select', 'KeyA': 'btn-l', 'KeyS': 'btn-r',
+  'ArrowUp': 'dpad-up', 'ArrowDown': 'dpad-down',
+  'ArrowLeft': 'dpad-left', 'ArrowRight': 'dpad-right',
+};
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || (e.ctrlKey && e.key === 'w')) { closeEmulator(); return; }
+  const btn = KEY_MAP[e.code];
+  if (btn !== undefined && !keysDown.has(e.code)) {
+    keysDown.add(e.code); press(btn);
+    const vid = VISUAL_MAP[e.code];
+    if (vid) document.getElementById(vid)?.classList.add('pressed');
+    e.preventDefault();
+  }
+});
+window.addEventListener('keyup', (e) => {
+  const btn = KEY_MAP[e.code];
+  if (btn !== undefined) {
+    keysDown.delete(e.code); release(btn);
+    const vid = VISUAL_MAP[e.code];
+    if (vid) document.getElementById(vid)?.classList.remove('pressed');
+    e.preventDefault();
+  }
+});
+
+// ── Window controls ───────────────────────────────────────────────────
+document.getElementById('btn-close').addEventListener('click', closeEmulator);
+document.getElementById('btn-close-err')?.addEventListener('click', closeEmulator);
+document.getElementById('btn-retry')?.addEventListener('click', () => { if (romPath) loadRom(romPath); });
+
+// ── Global error handlers ────────────────────────────────────────────
+window.onerror = function(msg, source, line, col, err) {
+  showError('Error: ' + ((err && (err.stack || err.message)) || String(msg)).slice(0, 200));
+  return true;
+};
+window.addEventListener('unhandledrejection', function(e) {
+  showError('Promise: ' + (e.reason ? String(e.reason).slice(0, 200) : 'unknown'));
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────
+if (romPath && fs.existsSync(romPath)) {
+  loadRom(romPath);
+} else {
+  showError('Archivo ROM no encontrado: ' + (romPath || '(vacío)'));
+}
+</script>
+</body>
+</html>
