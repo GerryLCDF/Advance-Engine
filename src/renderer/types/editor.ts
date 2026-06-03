@@ -44,7 +44,9 @@ export interface SplashScreen {
   y: number;
   backgroundImage?: string;
   backgroundSong?: string;
-  duration: number; // 1-5 seconds for static images
+  duration: number; // 1-5 seconds for static images / max seconds for video
+  videoPath?: string;
+  videoFps?: number; // frames per second for video export (default 15)
 }
 
 // ── Sprite ────────────────────────────────────────────────────────────────
@@ -72,6 +74,8 @@ export interface SpriteSheet {
 }
 
 // ── Imagen (Background) ──────────────────────────────────────────────────
+export type AnimationLoop = 'loop' | 'once' | 'pingpong' | 'random';
+
 export interface BackgroundLayer {
   id: string;
   imagePath: string;
@@ -81,6 +85,11 @@ export interface BackgroundLayer {
   speed: number;
   visible: boolean;
   rescale?: boolean;
+  animated?: boolean;
+  animationSpeed?: number;
+  animationLoop?: AnimationLoop;
+  animationFramesX?: number;
+  animationFramesY?: number;
 }
 
 export interface Background {

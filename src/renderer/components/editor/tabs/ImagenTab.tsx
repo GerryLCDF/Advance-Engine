@@ -3,9 +3,12 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import type { AnimationLoop } from '../../../types/editor';
 
 const PREVIEW_W = 320;
 const PREVIEW_H = 200;
+const SCREEN_W = 240;
+const SCREEN_H = 160;
 
 function imgBasename(path: string): string {
   const parts = path.replace(/\\/g, '/').split('/');
@@ -39,6 +42,12 @@ export function ImagenTab() {
   const hasMoved = useRef(false);
   const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const directionRef = useRef(1);
+
+  const frameCols = imgSize && imgSize.w % SCREEN_W === 0 ? Math.round(imgSize.w / SCREEN_W) : 0;
+  const frameRows = imgSize && imgSize.h % SCREEN_H === 0 ? Math.round(imgSize.h / SCREEN_H) : 0;
+  const canAnimate = imgSize !== null && frameCols > 0 && frameRows > 0 && (frameCols > 1 || frameRows > 1);
 
   const allLayers = backgrounds.flatMap((bg) => bg.layers);
   const selectedLayer = allLayers.find((l) => l.id === selectedNodeId);
@@ -124,6 +133,36 @@ export function ImagenTab() {
     img.src = url;
     return () => { cancelled = true; img.src = ''; };
   }, [selectedNodeId, imageDataUrls, backgrounds]);
+
+  // Reset frame al cambiar de capa o imagen
+  useEffect(() => {
+    setCurrentFrame(0);
+    directionRef.current = 1;
+  }, [selectedNodeId, selectedLayer?.imagePath]);
+
+  // Timer de animación
+  useEffect(() => {
+    if (!selectedLayer?.animated || !selectedLayer.animationFramesX || !selectedLayer.animationFramesY) return;
+    const totalFrames = selectedLayer.animationFramesX * selectedLayer.animationFramesY;
+    const speed = selectedLayer.animationSpeed ?? 5;
+    const loop = selectedLayer.animationLoop || 'loop';
+    const ms = Math.max(50, Math.round(500 / speed));
+    const timer = setInterval(() => {
+      setCurrentFrame((prev) => {
+        if (loop === 'loop') return (prev + 1) % totalFrames;
+        if (loop === 'once') return prev < totalFrames - 1 ? prev + 1 : totalFrames - 1;
+        if (loop === 'pingpong') {
+          const next = prev + directionRef.current;
+          if (next >= totalFrames || next < 0) { directionRef.current *= -1; return prev + directionRef.current; }
+          return next;
+        }
+        let r: number;
+        do { r = Math.floor(Math.random() * totalFrames); } while (r === prev && totalFrames > 1);
+        return r;
+      });
+    }, ms);
+    return () => clearInterval(timer);
+  }, [selectedLayer?.animated, selectedLayer?.animationSpeed, selectedLayer?.animationLoop, selectedLayer?.animationFramesX, selectedLayer?.animationFramesY]);
 
   const handleMouseDownCanvas = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -219,8 +258,6 @@ export function ImagenTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLayer, parentBg, projectDir]);
 
-  const [animTab, setAnimTab] = useState<'view' | 'anim'>('view');
-
   // Flat hierarchy — layers only, no background nesting
   const hierarchySections: HierarchySection[] = [
     {
@@ -247,6 +284,12 @@ export function ImagenTab() {
     ];
     if (selectedLayer.imagePath) {
       fields.push({ label: 'Reescalar', type: 'toggle', value: !!selectedLayer.rescale, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { rescale: v as boolean }) });
+    }
+    if (canAnimate) {
+      fields.push({ label: 'Animación', type: 'toggle', value: !!selectedLayer.animated, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { animated: v as boolean, animationSpeed: v ? (selectedLayer.animationSpeed || 5) : undefined, animationFramesX: v ? frameCols : undefined, animationFramesY: v ? frameRows : undefined, animationLoop: v ? (selectedLayer.animationLoop || 'loop') : undefined }) });
+    }
+    if (selectedLayer.animated) {
+      fields.push({ label: 'Vel. animación', type: 'number', value: selectedLayer.animationSpeed ?? 5, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { animationSpeed: v as number }) });
     }
     if (imgSize && (imgSize.w < 240 || imgSize.h < 160)) {
       fields.push({ label: 'Fondo', type: 'color', value: selectedLayer.fillColor || '#000000', onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { fillColor: v as string }) });
@@ -281,8 +324,9 @@ export function ImagenTab() {
   // Dynamic preview size: when rescale=false and image known, match image dimensions
   const singleLayer = selectedLayer;
   const useActualSize = singleLayer && !singleLayer.rescale && imgSize && singleLayer.imagePath;
-  const previewW = useActualSize ? imgSize!.w : PREVIEW_W;
-  const previewH = useActualSize ? imgSize!.h : PREVIEW_H;
+  const isAnimated = singleLayer?.animated && singleLayer.animationFramesX && singleLayer.animationFramesY;
+  const previewW = isAnimated ? SCREEN_W : (useActualSize ? imgSize!.w : PREVIEW_W);
+  const previewH = isAnimated ? SCREEN_H : (useActualSize ? imgSize!.h : PREVIEW_H);
 
   return (
     <ResizableEditorLayout
@@ -348,16 +392,38 @@ export function ImagenTab() {
                       }}
                     >
                       {imageDataUrls[l.imagePath] ? (
-                        <img src={imageDataUrls[l.imagePath]} alt=""
-                          style={{
-                            maxWidth: useActualSize && l.id === singleLayer?.id ? 'none' : '100%',
-                            maxHeight: useActualSize && l.id === singleLayer?.id ? 'none' : '100%',
-                            width: useActualSize && l.id === singleLayer?.id ? imgSize!.w : undefined,
-                            height: useActualSize && l.id === singleLayer?.id ? imgSize!.h : undefined,
-                            objectFit: useActualSize && l.id === singleLayer?.id ? 'none' : 'contain',
-                            imageRendering: imageSmoothing ? 'auto' : 'pixelated',
-                          }}
-                        />
+                        l.animated && l.animationFramesX && l.animationFramesY ? (
+                          <div style={{
+                            width: SCREEN_W,
+                            height: SCREEN_H,
+                            overflow: 'hidden',
+                            position: 'relative',
+                            flexShrink: 0,
+                          }}>
+                            <img src={imageDataUrls[l.imagePath]} alt=""
+                              style={{
+                                position: 'absolute',
+                                left: -(currentFrame % l.animationFramesX) * SCREEN_W,
+                                top: -Math.floor(currentFrame / l.animationFramesX) * SCREEN_H,
+                                width: imgSize?.w ?? l.animationFramesX * SCREEN_W,
+                                height: imgSize?.h ?? l.animationFramesY * SCREEN_H,
+                                maxWidth: 'none',
+                                imageRendering: imageSmoothing ? 'auto' : 'pixelated',
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <img src={imageDataUrls[l.imagePath]} alt=""
+                            style={{
+                              maxWidth: useActualSize && l.id === singleLayer?.id ? 'none' : '100%',
+                              maxHeight: useActualSize && l.id === singleLayer?.id ? 'none' : '100%',
+                              width: useActualSize && l.id === singleLayer?.id ? imgSize!.w : undefined,
+                              height: useActualSize && l.id === singleLayer?.id ? imgSize!.h : undefined,
+                              objectFit: useActualSize && l.id === singleLayer?.id ? 'none' : 'contain',
+                              imageRendering: imageSmoothing ? 'auto' : 'pixelated',
+                            }}
+                          />
+                        )
                       ) : l.imagePath ? (
                         `📄 ${imgBasename(l.imagePath)}`
                       ) : `Capa ${i + 1}`}
@@ -403,53 +469,43 @@ export function ImagenTab() {
             </div>
           </div>
 
-          {/* Bottom: Animation tab */}
-          {previewLayers.length > 0 && (
+          {/* Bottom: Animation controls (only when selected layer has animation enabled) */}
+          {selectedLayer?.animated && parentBg && (
             <div style={{
-              height: 80,
+              height: 56,
               background: 'var(--bg-panel)',
               borderTop: '1px solid var(--border-color)',
-              display: 'flex', flexDirection: 'column',
+              display: 'flex', alignItems: 'center', gap: 20,
+              padding: '0 16px',
               flexShrink: 0,
             }}>
-              <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-color)' }}>
-                {(['view', 'anim'] as const).map((t) => (
+              <span style={{ color: 'var(--accent-lighter)', fontSize: 11, fontWeight: 600 }}>
+                Animación ({selectedLayer.animationFramesX ?? frameCols}x{selectedLayer.animationFramesY ?? frameRows} frames)
+              </span>
+              <label style={{ color: '#aaa', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+                Velocidad:
+                <input type="range" min={1} max={10}
+                  value={selectedLayer.animationSpeed ?? 5}
+                  onChange={(e) => updateLayer(parentBg.id, selectedLayer.id, { animationSpeed: Number(e.target.value) })}
+                  style={{ width: 80, accentColor: 'var(--accent)' }} />
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, minWidth: 14 }}>{selectedLayer.animationSpeed ?? 5}</span>
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {(['loop', 'once', 'pingpong', 'random'] as AnimationLoop[]).map((mode) => (
                   <button
-                    key={t}
-                    onClick={() => setAnimTab(t)}
+                    key={mode}
+                    onClick={() => updateLayer(parentBg.id, selectedLayer.id, { animationLoop: mode })}
                     style={{
-                      background: animTab === t ? 'var(--bg-canvas)' : 'transparent',
-                      border: 'none',
-                      color: animTab === t ? 'var(--accent-lighter)' : 'var(--text-muted)',
-                      fontSize: 11, fontWeight: animTab === t ? 600 : 400,
-                      padding: '4px 16px',
-                      cursor: 'pointer',
-                      borderBottom: animTab === t ? '2px solid var(--accent-light)' : '2px solid transparent',
+                      background: (selectedLayer.animationLoop || 'loop') === mode ? 'var(--accent)' : 'var(--bg-raised)',
+                      border: 'none', borderRadius: 4,
+                      color: (selectedLayer.animationLoop || 'loop') === mode ? '#fff' : 'var(--text-secondary)',
+                      fontSize: 10, padding: '3px 8px',
+                      cursor: 'pointer', fontWeight: (selectedLayer.animationLoop || 'loop') === mode ? 600 : 400,
                     }}
                   >
-                    {t === 'view' ? 'Vista previa' : 'Animación'}
+                    {mode === 'loop' ? 'Repetición' : mode === 'once' ? 'Una vez' : mode === 'pingpong' ? 'Ping-pong' : 'Aleatorio'}
                   </button>
                 ))}
-              </div>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 12px', gap: 12 }}>
-                {animTab === 'view' ? (
-                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                    {previewLayers.length} capa(s) · {previewLayers.filter((l) => l.visible).length} visible(s)
-                  </span>
-                ) : (
-                  <>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Animación de fondo:</span>
-                    <label style={{ color: '#aaa', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <input type="checkbox" style={{ accentColor: 'var(--accent)' }} />
-                      Activar animación
-                    </label>
-                    <label style={{ color: '#aaa', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      Velocidad:
-                      <input type="range" min={1} max={10} defaultValue={5}
-                        style={{ width: 80, accentColor: 'var(--accent)' }} />
-                    </label>
-                  </>
-                )}
               </div>
             </div>
           )}

@@ -53,6 +53,7 @@ const defaultBackground = (): Background => ({
 
 const defaultLayer = (): BackgroundLayer => ({
   id: uid(), imagePath: '', parallaxX: 1, parallaxY: 1, speed: 1, visible: true, rescale: false,
+  animated: false, animationSpeed: 5, animationLoop: 'loop',
 });
 
 const defaultEnvelope = (): ADSREnvelope => ({ attack: 0, decay: 0, sustain: 1, release: 0 });
@@ -329,6 +330,8 @@ interface AppState {
   setMundoGridSize: (val: number) => void;
   mundoGridOpacity: number;
   setMundoGridOpacity: (val: number) => void;
+  clickAnimation: boolean;
+  setClickAnimation: (val: boolean) => void;
 
   // ── Pipeline / Proyecto ─────────────────────────────────────────────────
   projectDir: string | null;
@@ -604,6 +607,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMundoGridSize: (val) => set({ mundoGridSize: val }),
   mundoGridOpacity: 0.15,
   setMundoGridOpacity: (val) => set({ mundoGridOpacity: val }),
+  clickAnimation: false,
+  setClickAnimation: (val) => set({ clickAnimation: val }),
 
   // ── Pipeline / Proyecto ─────────────────────────────────────────────────
   projectDir: null,

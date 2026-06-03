@@ -29,6 +29,7 @@ export interface AdvanceAPI {
   dialog: {
     openFolder: () => Promise<string | null>;
     openImage: () => Promise<{ path: string | null; error: string | null }>;
+    openVideo: () => Promise<{ path: string | null; size?: number }>;
   };
   // Shell
   shell: {
@@ -62,6 +63,8 @@ export interface AdvanceAPI {
     writeText: (filePath: string, content: string) => Promise<{ success: boolean; reason?: string }>;
     copy: (src: string, dest: string) => Promise<{ success: boolean; reason?: string }>;
     readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; width?: number; height?: number; reason?: string }>;
+    readVideo: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; size?: number; reason?: string }>;
+    extractVideoFrames: (videoPath: string, fps: number) => Promise<{ success: boolean; frames?: string[]; frameCount?: number; duration?: number; fps?: number; reason?: string }>;
     writeBinary: (filePath: string, base64: string) => Promise<{ success: boolean; reason?: string }>;
     readBinary: (filePath: string) => Promise<{ success: boolean; base64?: string; reason?: string }>;
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => Promise<{ success: boolean; width?: number; height?: number; reason?: string }>;
@@ -91,6 +94,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
   dialog: {
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
     openImage: () => ipcRenderer.invoke('dialog:openImage'),
+    openVideo: () => ipcRenderer.invoke('dialog:openVideo'),
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
@@ -119,6 +123,8 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     writeText: (filePath: string, content: string) => ipcRenderer.invoke('file:writeText', filePath, content),
     copy: (src: string, dest: string) => ipcRenderer.invoke('file:copy', src, dest),
     readImage: (filePath: string) => ipcRenderer.invoke('file:readImage', filePath),
+    readVideo: (filePath: string) => ipcRenderer.invoke('file:readVideo', filePath),
+    extractVideoFrames: (videoPath: string, fps: number) => ipcRenderer.invoke('file:extractVideoFrames', videoPath, fps),
     writeBinary: (filePath: string, base64: string) => ipcRenderer.invoke('file:writeBinary', filePath, base64),
     readBinary: (filePath: string) => ipcRenderer.invoke('file:readBinary', filePath),
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => ipcRenderer.invoke('file:convertImageToGbaBitmap', imagePath, outputPath),

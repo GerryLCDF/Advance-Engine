@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, protocol, net, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import * as os from 'os';
+import { exec, execFileSync } from 'child_process';
 import { pathToFileURL } from 'url';
 import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning } from './emuWindow';
 
@@ -251,6 +252,24 @@ ipcMain.handle('file:readImage', async (_e, filePath: string) => {
   }
 });
 
+ipcMain.handle('file:readVideo', async (_e, filePath: string) => {
+  try {
+    const normalized = path.resolve(filePath);
+    if (!fs.existsSync(normalized)) return { success: false, reason: 'Archivo no encontrado' };
+    const stat = fs.statSync(normalized);
+    // Read file and return as data URL
+    const ext = path.extname(normalized).toLowerCase();
+    const mimeMap: Record<string, string> = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.avi': 'video/x-msvideo', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska' };
+    const mime = mimeMap[ext] || 'video/mp4';
+    const buf = fs.readFileSync(normalized);
+    const base64 = buf.toString('base64');
+    const dataUrl = `data:${mime};base64,${base64}`;
+    return { success: true, dataUrl, size: stat.size };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
 ipcMain.handle('file:writeBinary', async (_e, filePath: string, base64: string) => {
   try {
     ensureDir(path.dirname(filePath));
@@ -334,6 +353,70 @@ ipcMain.handle('file:convertImageToGbaBase64', async (_e, imagePath: string) => 
   }
 });
 
+ipcMain.handle('file:extractVideoFrames', async (_e, videoPath: string, fps: number) => {
+  try {
+    const normalized = path.resolve(videoPath);
+    if (!fs.existsSync(normalized)) return { success: false, reason: 'Video no encontrado' };
+
+    // Get video duration via ffprobe
+    let duration: number;
+    try {
+      const probeOut = execFileSync('ffprobe', [
+        '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', normalized,
+      ], { encoding: 'utf8', timeout: 15000 });
+      duration = parseFloat(probeOut.trim());
+      if (!isFinite(duration) || duration <= 0) duration = 3;
+    } catch {
+      duration = 3; // fallback
+    }
+
+    const effectiveFps = Math.min(Math.max(1, fps || 15), 30);
+    const frameCount = Math.max(1, Math.ceil(duration * effectiveFps));
+
+    // Temp directory for frames
+    const tmpDir = path.join(os.tmpdir(), `advance_splash_${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    try {
+      // Extract frames as PNG using ffmpeg
+      execFileSync('ffmpeg', [
+        '-i', normalized,
+        '-vf', `fps=${effectiveFps},scale=240:160:flags=bilinear`,
+        '-pix_fmt', 'rgb24',
+        '-y',
+        path.join(tmpDir, 'frame_%04d.png'),
+      ], { timeout: 120000 });
+
+      // Read and convert each frame
+      const frames: string[] = [];
+      for (let i = 1; i <= frameCount; i++) {
+        const framePath = path.join(tmpDir, `frame_${String(i).padStart(4, '0')}.png`);
+        if (!fs.existsSync(framePath)) continue;
+        const result = convertToGbaBitmapBuffer(framePath);
+        if (result) frames.push(result.buffer.toString('base64'));
+      }
+
+      return {
+        success: true,
+        frames,
+        frameCount: frames.length,
+        duration,
+        fps: effectiveFps,
+      };
+    } finally {
+      // Cleanup temp directory
+      try {
+        const entries = fs.readdirSync(tmpDir);
+        for (const e of entries) fs.unlinkSync(path.join(tmpDir, e));
+        fs.rmdirSync(tmpDir);
+      } catch { /* ignore cleanup errors */ }
+    }
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
 ipcMain.handle('dir:create', async (_e, dirPath: string) => {
   try {
     ensureDir(dirPath);
@@ -410,6 +493,18 @@ ipcMain.handle('projects:setLastOpened', (_e, id: string) => {
 });
 
 // ── IPC: Diálogos ───────────────────────────────────────────────────────────
+
+ipcMain.handle('dialog:openVideo', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Seleccionar video para SplashScreen',
+    filters: [{ name: 'Videos', extensions: ['mp4', 'webm', 'avi', 'mov', 'mkv'] }],
+    properties: ['openFile'],
+  });
+  if (canceled || filePaths.length === 0) return { path: null };
+  const filePath = filePaths[0];
+  const stat = fs.statSync(filePath);
+  return { path: filePath, size: stat.size };
+});
 
 ipcMain.handle('dialog:openFolder', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({

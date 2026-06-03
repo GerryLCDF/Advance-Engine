@@ -77,6 +77,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setMundoShowGrid = useAppStore((s) => s.setMundoShowGrid);
   const setMundoGridSize = useAppStore((s) => s.setMundoGridSize);
   const setMundoGridOpacity = useAppStore((s) => s.setMundoGridOpacity);
+  const clickAnimation = useAppStore((s) => s.clickAnimation);
+  const setClickAnimation = useAppStore((s) => s.setClickAnimation);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab === 'general' ? 'general' : (initialTab as SettingsTab) || 'general');
   const [activeSection, setActiveSection] = useState<GeneralSection>('theme');
@@ -92,12 +94,15 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const [localMundoShowGrid, setLocalMundoShowGrid] = useState(false);
   const [localMundoGridSize, setLocalMundoGridSize] = useState(16);
   const [localMundoGridOpacity, setLocalMundoGridOpacity] = useState(0.15);
+  const [localClickAnimation, setLocalClickAnimation] = useState(false);
 
   // Initialize local Mundo grid settings from store
   useEffect(() => {
-    setLocalMundoShowGrid(useAppStore.getState().mundoShowGrid);
-    setLocalMundoGridSize(useAppStore.getState().mundoGridSize);
-    setLocalMundoGridOpacity(useAppStore.getState().mundoGridOpacity);
+    const state = useAppStore.getState();
+    setLocalMundoShowGrid(state.mundoShowGrid);
+    setLocalMundoGridSize(state.mundoGridSize);
+    setLocalMundoGridOpacity(state.mundoGridOpacity);
+    setLocalClickAnimation(state.clickAnimation);
   }, []);
 
   const snapshot = useRef({ bg: storeBg, accent: storeAccent, fontSize: storeFontSize });
@@ -178,6 +183,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setMundoShowGrid(localMundoShowGrid);
     setMundoGridSize(localMundoGridSize);
     setMundoGridOpacity(localMundoGridOpacity);
+    setClickAnimation(localClickAnimation);
     onClose();
   }
 
@@ -610,6 +616,39 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                 </button>
               </div>
             </div>
+          ) : activeTab === 'mundo' ? (
+            <div style={{ flex: 1, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 700 }}>Mundo</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Animación de clic</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
+                  <button
+                    onClick={() => setLocalClickAnimation(!localClickAnimation)}
+                    style={{
+                      width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
+                      background: localClickAnimation ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                    }}
+                  >
+                    <div style={{
+                      position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
+                      background: '#fff', transition: 'left 0.15s',
+                      left: localClickAnimation ? 24 : 2,
+                    }} />
+                  </button>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localClickAnimation ? 'Sí' : 'No'}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 'auto' }}>
+                <button onClick={cancel}
+                  style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button onClick={applyMundo}
+                  style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                  Aplicar
+                </button>
+              </div>
+            </div>
           ) : (
             <div style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -617,9 +656,9 @@ export function SettingsModal({ onClose, initialTab }: Props) {
               flexDirection: 'column', gap: 8,
             }}>
               <span style={{ fontSize: 32, opacity: 0.3 }}>
-                {{ mundo: '🌍', scripting: '💻', sprite: '🎨', imagen: '🖼', music: '🎵', sound: '🔊', dialogo: '💬' }[activeTab]}</span>
+                {{ scripting: '💻', sprite: '🎨', imagen: '🖼', music: '🎵', sound: '🔊', dialogo: '💬' }[activeTab]}</span>
               <span>
-                {{ mundo: 'test Mundo', scripting: 'test Scripting', sprite: 'test Sprite', imagen: 'test Imagen', music: 'test Music', sound: 'test Sound', dialogo: 'test Dialogo' }[activeTab]}</span>
+                {{ scripting: 'test Scripting', sprite: 'test Sprite', imagen: 'test Imagen', music: 'test Music', sound: 'test Sound', dialogo: 'test Dialogo' }[activeTab]}</span>
             </div>
           )}
         </div>

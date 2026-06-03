@@ -5,6 +5,9 @@ import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, SplashScreen } from '../../../types/editor';
 
+const SCREEN_W = 240;
+const SCREEN_H = 160;
+
 const GBA_W = 240;
 const GBA_H = 160;
 
@@ -37,9 +40,10 @@ export function MundoTab() {
   const splashScreen = useAppStore((s) => s.splashScreen);
   const updateSplashScreen = useAppStore((s) => s.updateSplashScreen);
 
-  const [tool, setTool] = useState<'select' | 'add' | 'connect' | 'remove' | 'collision' | 'move'>('select');
+  const [tool, setTool] = useState<'select' | 'add' | 'connect' | 'remove' | 'collision' | 'move'>('move');
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [splashImgSize, setSplashImgSize] = useState<{w: number, h: number} | null>(null);
+  const [sceneAnimPaused, setSceneAnimPaused] = useState<Record<string, boolean>>({});
 
   // ── Context menu ──
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sceneId: string } | null>(null);
@@ -330,10 +334,30 @@ export function MundoTab() {
   if (selectedScene) {
     inspectorSections.push({
       title: 'Escena',
-      fields: [
-        { label: 'Nombre', type: 'text', value: selectedScene.name, onChange: (v) => updateScene(selectedScene.id, { name: v as string }) },
-      ],
+      fields: selectedScene.backgroundImage
+        ? [
+            { label: 'Nombre', type: 'text', value: selectedScene.name, onChange: (v) => updateScene(selectedScene.id, { name: v as string }) },
+          ]
+        : [
+            { label: 'Nombre', type: 'text', value: selectedScene.name, onChange: (v) => updateScene(selectedScene.id, { name: v as string }) },
+            { label: 'Ancho (px)', type: 'number', value: selectedScene.width, min: 240, step: 1, onChange: (v) => updateScene(selectedScene.id, { width: v as number, height: Math.round((v as number) * 2 / 3) }) },
+            { label: 'Alto (px)', type: 'number', value: selectedScene.height, min: 160, step: 1, onChange: (v) => updateScene(selectedScene.id, { height: v as number, width: Math.round((v as number) * 3 / 2) }) },
+          ],
     });
+    // Show read-only dimensions when background image is set
+    if (selectedScene.backgroundImage) {
+      inspectorSections.push({
+        title: 'Dimensiones',
+        content: (
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '2px 0' }}>
+            {selectedScene.width} × {selectedScene.height} px
+            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
+              Definido automáticamente por la imagen de fondo
+            </div>
+          </div>
+        ),
+      });
+    }
     // Imagen de fondo
     const sceneBgImg = imageOptions.find((img) => img.value === selectedScene.backgroundImage);
     inspectorSections.push({
@@ -387,7 +411,19 @@ export function MundoTab() {
                   {filteredImages.map((img) => (
                     <div
                       key={img.value}
-                      onClick={() => { updateScene(selectedScene.id, { backgroundImage: img.value }); setImgDropdownOpen(false); setImgSearch(''); }}
+                      onClick={async () => {
+                        const api = window.advanceAPI;
+                        if (!api) return;
+                        const result = await api.file.readImage(img.value);
+                        const patch: Partial<Scene> = { backgroundImage: img.value };
+                        if (result.success && result.width && result.height) {
+                          patch.width = result.width;
+                          patch.height = result.height;
+                        }
+                        updateScene(selectedScene.id, patch);
+                        setImgDropdownOpen(false);
+                        setImgSearch('');
+                      }}
                       style={{
                         padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
                         background: selectedScene.backgroundImage === img.value ? 'var(--accent)' : 'transparent',
@@ -404,6 +440,35 @@ export function MundoTab() {
         </div>
       ),
     });
+    // Animación de fondo
+    const sceneBgLayer = imageOptions.find((img) => img.value === selectedScene.backgroundImage);
+    const sceneBgMatching = sceneBgLayer ? backgrounds.flatMap((bg) => bg.layers).find((l) => l.imagePath === selectedScene.backgroundImage) : null;
+    if (sceneBgMatching?.animated && sceneBgMatching.animationFramesX && sceneBgMatching.animationFramesY) {
+      inspectorSections.push({
+        title: 'Animación de fondo',
+        content: (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                {sceneBgMatching.animationFramesX}x{sceneBgMatching.animationFramesY} frames
+              </span>
+              <button
+                onClick={() => setSceneAnimPaused((prev) => ({ ...prev, [selectedScene.id]: !prev[selectedScene.id] }))}
+                style={{
+                  background: sceneAnimPaused[selectedScene.id] ? 'var(--bg-raised)' : 'var(--accent)',
+                  border: 'none', borderRadius: 4, padding: '4px 10px',
+                  color: sceneAnimPaused[selectedScene.id] ? 'var(--text-secondary)' : '#fff',
+                  fontSize: 10, cursor: 'pointer',
+                }}
+              >
+                {sceneAnimPaused[selectedScene.id] ? '▶ Reproducir' : '⏸ Pausar'}
+              </button>
+            </div>
+          </div>
+        ),
+      });
+    }
+
     // Canción de fondo
     const selectedBgSong = songs.find((so) => so.id === selectedScene.backgroundSong);
     inspectorSections.push({
@@ -475,6 +540,15 @@ export function MundoTab() {
   }
 
   // ── SplashScreen inspector ─────────────────────────────────────────────
+  const [videoFileName, setVideoFileName] = useState('');
+  useEffect(() => {
+    if (selectedSplash?.videoPath) {
+      setVideoFileName(selectedSplash.videoPath.split(/[\\/]/).pop() ?? '');
+    } else {
+      setVideoFileName('');
+    }
+  }, [selectedSplash?.videoPath]);
+
   if (selectedSplash) {
     inspectorSections.push({
       title: 'SplashScreen',
@@ -483,6 +557,11 @@ export function MundoTab() {
           label: 'Duración (s)', type: 'number', value: selectedSplash.duration,
           min: 1, max: 5, step: 1,
           onChange: (v) => updateSplashScreen({ duration: v as number }),
+        },
+        {
+          label: 'FPS video', type: 'number', value: selectedSplash.videoFps ?? 15,
+          min: 1, max: 30, step: 1,
+          onChange: (v) => updateSplashScreen({ videoFps: v as number }),
         },
       ],
     });
@@ -628,6 +707,47 @@ export function MundoTab() {
             }}>
               <span style={{ fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚠</span>
               <span>La imagen de fondo del SplashScreen se ajusta automaticamente al tamano de la imagen.</span>
+            </div>
+          )}
+        </div>
+      ),
+    });
+    inspectorSections.push({
+      title: 'Video',
+      content: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={async () => {
+                const api = window.advanceAPI;
+                if (!api) return;
+                const result = await api.dialog.openVideo();
+                if (result.path) {
+                  updateSplashScreen({ videoPath: result.path });
+                }
+              }}
+              style={{
+                padding: '4px 8px', fontSize: 10, cursor: 'pointer',
+                background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4,
+              }}
+            >
+              Seleccionar video
+            </button>
+            {selectedSplash.videoPath && (
+              <button
+                onClick={() => updateSplashScreen({ videoPath: '' })}
+                style={{
+                  padding: '4px 8px', fontSize: 10, cursor: 'pointer',
+                  background: '#8b0000', color: '#fff', border: 'none', borderRadius: 4,
+                }}
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+          {videoFileName && (
+            <div style={{ fontSize: 10, color: '#aaa' }}>
+              {videoFileName}
             </div>
           )}
         </div>
@@ -850,6 +970,7 @@ export function MundoTab() {
                       dragZoom={zoom}
                       showGrid={showGrid}
                       gridSize={gridSize}
+                      animPaused={!!sceneAnimPaused[sc.id]}
                     />
                 );
               })}
@@ -989,7 +1110,7 @@ function ToolBtn({ children, active, onClick, title, style }: { children: React.
   );
 }
 
-function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onContextMenu, updateScene, dragZoom, showGrid, gridSize }: {
+function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onContextMenu, updateScene, dragZoom, showGrid, gridSize, animPaused }: {
   scene: Scene; selected: boolean; isConnecting: boolean;
   tool: string; connectFrom: string | null;
   onSelect: (id: string) => void;
@@ -998,14 +1119,17 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   dragZoom: number;
   showGrid: boolean;
   gridSize: number;
+  animPaused: boolean;
 }) {
   const imageSmoothing = useAppStore((s) => s.imageSmoothing);
   const backgrounds = useAppStore((s) => s.backgrounds);
   const songs = useAppStore((s) => s.songs);
+  const clickAnimation = useAppStore((s) => s.clickAnimation);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef({ startX: 0, startY: 0, origX: 0, origY: 0 });
   const [bgImageUrl, setBgImageUrl] = useState('');
-  const [bgImageSize, setBgImageSize] = useState<{w: number, h: number} | null>(null);
+  const [animFrame, setAnimFrame] = useState(0);
+  const animDirRef = useRef(1);
 
   useEffect(() => {
     if (!scene.backgroundImage) { setBgImageUrl(''); return; }
@@ -1026,16 +1150,36 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     return backgrounds.flatMap((bg) => bg.layers).find((l) => l.imagePath === scene.backgroundImage);
   }, [backgrounds, scene.backgroundImage]);
 
-  // Detect image dimensions for mini-map aspect ratio
+  const isAnimated = matchingLayer?.animated && !!matchingLayer.animationFramesX && !!matchingLayer.animationFramesY;
+  const totalFrames = isAnimated ? (matchingLayer!.animationFramesX! * matchingLayer!.animationFramesY!) : 0;
+  // rescale=false → aggressive GBA fill (fill); rescale=true → keep image's natural scale (contain)
+  const imageFit: React.CSSProperties['objectFit'] = matchingLayer ? (matchingLayer.rescale ? 'contain' : 'fill') : 'cover';
+
+  // Reset frame on layer/image change
+  useEffect(() => { setAnimFrame(0); animDirRef.current = 1; }, [scene.backgroundImage, isAnimated]);
+
+  // Animation timer for SceneCard preview
   useEffect(() => {
-    if (!bgImageUrl) { setBgImageSize(null); return; }
-    const img = new Image();
-    let cancelled = false;
-    img.onload = () => { if (!cancelled) setBgImageSize({ w: img.naturalWidth, h: img.naturalHeight }); };
-    img.onerror = () => { if (!cancelled) setBgImageSize(null); };
-    img.src = bgImageUrl;
-    return () => { cancelled = true; img.src = ''; };
-  }, [bgImageUrl]);
+    if (!isAnimated || animPaused) { setAnimFrame(0); animDirRef.current = 1; return; }
+    const fps = matchingLayer!.animationSpeed ?? 5;
+    const loop = matchingLayer!.animationLoop || 'loop';
+    const ms = Math.max(50, Math.round(500 / fps));
+    const timer = setInterval(() => {
+      setAnimFrame((prev) => {
+        if (loop === 'loop') return (prev + 1) % totalFrames;
+        if (loop === 'once') return prev < totalFrames - 1 ? prev + 1 : totalFrames - 1;
+        if (loop === 'pingpong') {
+          const next = prev + animDirRef.current;
+          if (next >= totalFrames || next < 0) { animDirRef.current *= -1; return prev + animDirRef.current; }
+          return next;
+        }
+        let r: number;
+        do { r = Math.floor(Math.random() * totalFrames); } while (r === prev && totalFrames > 1);
+        return r;
+      });
+    }, ms);
+    return () => clearInterval(timer);
+  }, [isAnimated, animPaused, matchingLayer?.animationSpeed, matchingLayer?.animationLoop, totalFrames]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -1081,24 +1225,25 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         transform: `translate(${scene.x}px, ${scene.y}px)`,
         willChange: dragging ? 'transform' : 'auto',
         width: 400,
-        background: selected ? 'var(--bg-panel)' : 'transparent',
+        background: clickAnimation && selected ? 'var(--bg-panel)' : 'transparent',
         border: selected ? `2px solid var(--accent-light)` : '2px solid transparent',
-        borderRadius: selected ? 0 : 8,
-        padding: selected ? 10 : 0,
+        borderRadius: clickAnimation && selected ? 0 : 8,
+        overflow: 'hidden',
+        padding: clickAnimation && selected ? 10 : 0,
         cursor: tool === 'connect' ? 'crosshair' : dragging ? 'grabbing' : 'grab',
         zIndex: dragging ? 10 : 1,
         userSelect: 'none',
-        transition: 'border-color 0.15s, background 0.15s, border-radius 0.15s, padding 0.15s',
-        opacity: selected ? 1 : 0.85,
+        transition: clickAnimation ? 'border-color 0.15s, background 0.15s, border-radius 0.15s, padding 0.15s' : 'none',
+        opacity: clickAnimation && selected ? 1 : 0.85,
       }}
       onMouseDown={handleMouseDown}
       onClick={() => onSelect(scene.id)}
       onContextMenu={(e) => onContextMenu?.(e, scene.id)}
       onMouseEnter={(e) => {
-        if (!selected) e.currentTarget.style.background = 'var(--bg-raised)';
+        if (clickAnimation && !selected) e.currentTarget.style.background = 'var(--bg-raised)';
       }}
       onMouseLeave={(e) => {
-        if (!selected) e.currentTarget.style.background = 'transparent';
+        if (clickAnimation && !selected) e.currentTarget.style.background = 'transparent';
       }}
     >
       <div style={{
@@ -1114,23 +1259,39 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
       </div>
       {/* Mini-map */}
       <div style={{
-        width: selected ? '100%' : '360px',
-        paddingBottom: (bgImageSize && (!matchingLayer || !matchingLayer.rescale)) ? `${(bgImageSize.h / bgImageSize.w) * 100}%` : '66.67%',
+        width: clickAnimation && selected ? '100%' : '360px',
+        paddingBottom: `${(scene.height / scene.width) * 100}%`,
         position: 'relative',
-        borderRadius: selected ? 0 : 4,
+        borderRadius: clickAnimation && selected ? 0 : 4,
         overflow: 'hidden',
         margin: '0 auto',
       }}>
         <div style={{
           position: 'absolute', inset: 0,
-          background: scene.backgroundColor,
+          background: bgImageUrl ? 'transparent' : scene.backgroundColor,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 9, color: '#ffffff88',
         }}>
           {bgImageUrl && (
-            <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
-            />
+            isAnimated ? (
+              <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+                <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
+                  style={{
+                    position: 'absolute',
+                    left: `${-(animFrame % matchingLayer!.animationFramesX!) * 100}%`,
+                    top: `${-Math.floor(animFrame / matchingLayer!.animationFramesX!) * 100}%`,
+                    width: `${matchingLayer!.animationFramesX! * 100}%`,
+                    height: `${matchingLayer!.animationFramesY! * 100}%`,
+                    maxWidth: 'none',
+                    imageRendering: imageSmoothing ? 'auto' : 'pixelated',
+                  }}
+                />
+              </div>
+            ) : (
+              <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: imageFit, imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
+              />
+            )
           )}
           {showGrid && (
             <svg style={{
@@ -1176,6 +1337,8 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef({ startX: 0, startY: 0, origX: 0, origY: 0 });
   const [bgImageUrl, setBgImageUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     if (!splash.backgroundImage) { setBgImageUrl(''); return; }
@@ -1190,6 +1353,20 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }
     })();
     return () => { cancelled = true; };
   }, [splash.backgroundImage]);
+
+  useEffect(() => {
+    if (!splash.videoPath) { setVideoUrl(''); return; }
+    let cancelled = false;
+    (async () => {
+      const api = window.advanceAPI;
+      if (!api) return;
+      const result = await api.file.readVideo(splash.videoPath!);
+      if (!cancelled && result.success && result.dataUrl) {
+        setVideoUrl(result.dataUrl);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [splash.videoPath]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -1249,13 +1426,18 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 9, color: '#ffffff88',
         }}>
-          {bgImageUrl && (
+          {videoUrl && (
+            <video ref={videoRef} src={videoUrl} autoPlay loop muted playsInline
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          )}
+          {bgImageUrl && !videoUrl && (
             <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
             />
           )}
           <span style={{ position: 'relative', zIndex: 1, background: '#00000066', padding: '2px 6px', borderRadius: 4 }}>
-            Splash — {splash.duration}s
+            Splash — {splash.duration}s{videoUrl ? ' 🎬' : ''}
           </span>
           <div style={{
             position: 'absolute', inset: 0,

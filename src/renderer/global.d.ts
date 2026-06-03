@@ -16,6 +16,7 @@ interface AdvanceAPI {
   dialog: {
     openFolder: () => Promise<string | null>;
     openImage: () => Promise<{ path: string | null; error: string | null }>;
+    openVideo: () => Promise<{ path: string | null; size?: number }>;
   };
   shell: {
     openExternal: (url: string) => void;
@@ -44,6 +45,8 @@ interface AdvanceAPI {
     writeText: (filePath: string, content: string) => Promise<{ success: boolean; reason?: string }>;
     copy: (src: string, dest: string) => Promise<{ success: boolean; reason?: string }>;
     readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; width?: number; height?: number; reason?: string }>;
+    readVideo: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; size?: number; reason?: string }>;
+    extractVideoFrames: (videoPath: string, fps: number) => Promise<{ success: boolean; frames?: string[]; frameCount?: number; duration?: number; fps?: number; reason?: string }>;
     writeBinary: (filePath: string, base64: string) => Promise<{ success: boolean; reason?: string }>;
     readBinary: (filePath: string) => Promise<{ success: boolean; base64?: string; reason?: string }>;
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => Promise<{ success: boolean; width?: number; height?: number; reason?: string }>;
