@@ -37,6 +37,9 @@ export function SpriteTab() {
   const [onionSkin, setOnionSkin] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
 
+  // ── Skip frames modal ──────────────────────────────────────────────────
+  const [showSkipModal, setShowSkipModal] = useState(false);
+
   // ── Context menu ───────────────────────────────────────────────────────
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
@@ -237,8 +240,14 @@ export function SpriteTab() {
       return () => window.clearTimeout(id);
     }
     if (!previewAnim && selectedSprite && totalSpriteFrames > 0) {
+      const skipped = selectedSprite.skippedFrames ?? [];
+      const nonSkipped = Array.from({ length: totalSpriteFrames }, (_, i) => i).filter((i) => !skipped.includes(i));
+      if (nonSkipped.length === 0) return;
       const id = window.setTimeout(() => {
-        setCurrentSpriteFrame((prev) => (prev + 1) % totalSpriteFrames);
+        setCurrentSpriteFrame((prev) => {
+          const curIdx = nonSkipped.indexOf(prev);
+          return nonSkipped[(curIdx + 1) % nonSkipped.length];
+        });
       }, 100);
       return () => window.clearTimeout(id);
     }
@@ -352,7 +361,15 @@ export function SpriteTab() {
         { label: 'H frames', type: 'number', value: sp.cols, min: 1, onChange: (v) => { updateSpriteSheet(sp.id, { cols: v as number }); setCurrentSpriteFrame(0); } },
         { label: 'V frames', type: 'number', value: sp.rows, min: 1, onChange: (v) => { updateSpriteSheet(sp.id, { rows: v as number }); setCurrentSpriteFrame(0); } },
         { label: 'Tile size', type: 'text', value: spriteImgSize ? `${Math.round(spriteImgSize.w / sp.cols)}×${Math.round(spriteImgSize.h / sp.rows)}` : `${sp.tileWidth}×${sp.tileHeight}`, onChange: () => {} },
-        { label: 'Frame', type: 'number', value: currentSpriteFrame, min: 0, max: Math.max(0, totalSpriteFrames - 1), onChange: (v) => setCurrentSpriteFrame(v as number) },
+        { label: 'Frame', type: 'number', value: currentSpriteFrame, min: 0, max: Math.max(0, totalSpriteFrames - 1), onChange: (v) => {
+          const val = v as number;
+          if ((sp.skippedFrames ?? []).includes(val)) {
+            const candidates = Array.from({ length: totalSpriteFrames }, (_, i) => i).filter((i) => !(sp.skippedFrames ?? []).includes(i));
+            if (candidates.length > 0) setCurrentSpriteFrame(candidates.reduce((a, b) => Math.abs(b - val) < Math.abs(a - val) ? b : a));
+          } else {
+            setCurrentSpriteFrame(val);
+          }
+        } },
       ],
     });
     inspectorSections.push({
@@ -461,6 +478,48 @@ export function SpriteTab() {
     return () => document.removeEventListener('click', close);
   }, [ctxMenu]);
 
+  // ── Auto-detect empty frames from tileset image ──────────────────────
+  const autoDetectEmpty = useCallback(async () => {
+    if (!selectedSprite || !tilesetUrl) return;
+    const img = new Image();
+    img.src = tilesetUrl;
+    await img.decode();
+    const tw = selectedSprite.tileWidth;
+    const th = selectedSprite.tileHeight;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    const empty: number[] = [];
+    for (let row = 0; row < selectedSprite.rows; row++) {
+      for (let col = 0; col < selectedSprite.cols; col++) {
+        const x = col * tw;
+        const y = row * th;
+        const data = ctx.getImageData(x, y, tw, th).data;
+        let hasPixel = false;
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] > 0) { hasPixel = true; break; }
+        }
+        if (!hasPixel) empty.push(row * selectedSprite.cols + col);
+      }
+    }
+    updateSpriteSheet(selectedSprite.id, { skippedFrames: empty });
+  }, [selectedSprite, tilesetUrl]);
+
+  const toggleSkipped = useCallback((tileIdx: number) => {
+    if (!selectedSprite) return;
+    const current = selectedSprite.skippedFrames || [];
+    const next = current.includes(tileIdx)
+      ? current.filter((f) => f !== tileIdx)
+      : [...current, tileIdx];
+    updateSpriteSheet(selectedSprite.id, { skippedFrames: next });
+    if (previewAnim && previewAnim.frames[currentFrameIdx]?.tileIndex === tileIdx) {
+      setIsPlaying(false);
+    }
+  }, [selectedSprite, previewAnim, currentFrameIdx]);
+
   const anim = previewAnim;
 
   return (
@@ -554,7 +613,7 @@ export function SpriteTab() {
             {/* Zoom controls */}
             <div style={{
               position: 'absolute', top: 8, right: 8,
-              display: 'flex', alignItems: 'center', gap: 2,
+              display: 'flex', alignItems: 'center', gap: 4,
               background: 'var(--bg-panel)', borderRadius: 6,
               padding: '3px 6px', border: '1px solid var(--bg-raised)',
               zIndex: 10,
@@ -562,6 +621,12 @@ export function SpriteTab() {
               <button onClick={() => setSpriteZoom(Math.max(25, spriteZoom - 10))} style={zoomBtnStyle}>−</button>
               <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 32, textAlign: 'center' }}>{spriteZoom}%</span>
               <button onClick={() => setSpriteZoom(Math.min(400, spriteZoom + 10))} style={zoomBtnStyle}>+</button>
+              {selectedSprite && (
+                <>
+                  <div style={{ width: 1, height: 16, background: 'var(--bg-raised)' }} />
+                  <button onClick={() => setShowSkipModal(true)} style={{ ...zoomBtnStyle, background: 'var(--accent)', color: '#fff' }} title="Saltar frames vacíos">Skip</button>
+                </>
+              )}
             </div>
 
             <div style={{
@@ -591,25 +656,28 @@ export function SpriteTab() {
                 Frames ({totalSpriteFrames}):
               </span>
               <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                {Array.from({ length: totalSpriteFrames }, (_, i) => i).map((frameIdx) => (
+                {Array.from({ length: totalSpriteFrames }, (_, i) => i).map((frameIdx) => {
+                  const isSkipped = selectedSprite?.skippedFrames?.includes(frameIdx) ?? false;
+                  return (
                   <div
                     key={frameIdx}
-                    onClick={() => { setIsPlaying(false); setCurrentSpriteFrame(frameIdx); }}
+                    onClick={() => { if (!isSkipped) { setIsPlaying(false); setCurrentSpriteFrame(frameIdx); } }}
                     style={{
                       width: 32, height: 32,
-                      background: currentSpriteFrame === frameIdx ? 'var(--accent)' : 'var(--bg-dark)',
-                      border: `1px solid ${currentSpriteFrame === frameIdx ? 'var(--accent-light)' : 'var(--bg-raised)'}`,
+                      background: currentSpriteFrame === frameIdx ? 'var(--accent)' : (isSkipped ? '#440000' : 'var(--bg-dark)'),
+                      border: `1px solid ${isSkipped ? '#8b0000' : (currentSpriteFrame === frameIdx ? 'var(--accent-light)' : 'var(--bg-raised)')}`,
                       borderRadius: 3,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: currentSpriteFrame === frameIdx ? '#fff' : 'var(--text-muted)',
+                      color: currentSpriteFrame === frameIdx ? '#fff' : (isSkipped ? '#884444' : 'var(--text-muted)'),
                       fontSize: 9, fontWeight: currentSpriteFrame === frameIdx ? 700 : 400,
-                      cursor: 'pointer', flexShrink: 0,
+                      cursor: isSkipped ? 'not-allowed' : 'pointer', flexShrink: 0,
                     }}
-                    title={`Frame ${frameIdx}`}
+                    title={`Frame ${frameIdx}${isSkipped ? ' (omitido)' : ''}`}
                   >
                     {frameIdx}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -670,8 +738,9 @@ export function SpriteTab() {
                       alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0, fontSize: 9, color: i === currentFrameIdx ? 'var(--accent-lighter)' : 'var(--text-muted)',
                       position: 'relative',
+                      opacity: parentSprite && (parentSprite.skippedFrames ?? []).includes(f.tileIndex) ? 0.35 : 1,
                     }}
-                    title={`Frame ${i + 1}`}
+                    title={`Frame ${i + 1}${parentSprite && (parentSprite.skippedFrames ?? []).includes(f.tileIndex) ? ' (omitido)' : ''}`}
                   >
                     <span>{f.tileIndex}</span>
                     <span style={{ fontSize: 8, color: i === currentFrameIdx ? 'var(--accent-light)' : '#666' }}>{f.duration}ms</span>
@@ -734,6 +803,107 @@ export function SpriteTab() {
           </div>
           <div onClick={() => doDelete(ctxMenu.id)} style={{ ...ctxItemStyle, color: '#f87171' }}>
             <TrashIcon size={13} /> Eliminar
+          </div>
+        </div>
+      )}
+
+      {/* Skip frames modal */}
+      {showSkipModal && selectedSprite && (
+        <div
+          onClick={() => setShowSkipModal(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99998,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 8,
+              padding: 16,
+              maxWidth: '90vw', maxHeight: '90vh',
+              overflow: 'auto',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 12,
+            }}>
+              <span style={{ color: '#f0c040', fontSize: 14, fontWeight: 700 }}>
+                Saltar frames vacíos
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={autoDetectEmpty}
+                  style={{
+                    padding: '4px 10px', fontSize: 10, cursor: 'pointer',
+                    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4,
+                  }}
+                >
+                  Auto
+                </button>
+                <button
+                  onClick={() => setShowSkipModal(false)}
+                  style={{
+                    padding: '4px 8px', fontSize: 10, cursor: 'pointer',
+                    background: 'var(--bg-raised)', color: 'var(--text-secondary)', border: 'none', borderRadius: 4,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${selectedSprite.cols}, ${Math.max(40, Math.min(80, 480 / selectedSprite.cols))}px)`,
+              gap: 2,
+            }}>
+              {Array.from({ length: totalSpriteFrames }, (_, i) => i).map((tileIdx) => {
+                const isSkipped = (selectedSprite.skippedFrames ?? []).includes(tileIdx);
+                const tx = tileIdx % selectedSprite.cols;
+                const ty = Math.floor(tileIdx / selectedSprite.cols);
+                const cellW = Math.max(40, Math.min(80, 480 / selectedSprite.cols));
+                const cellH = cellW * (selectedSprite.tileHeight / selectedSprite.tileWidth);
+                return (
+                  <div
+                    key={tileIdx}
+                    onClick={() => toggleSkipped(tileIdx)}
+                    style={{
+                      width: cellW,
+                      height: cellH,
+                      background: isSkipped ? '#8b0000' : 'var(--bg-dark)',
+                      border: `1px solid ${isSkipped ? '#ff0000' : 'var(--bg-raised)'}`,
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                    title={`Tile ${tileIdx}${isSkipped ? ' (omitido)' : ''}`}
+                  >
+                    {tilesetUrl && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        backgroundImage: `url(${tilesetUrl})`,
+                        backgroundPosition: `${-tx * selectedSprite.tileWidth}px ${-ty * selectedSprite.tileHeight}px`,
+                        backgroundSize: `${selectedSprite.cols * selectedSprite.tileWidth}px ${selectedSprite.rows * selectedSprite.tileHeight}px`,
+                        backgroundRepeat: 'no-repeat',
+                        imageRendering: 'pixelated',
+                      }} />
+                    )}
+                    <span style={{
+                      position: 'absolute', bottom: 1, right: 2,
+                      fontSize: 8, color: isSkipped ? '#ff8888' : '#aaa',
+                      background: 'rgba(0,0,0,0.5)', padding: '0 2px', borderRadius: 2,
+                    }}>
+                      {tileIdx}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

@@ -40,7 +40,7 @@ const defaultActor = (): Actor => ({
 
 const defaultSpriteSheet = (): SpriteSheet => ({
   id: uid(), name: 'Nuevo sprite', tilesetPath: '',
-  tileWidth: 8, tileHeight: 8, cols: 4, rows: 4, animations: [],
+  tileWidth: 8, tileHeight: 8, cols: 4, rows: 4, animations: [], skippedFrames: [],
 });
 
 const defaultAnimation = (): Animation => ({

@@ -71,6 +71,7 @@ export interface SpriteSheet {
   cols: number;
   rows: number;
   animations: Animation[];
+  skippedFrames: number[];
 }
 
 // ── Imagen (Background) ──────────────────────────────────────────────────
