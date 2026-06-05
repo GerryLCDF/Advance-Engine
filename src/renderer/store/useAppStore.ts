@@ -22,6 +22,8 @@ const DEMO_PROJECTS: Project[] = [
 let _nextId = 1;
 const uid = () => `e${_nextId++}_${Date.now()}`;
 let _copiedScene: Scene | null = null;
+let _copiedAnimation: Animation | null = null;
+let _copiedAnimationFrame: { frame: AnimationFrame; animId: string } | null = null;
 
 const defaultScene = (): Scene => ({
   id: uid(), name: 'Nueva escena', width: 240, height: 160,
@@ -44,7 +46,7 @@ const defaultSpriteSheet = (): SpriteSheet => ({
 });
 
 const defaultAnimation = (): Animation => ({
-  id: uid(), name: 'Nueva animación', frames: [], loop: true,
+  id: uid(), name: 'Nueva animación', frames: [], mode: 'loop', speed: 1,
 });
 
 const defaultBackground = (): Background => ({
@@ -362,6 +364,12 @@ interface AppState {
   splashScreen: SplashScreen;
   updateSplashScreen: (patch: Partial<SplashScreen>) => void;
 
+  // ── Sprite editor session state (used by menu bar / global shortcuts) ──
+  previewAnimId: string | null;
+  setPreviewAnimId: (id: string | null) => void;
+  currentFrameIdx: number;
+  setCurrentFrameIdx: (idx: number) => void;
+
   // ── Sprite ─────────────────────────────────────────────────────────────
   spriteSheets: SpriteSheet[];
   addSpriteSheet: () => void;
@@ -373,6 +381,22 @@ interface AppState {
   addFrame: (spriteId: string, animId: string) => void;
   updateFrame: (spriteId: string, animId: string, frameIdx: number, patch: Partial<AnimationFrame>) => void;
   removeFrame: (spriteId: string, animId: string, frameIdx: number) => void;
+
+  // ── Undo / Redo for Sprite sheets ──────────────────────────────────────
+  _spriteUndoStack: SpriteSheet[][];
+  _spriteRedoStack: SpriteSheet[][];
+  _snapshotSprite: () => void;
+  spriteUndo: () => void;
+  spriteRedo: () => void;
+
+  // ── Sprite clipboard actions ───────────────────────────────────────────
+  copyAnimation: (spriteId: string, animId: string) => void;
+  pasteAnimation: (spriteId: string) => void;
+  cutAnimation: (spriteId: string, animId: string) => void;
+  copyFrame: (spriteId: string, animId: string, frameIdx: number) => void;
+  pasteFrame: (spriteId: string, animId: string) => void;
+  cutFrame: (spriteId: string, animId: string, frameIdx: number) => void;
+  deleteFrame: (spriteId: string, animId: string, frameIdx: number) => void;
 
   // ── Imagen ─────────────────────────────────────────────────────────────
   backgrounds: Background[];
@@ -567,6 +591,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setEditorTab: (tab) => set({ editorTab: tab }),
   setSelectedNodeId: (id) => set({ selectedNodeId: id }),
 
+  previewAnimId: null,
+  setPreviewAnimId: (id) => set({ previewAnimId: id }),
+  currentFrameIdx: 0,
+  setCurrentFrameIdx: (idx) => set({ currentFrameIdx: idx }),
+
   hierarchyWidth: 260,
   inspectorWidth: 220,
   terminalHeight: 72,
@@ -661,6 +690,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         log.add('SplashScreen: sin imagen o duración 0, saltando');
       }
 
+      const splashSongId = state.splashScreen?.backgroundSong;
+      const splashSong = splashSongId ? state.songs.find((s) => s.id === splashSongId) : undefined;
+      if (splashSong) {
+        log.add(`Canción de splash: "${splashSong.name}"`);
+      }
+
       const cCode = generateGBAProject({
         scenes: state.scenes,
         sceneConnections: state.sceneConnections,
@@ -670,7 +705,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         sounds: state.sounds ?? [],
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
-      }, project.name, project.author, log, splashCArray, splashDuration);
+      }, project.name, project.author, log, splashCArray, splashDuration, splashSong);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
@@ -923,16 +958,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     ),
   })),
-  addFrame: (spriteId, animId) => set((s) => ({
-    spriteSheets: s.spriteSheets.map((sp) =>
-      sp.id !== spriteId ? sp : {
-        ...sp,
-        animations: sp.animations.map((a) =>
-          a.id !== animId ? a : { ...a, frames: [...a.frames, { tileIndex: 0, duration: 100 }] }
-        ),
+  addFrame: (spriteId, animId) => set((s) => {
+    const sprite = s.spriteSheets.find((sp) => sp.id === spriteId);
+    const anim = sprite?.animations.find((a) => a.id === animId);
+    const lastTile = anim?.frames.length ? anim.frames[anim.frames.length - 1].tileIndex : 0;
+    const total = sprite ? sprite.cols * sprite.rows : 0;
+    const skipped = sprite?.skippedFrames ?? [];
+    let nextTile = lastTile;
+    if (total > 0) {
+      for (let offset = 1; offset < total; offset++) {
+        const candidate = (lastTile + offset) % total;
+        if (!skipped.includes(candidate)) { nextTile = candidate; break; }
       }
-    ),
-  })),
+    }
+    return {
+      spriteSheets: s.spriteSheets.map((sp) =>
+        sp.id !== spriteId ? sp : {
+          ...sp,
+          animations: sp.animations.map((a) =>
+            a.id !== animId ? a : { ...a, frames: [...a.frames, { tileIndex: nextTile, duration: 100 }] }
+          ),
+        }
+      ),
+    };
+  }),
   updateFrame: (spriteId, animId, frameIdx, patch) => set((s) => ({
     spriteSheets: s.spriteSheets.map((sp) =>
       sp.id !== spriteId ? sp : {
@@ -1150,6 +1199,130 @@ export const useAppStore = create<AppState>((set, get) => ({
       _mundoUndoStack: [...(s._mundoUndoStack ?? []), { scenes: s.scenes, sceneConnections: s.sceneConnections }],
     };
   }),
+
+  // ── Undo / Redo for Sprite sheets ──────────────────────────────────────
+  _spriteUndoStack: [],
+  _spriteRedoStack: [],
+
+  _snapshotSprite: () => set((s) => ({
+    _spriteUndoStack: [...(s._spriteUndoStack ?? []).slice(-49), s.spriteSheets],
+    _spriteRedoStack: [],
+  })),
+
+  spriteUndo: () => set((s) => {
+    const stack = s._spriteUndoStack ?? [];
+    if (stack.length === 0) return s;
+    const prev = stack[stack.length - 1];
+    return {
+      spriteSheets: prev,
+      _spriteUndoStack: stack.slice(0, -1),
+      _spriteRedoStack: [...(s._spriteRedoStack ?? []), s.spriteSheets],
+    };
+  }),
+
+  spriteRedo: () => set((s) => {
+    const stack = s._spriteRedoStack ?? [];
+    if (stack.length === 0) return s;
+    const next = stack[stack.length - 1];
+    return {
+      spriteSheets: next,
+      _spriteRedoStack: stack.slice(0, -1),
+      _spriteUndoStack: [...(s._spriteUndoStack ?? []), s.spriteSheets],
+    };
+  }),
+
+  // ── Sprite clipboard actions ───────────────────────────────────────────
+  copyAnimation: (spriteId, animId) => {
+    const sprite = get().spriteSheets.find((sp) => sp.id === spriteId);
+    const anim = sprite?.animations.find((a) => a.id === animId);
+    if (anim) _copiedAnimation = { ...anim, id: uid(), frames: anim.frames.map((f) => ({ ...f })) };
+  },
+
+  pasteAnimation: (spriteId) => {
+    if (!_copiedAnimation) return;
+    get()._snapshotSprite();
+    set((s) => ({
+      spriteSheets: s.spriteSheets.map((sp) =>
+        sp.id !== spriteId ? sp : {
+          ...sp,
+          animations: [...sp.animations, { ..._copiedAnimation!, id: uid() }],
+        }
+      ),
+    }));
+  },
+
+  cutAnimation: (spriteId, animId) => {
+    get().copyAnimation(spriteId, animId);
+    get()._snapshotSprite();
+    set((s) => ({
+      spriteSheets: s.spriteSheets.map((sp) =>
+        sp.id !== spriteId ? sp : {
+          ...sp,
+          animations: sp.animations.filter((a) => a.id !== animId),
+        }
+      ),
+    }));
+  },
+
+  copyFrame: (spriteId, animId, frameIdx) => {
+    const sprite = get().spriteSheets.find((sp) => sp.id === spriteId);
+    const anim = sprite?.animations.find((a) => a.id === animId);
+    const frame = anim?.frames[frameIdx];
+    if (frame) _copiedAnimationFrame = { frame: { ...frame }, animId };
+  },
+
+  pasteFrame: (spriteId, animId) => {
+    if (!_copiedAnimationFrame) return;
+    get()._snapshotSprite();
+    set((s) => ({
+      spriteSheets: s.spriteSheets.map((sp) =>
+        sp.id !== spriteId ? sp : {
+          ...sp,
+          animations: sp.animations.map((a) =>
+            a.id !== animId ? a : {
+              ...a,
+              frames: [...a.frames, { ..._copiedAnimationFrame!.frame }],
+            }
+          ),
+        }
+      ),
+    }));
+  },
+
+  cutFrame: (spriteId, animId, frameIdx) => {
+    get().copyFrame(spriteId, animId, frameIdx);
+    get()._snapshotSprite();
+    set((s) => ({
+      spriteSheets: s.spriteSheets.map((sp) =>
+        sp.id !== spriteId ? sp : {
+          ...sp,
+          animations: sp.animations.map((a) =>
+            a.id !== animId ? a : {
+              ...a,
+              frames: a.frames.filter((_, i) => i !== frameIdx),
+            }
+          ),
+        }
+      ),
+    }));
+  },
+
+  deleteFrame: (spriteId, animId, frameIdx) => {
+    get()._snapshotSprite();
+    set((s) => ({
+      spriteSheets: s.spriteSheets.map((sp) =>
+        sp.id !== spriteId ? sp : {
+          ...sp,
+          animations: sp.animations.map((a) =>
+            a.id !== animId ? a : {
+              ...a,
+              frames: a.frames.filter((_, i) => i !== frameIdx),
+            }
+          ),
+        }
+      ),
+    }));
+  },
 
   copyScene: (id) => {
     const scene = get().scenes.find((s) => s.id === id);

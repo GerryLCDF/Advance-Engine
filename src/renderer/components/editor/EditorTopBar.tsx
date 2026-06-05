@@ -27,12 +27,66 @@ const MENU_ITEMS: Record<string, MenuItemDef[]> = {
     { label: 'Cerrar' },
   ],
   Editar: [
-    { label: 'Deshacer', shortcut: 'Ctrl+Z' },
-    { label: 'Rehacer', shortcut: 'Ctrl+Y' },
-    { label: 'Cortar', shortcut: 'Ctrl+X' },
-    { label: 'Copiar', shortcut: 'Ctrl+C' },
-    { label: 'Pegar', shortcut: 'Ctrl+V' },
-    { label: 'Eliminar', shortcut: 'Del' },
+    { label: 'Deshacer', shortcut: 'Ctrl+Z', onClick: () => {
+      const s = useAppStore.getState();
+      if (s.editorTab === 'sprite') s.spriteUndo();
+      else s.undo();
+    }},
+    { label: 'Rehacer', shortcut: 'Ctrl+Y', onClick: () => {
+      const s = useAppStore.getState();
+      if (s.editorTab === 'sprite') s.spriteRedo();
+      else s.redo();
+    }},
+    { label: 'Cortar', shortcut: 'Ctrl+X', onClick: () => {
+      const s = useAppStore.getState();
+      if (s.editorTab === 'sprite') {
+        const selectedNodeId = s.selectedNodeId;
+        if (!selectedNodeId) return;
+        const sprite = s.spriteSheets.find((sp) => sp.animations.some((a) => a.id === selectedNodeId));
+        if (!sprite) return;
+        const anim = sprite.animations.find((a) => a.id === selectedNodeId);
+        if (anim && anim.frames.length > 0 && s.currentFrameIdx < anim.frames.length) {
+          s.cutFrame(sprite.id, anim.id, s.currentFrameIdx);
+        } else if (anim) {
+          s.cutAnimation(sprite.id, anim.id);
+        }
+      }
+    }},
+    { label: 'Copiar', shortcut: 'Ctrl+C', onClick: () => {
+      const s = useAppStore.getState();
+      if (s.editorTab === 'sprite') {
+        const selectedNodeId = s.selectedNodeId;
+        if (!selectedNodeId) return;
+        const sprite = s.spriteSheets.find((sp) => sp.animations.some((a) => a.id === selectedNodeId));
+        if (!sprite) return;
+        const anim = sprite.animations.find((a) => a.id === selectedNodeId);
+        if (anim && anim.frames.length > 0 && s.currentFrameIdx < anim.frames.length) {
+          s.copyFrame(sprite.id, anim.id, s.currentFrameIdx);
+        } else if (anim) {
+          s.copyAnimation(sprite.id, anim.id);
+        }
+      }
+    }},
+    { label: 'Pegar', shortcut: 'Ctrl+V', onClick: () => {
+      const s = useAppStore.getState();
+      if (s.editorTab === 'sprite') {
+        const sprite = s.spriteSheets.find((sp) => sp.animations.some((a) => a.id === s.previewAnimId));
+        if (sprite) s.pasteAnimation(sprite.id);
+      }
+    }},
+    { label: 'Eliminar', shortcut: 'Del', onClick: () => {
+      const s = useAppStore.getState();
+      if (s.editorTab === 'sprite') {
+        const selectedNodeId = s.selectedNodeId;
+        if (!selectedNodeId) return;
+        const sprite = s.spriteSheets.find((sp) => sp.animations.some((a) => a.id === selectedNodeId));
+        if (!sprite) return;
+        const anim = sprite.animations.find((a) => a.id === selectedNodeId);
+        if (anim && anim.frames.length > 0 && s.currentFrameIdx < anim.frames.length) {
+          s.deleteFrame(sprite.id, anim.id, s.currentFrameIdx);
+        }
+      }
+    }},
     { label: 'Seleccionar todo', shortcut: 'Ctrl+A', divider: true },
     { label: 'Settings' },
   ],
@@ -94,14 +148,29 @@ export function EditorTopBar() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      const tab = useAppStore.getState().editorTab;
       if (ctrl && e.key === 's') { e.preventDefault(); useAppStore.getState().saveProject(); return; }
-      if (ctrl && e.key === 'z') { e.preventDefault(); useAppStore.getState().undo(); return; }
-      if (ctrl && e.key === 'y') { e.preventDefault(); useAppStore.getState().redo(); return; }
-      if (ctrl && e.key === 'x') { e.preventDefault(); /* cortar */ return; }
-      if (ctrl && e.key === 'c') { e.preventDefault(); /* copiar */ return; }
-      if (ctrl && e.key === 'v') { e.preventDefault(); /* pegar */ return; }
-      if (ctrl && e.key === 'a') { e.preventDefault(); /* seleccionar todo */ return; }
-      if (e.key === 'Delete' || e.key === 'Del') { e.preventDefault(); /* eliminar */ return; }
+      if (ctrl && e.key === 'z') {
+        e.preventDefault();
+        if (tab === 'sprite') { useAppStore.getState().spriteUndo(); }
+        else { useAppStore.getState().undo(); }
+        return;
+      }
+      if (ctrl && e.key === 'y') {
+        e.preventDefault();
+        if (tab === 'sprite') { useAppStore.getState().spriteRedo(); }
+        else { useAppStore.getState().redo(); }
+        return;
+      }
+      if (tab === 'sprite') {
+        // Let SpriteTab handle sprite-specific shortcuts if needed
+        return;
+      }
+      if (ctrl && e.key === 'x') { e.preventDefault(); return; }
+      if (ctrl && e.key === 'c') { e.preventDefault(); return; }
+      if (ctrl && e.key === 'v') { e.preventDefault(); return; }
+      if (ctrl && e.key === 'a') { e.preventDefault(); return; }
+      if (e.key === 'Delete' || e.key === 'Del') { e.preventDefault(); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -132,12 +201,6 @@ export function EditorTopBar() {
     switch (action) {
       case 'Guardar':
         useAppStore.getState().saveProject();
-        break;
-      case 'Deshacer':
-        useAppStore.getState().undo();
-        break;
-      case 'Rehacer':
-        useAppStore.getState().redo();
         break;
       case 'Nuevo proyecto':
         resetDraft();

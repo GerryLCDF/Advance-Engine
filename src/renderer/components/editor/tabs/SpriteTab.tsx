@@ -31,14 +31,25 @@ export function SpriteTab() {
   const [currentSpriteFrame, setCurrentSpriteFrame] = useState(0);
 
   // ── Animation preview (separate from hierarchy selection) ─────────────
-  const [previewAnimId, setPreviewAnimId] = useState<string | null>(null);
-  const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
+  const previewAnimId = useAppStore((s) => s.previewAnimId);
+  const setPreviewAnimId = useAppStore((s) => s.setPreviewAnimId);
+  const currentFrameIdx = useAppStore((s) => s.currentFrameIdx);
+  const setCurrentFrameIdx = useAppStore((s) => s.setCurrentFrameIdx);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [onionSkin, setOnionSkin] = useState(false);
+  // 0=off, 1=prev (rojo), 2=next (azul), 3=both
+  const [onionSkinMode, setOnionSkinMode] = useState(0);
   const [showGrid, setShowGrid] = useState(true);
 
   // ── Skip frames modal ──────────────────────────────────────────────────
   const [showSkipModal, setShowSkipModal] = useState(false);
+
+  // ── Tile picker for animation frames ──────────────────────────────────
+  const [pickingTileForFrame, setPickingTileForFrame] = useState<number | null>(null);
+  const [pickerSelectedTiles, setPickerSelectedTiles] = useState<number[]>([]);
+  // Reset multi-selection when picker opens/closes
+  useEffect(() => {
+    if (pickingTileForFrame === null) setPickerSelectedTiles([]);
+  }, [pickingTileForFrame]);
 
   // ── Context menu ───────────────────────────────────────────────────────
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -72,6 +83,91 @@ export function SpriteTab() {
       setPreviewAnimId(null);
     }
   }, [selectedSprite, previewAnimId]);
+
+  // Clamp currentFrameIdx when frames are removed
+  useEffect(() => {
+    const a = previewAnim;
+    if (a && currentFrameIdx >= a.frames.length) {
+      setCurrentFrameIdx(Math.max(0, a.frames.length - 1));
+    }
+  }, [previewAnim?.frames.length, currentFrameIdx]);
+
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      const a = previewAnim;
+      const total = a ? a.frames.length : (selectedSprite ? selectedSprite.cols * selectedSprite.rows : 0);
+      const s = useAppStore.getState();
+
+      if (ctrl && e.key === 'z') { e.preventDefault(); s.spriteUndo(); return; }
+      if (ctrl && e.key === 'y') { e.preventDefault(); s.spriteRedo(); return; }
+
+      if (ctrl && e.key === 'x') {
+        e.preventDefault();
+        if (a && previewAnimId && selectedSprite) {
+          if (a.frames.length > 0) { s.cutFrame(selectedSprite.id, previewAnimId, currentFrameIdx); }
+          else { s.cutAnimation(selectedSprite.id, previewAnimId); }
+        }
+        return;
+      }
+      if (ctrl && e.key === 'c') {
+        e.preventDefault();
+        if (a && previewAnimId && selectedSprite) {
+          if (a.frames.length > 0) { s.copyFrame(selectedSprite.id, previewAnimId, currentFrameIdx); }
+          else { s.copyAnimation(selectedSprite.id, previewAnimId); }
+        }
+        return;
+      }
+      if (ctrl && e.key === 'v') {
+        e.preventDefault();
+        if (previewAnimId && selectedSprite) {
+          if (s.pasteAnimation) s.pasteAnimation(selectedSprite.id);
+        }
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Del') {
+        e.preventDefault();
+        if (a && previewAnimId && selectedSprite) {
+          if (currentFrameIdx >= 0 && currentFrameIdx < a.frames.length) {
+            s.deleteFrame(selectedSprite.id, previewAnimId, currentFrameIdx);
+          }
+        }
+        return;
+      }
+
+      if ((!a || a.frames.length === 0) && total === 0) return;
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          if (isPlaying) { setIsPlaying(false); return; }
+          if (a) { setCurrentFrameIdx(0); setIsPlaying(true); }
+          else { setCurrentSpriteFrame(0); setIsPlaying(true); }
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (isPlaying) setIsPlaying(false);
+          if (a && a.frames.length > 0) {
+            setCurrentFrameIdx((currentFrameIdx - 1 + a.frames.length) % a.frames.length);
+          } else if (total > 0) {
+            setCurrentSpriteFrame((currentSpriteFrame - 1 + total) % total);
+          }
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (isPlaying) setIsPlaying(false);
+          if (a && a.frames.length > 0) {
+            setCurrentFrameIdx((currentFrameIdx + 1) % a.frames.length);
+          } else if (total > 0) {
+            setCurrentSpriteFrame((currentSpriteFrame + 1) % total);
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [previewAnim, previewAnimId, isPlaying, selectedSprite, currentFrameIdx]);
 
   // ── Center canvas on mount / sprite change / zoom change ──────────────
   const centerCanvas = useCallback(() => {
@@ -109,15 +205,17 @@ export function SpriteTab() {
     return () => { cancelled = true; };
   }, [selectedSprite?.tilesetPath]);
 
-  // Auto-calculate tile size from image dimensions ÷ H/V frames
+  // Calculate tile size ONCE from image dimensions (not when H/V changes)
   useEffect(() => {
-    if (!selectedSprite || !spriteImgSize) return;
-    const tileW = Math.round(spriteImgSize.w / selectedSprite.cols);
-    const tileH = Math.round(spriteImgSize.h / selectedSprite.rows);
-    if (tileW !== selectedSprite.tileWidth || tileH !== selectedSprite.tileHeight) {
-      updateSpriteSheet(selectedSprite.id, { tileWidth: tileW, tileHeight: tileH });
+    if (!spriteImgSize) return;
+    const sp = spriteSheets.find((s) => s.id === selectedNodeId);
+    if (!sp) return;
+    const tileW = Math.floor(spriteImgSize.w / sp.cols);
+    const tileH = Math.floor(spriteImgSize.h / sp.rows);
+    if (tileW > 0 && tileH > 0 && (tileW !== sp.tileWidth || tileH !== sp.tileHeight)) {
+      updateSpriteSheet(sp.id, { tileWidth: tileW, tileHeight: tileH });
     }
-  }, [selectedSprite?.id, selectedSprite?.cols, selectedSprite?.rows, spriteImgSize]);
+  }, [spriteImgSize]);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
@@ -178,7 +276,7 @@ export function SpriteTab() {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = -e.deltaY * 0.5;
-        setSpriteZoom(Math.min(400, Math.max(25, spriteZoom + delta)));
+        setSpriteZoom(Math.min(1500, Math.max(25, spriteZoom + delta)));
       } else if (e.shiftKey) {
         e.preventDefault();
         setPanX((px) => px - e.deltaY);
@@ -217,25 +315,37 @@ export function SpriteTab() {
   }, [panX, panY]);
 
   // ── Animation playback timer ───────────────────────────────────────────
+  const playDirRef = useRef(1); // 1 = forward, -1 = backward (pingpong)
   useEffect(() => {
     if (!isPlaying) return;
     if (previewAnim && previewAnim.frames.length > 0) {
-      const dur = previewAnim.frames[currentFrameIdx]?.duration ?? 100;
+      const rawDur = previewAnim.frames[currentFrameIdx]?.duration ?? 100;
+      const speed = previewAnim.speed || 1;
+      const dur = Math.max(16, rawDur / speed);
       const animId = previewAnim.id;
       const id = window.setTimeout(() => {
-        setCurrentFrameIdx((prev) => {
-          const freshAnim = useAppStore.getState().spriteSheets
-            .flatMap((s) => s.animations)
-            .find((a) => a.id === animId);
-          if (!freshAnim || freshAnim.frames.length === 0) return prev;
+        const state = useAppStore.getState();
+        const prev = state.currentFrameIdx;
+        const freshAnim = state.spriteSheets
+          .flatMap((s) => s.animations)
+          .find((a) => a.id === animId);
+        if (!freshAnim || freshAnim.frames.length === 0) return;
+        const len = freshAnim.frames.length;
+        const mode = freshAnim.mode || 'loop';
+        if (mode === 'once') {
           const next = prev + 1;
-          if (next >= freshAnim.frames.length) {
-            if (freshAnim.loop) return 0;
-            setIsPlaying(false);
-            return prev;
-          }
-          return next;
-        });
+          if (next >= len) { setIsPlaying(false); return; }
+          state.setCurrentFrameIdx(next);
+        } else if (mode === 'loop') {
+          state.setCurrentFrameIdx((prev + 1) % len);
+        } else {
+          // pingpong
+          const dir = playDirRef.current;
+          const next = prev + dir;
+          if (next >= len) { playDirRef.current = -1; state.setCurrentFrameIdx(len - 2); }
+          else if (next < 0) { playDirRef.current = 1; state.setCurrentFrameIdx(1); }
+          else { state.setCurrentFrameIdx(next); }
+        }
       }, dur);
       return () => window.clearTimeout(id);
     }
@@ -407,7 +517,8 @@ export function SpriteTab() {
       title: 'Animación',
       fields: [
         { label: 'Nombre', type: 'text', value: selectedAnim.name, onChange: (v) => parentSprite && updateAnimation(parentSprite.id, selectedAnim.id, { name: v as string }) },
-        { label: 'Loop', type: 'toggle', value: selectedAnim.loop, onChange: (v) => parentSprite && updateAnimation(parentSprite.id, selectedAnim.id, { loop: v as boolean }) },
+        { label: 'Modo', type: 'select', value: selectedAnim.mode, options: [{ value: 'once', label: 'Una vez' }, { value: 'loop', label: 'Loop' }, { value: 'pingpong', label: 'Ping pong' }], onChange: (v) => parentSprite && updateAnimation(parentSprite.id, selectedAnim.id, { mode: v as 'once' | 'loop' | 'pingpong' }) },
+        { label: 'Velocidad', type: 'number', value: selectedAnim.speed, min: 0.25, max: 4, step: 0.25, onChange: (v) => parentSprite && updateAnimation(parentSprite.id, selectedAnim.id, { speed: Math.max(0.25, Math.min(4, v as number)) }) },
       ],
     });
     if (selectedAnim.frames.length > 0) {
@@ -421,7 +532,25 @@ export function SpriteTab() {
             label: 'Sprite frame', type: 'number' as const,
             value: curFrame.tileIndex,
             min: 0, max: Math.max(0, (parentSprite ? parentSprite.cols * parentSprite.rows : 0) - 1),
-            onChange: (v: string | number | boolean) => parentSprite && updateFrame(parentSprite.id, selectedAnim.id, currentFrameIdx, { tileIndex: v as number }),
+            onChange: (v: string | number | boolean) => {
+              if (!parentSprite) return;
+              const idx = v as number;
+              const skipped = parentSprite.skippedFrames ?? [];
+              const total = parentSprite.cols * parentSprite.rows;
+              if (!skipped.includes(idx)) {
+                updateFrame(parentSprite.id, selectedAnim.id, currentFrameIdx, { tileIndex: idx });
+              } else {
+                // advance in the direction the user was going
+                const cur = curFrame.tileIndex;
+                const dir = idx > cur ? 1 : -1;
+                let candidate = cur;
+                for (let offset = 1; offset < total; offset++) {
+                  const next = idx + dir * offset;
+                  if (next >= 0 && next < total && !skipped.includes(next)) { candidate = next; break; }
+                }
+                updateFrame(parentSprite.id, selectedAnim.id, currentFrameIdx, { tileIndex: candidate });
+              }
+            },
           }] : []),
         ],
       });
@@ -557,6 +686,7 @@ export function SpriteTab() {
             onDrop={handleDrop}
           >
             {selectedSprite ? (() => {
+              const sp = selectedSprite;
               // Determine which tile index to display
               const tileIndex = anim && anim.frames[currentFrameIdx]
                 ? anim.frames[currentFrameIdx].tileIndex
@@ -567,6 +697,46 @@ export function SpriteTab() {
               const fullH = selectedSprite.rows * th;
               const tx = tileIndex % selectedSprite.cols;
               const ty = Math.floor(tileIndex / selectedSprite.cols);
+
+              // Onion skin: resolve prev/next tile indices
+              let onPrevTile: number | null = null;
+              let onNextTile: number | null = null;
+              if (onionSkinMode > 0 && anim && anim.frames.length > 1) {
+                const wraps = anim.mode !== 'once';
+                if (onionSkinMode === 1 || onionSkinMode === 3) {
+                  const prevIdx = currentFrameIdx > 0 ? currentFrameIdx - 1 : (wraps ? anim.frames.length - 1 : null);
+                  if (prevIdx !== null) onPrevTile = anim.frames[prevIdx].tileIndex;
+                }
+                if (onionSkinMode === 2 || onionSkinMode === 3) {
+                  const nextIdx = currentFrameIdx < anim.frames.length - 1 ? currentFrameIdx + 1 : (wraps ? 0 : null);
+                  if (nextIdx !== null) onNextTile = anim.frames[nextIdx].tileIndex;
+                }
+              }
+
+              function onionTileDiv(tileIdx: number, tint: string) {
+                const otx = tileIdx % sp.cols;
+                const oty = Math.floor(tileIdx / sp.cols);
+                const maskPos = `${-otx * tw}px ${-oty * th}px`;
+                const maskSize = `${fullW}px ${fullH}px`;
+                return (
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0,
+                    width: tw, height: th,
+                    opacity: 0.4,
+                    pointerEvents: 'none',
+                    background: tint,
+                    maskImage: `url(${tilesetUrl})`,
+                    maskPosition: maskPos,
+                    maskSize: maskSize,
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskImage: `url(${tilesetUrl})`,
+                    WebkitMaskPosition: maskPos,
+                    WebkitMaskSize: maskSize,
+                    WebkitMaskRepeat: 'no-repeat',
+                  }} />
+                );
+              }
+
               return (
               <div style={{
                 transform: `translate(${panX}px, ${panY}px) scale(${zoomFactor})`,
@@ -574,13 +744,15 @@ export function SpriteTab() {
                 position: 'absolute', top: 0, left: 0,
                 width: 0, height: 0,
               }}>
+                {/* Onion skin layers */}
+                {onionSkinMode > 0 && tilesetUrl && onPrevTile !== null && onionTileDiv(onPrevTile, '#ff3333')}
+                {onionSkinMode > 0 && tilesetUrl && onNextTile !== null && onionTileDiv(onNextTile, '#3388ff')}
                 <div
                   style={{
                     width: tw,
                     height: th,
                     background: tilesetUrl ? 'transparent' : 'var(--bg-dark)',
                     border: '1px solid var(--bg-raised)',
-                    borderRadius: 2,
                     position: 'relative',
                     overflow: 'hidden',
                   }}
@@ -596,11 +768,19 @@ export function SpriteTab() {
                       pointerEvents: 'none',
                     }} />
                   )}
-                  <div style={{
-                    position: 'absolute', inset: 0,
-                    border: '2px solid var(--accent-light)',
-                    pointerEvents: 'none',
-                  }} />
+                  {/* Pixel grid overlay */}
+                  {showGrid && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      pointerEvents: 'none',
+                      opacity: 0.3,
+                      backgroundImage: `
+                        linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)
+                      `,
+                      backgroundSize: '1px 1px',
+                    }} />
+                  )}
                 </div>
               </div>
               );
@@ -620,22 +800,23 @@ export function SpriteTab() {
             }}>
               <button onClick={() => setSpriteZoom(Math.max(25, spriteZoom - 10))} style={zoomBtnStyle}>−</button>
               <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 32, textAlign: 'center' }}>{spriteZoom}%</span>
-              <button onClick={() => setSpriteZoom(Math.min(400, spriteZoom + 10))} style={zoomBtnStyle}>+</button>
-              {selectedSprite && (
-                <>
-                  <div style={{ width: 1, height: 16, background: 'var(--bg-raised)' }} />
-                  <button onClick={() => setShowSkipModal(true)} style={{ ...zoomBtnStyle, background: 'var(--accent)', color: '#fff' }} title="Saltar frames vacíos">Skip</button>
-                </>
-              )}
+              <button onClick={() => setSpriteZoom(Math.min(1500, spriteZoom + 10))} style={zoomBtnStyle}>+</button>
             </div>
 
             <div style={{
               position: 'absolute', bottom: 8, right: 8,
+              display: 'flex', alignItems: 'center', gap: 4,
               background: '#2d2d33cc', borderRadius: 4,
               padding: '2px 8px',
               fontSize: 11, color: '#aaa',
-              pointerEvents: 'none', zIndex: 10,
+              zIndex: 10,
             }}>
+              {selectedSprite && (
+                <button onClick={() => setShowSkipModal(true)} style={{
+                  background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 3,
+                  cursor: 'pointer', fontSize: 10, padding: '1px 6px', marginRight: 2,
+                }} title="Saltar frames vacíos">Skip</button>
+              )}
               {spriteZoom}%
             </div>
           </div>
@@ -661,6 +842,7 @@ export function SpriteTab() {
                   return (
                   <div
                     key={frameIdx}
+                    onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); toggleSkipped(frameIdx); } }}
                     onClick={() => { if (!isSkipped) { setIsPlaying(false); setCurrentSpriteFrame(frameIdx); } }}
                     style={{
                       width: 32, height: 32,
@@ -696,20 +878,25 @@ export function SpriteTab() {
                 padding: '4px 12px',
                 borderBottom: '1px solid var(--border-color)',
               }}>
-                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.max(0, p - 1)); }} style={transportBtnStyle} title="Frame anterior"><SkipBackIcon size={13} /></button>
+                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx(Math.max(0, currentFrameIdx - 1)); }} style={transportBtnStyle} title="Frame anterior"><SkipBackIcon size={13} /></button>
                 <button onClick={() => {
                   if (isPlaying) { setIsPlaying(false); }
                   else { setCurrentFrameIdx(0); setIsPlaying(true); }
                 }} style={{ ...transportBtnStyle, background: isPlaying ? 'var(--accent)' : 'var(--bg-raised)' }} title={isPlaying ? 'Detener' : 'Reproducir'}>
                   {isPlaying ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
                 </button>
-                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx((p) => Math.min(anim.frames.length - 1, p + 1)); }} style={transportBtnStyle} title="Frame siguiente"><SkipForwardIcon size={13} /></button>
+                <button onClick={() => { setIsPlaying(false); setCurrentFrameIdx(Math.min(anim.frames.length - 1, currentFrameIdx + 1)); }} style={transportBtnStyle} title="Frame siguiente"><SkipForwardIcon size={13} /></button>
 
                 <div style={{ width: 1, height: 16, background: 'var(--bg-raised)', margin: '0 6px' }} />
 
-                <button onClick={() => setOnionSkin((p) => !p)}
-                  style={{ ...transportBtnStyle, background: onionSkin ? 'var(--accent)' : 'var(--bg-raised)' }}
-                  title="Papel cebolla"><OnionSkinIcon size={13} /></button>
+                <button onClick={() => setOnionSkinMode((p) => (p + 1) % 4)}
+                  style={{
+                    ...transportBtnStyle,
+                    background: onionSkinMode > 0 ? 'var(--accent)' : 'var(--bg-raised)',
+                    color: onionSkinMode === 1 ? '#ff6666' : onionSkinMode === 2 ? '#66aaff' : onionSkinMode === 3 ? '#cc88ff' : undefined,
+                  }}
+                  title={['Papel cebolla: off', 'Papel cebolla: anterior', 'Papel cebolla: siguiente', 'Papel cebolla: ambos'][onionSkinMode]}
+                ><OnionSkinIcon size={13} /></button>
                 <button onClick={() => setShowGrid((p) => !p)}
                   style={{ ...transportBtnStyle, background: showGrid ? 'var(--accent)' : 'var(--bg-raised)' }}
                   title="Mostrar cuadrícula"><GridIcon size={13} /></button>
@@ -718,6 +905,123 @@ export function SpriteTab() {
                   {Math.min(currentFrameIdx + 1, anim.frames.length)}/{anim.frames.length}
                 </span>
               </div>
+
+              {/* ── Tile picker (multi-select, appears above thumbnails) ── */}
+              {pickingTileForFrame !== null && parentSprite && (() => {
+                const ps = parentSprite;
+                const availTiles = Array.from(
+                  { length: ps.cols * ps.rows },
+                  (_, i) => i
+                ).filter((t) => !(ps.skippedFrames ?? []).includes(t));
+                const pickerCols = Math.min(ps.cols, 8);
+                const toggleTile = (t: number) => {
+                  setPickerSelectedTiles((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
+                };
+                const handleOk = () => {
+                  if (pickerSelectedTiles.length === 1) {
+                    updateFrame(ps.id, anim.id, pickingTileForFrame, { tileIndex: pickerSelectedTiles[0] });
+                  } else if (pickerSelectedTiles.length > 1) {
+                    pickerSelectedTiles.forEach((tileIdx) => {
+                      addFrame(ps.id, anim.id);
+                      const sprite = useAppStore.getState().spriteSheets.find((s) => s.id === ps.id);
+                      const a = sprite?.animations.find((an) => an.id === anim.id);
+                      if (a) {
+                        const lastIdx = a.frames.length - 1;
+                        useAppStore.getState().updateFrame(ps.id, anim.id, lastIdx, { tileIndex: tileIdx });
+                      }
+                    });
+                  }
+                  setPickingTileForFrame(null);
+                };
+                return (
+                  <div style={{
+                    borderBottom: '1px solid var(--border-color)',
+                    padding: '8px 12px',
+                    background: 'var(--bg-panel)',
+                  }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      marginBottom: 6,
+                    }}>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                        Tiles disponibles ({pickerSelectedTiles.length} seleccionados):
+                      </span>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          onClick={handleOk}
+                          style={{
+                            padding: '3px 10px', fontSize: 10, cursor: 'pointer',
+                            background: pickerSelectedTiles.length > 0 ? 'var(--accent)' : 'var(--bg-raised)',
+                            color: '#fff', border: 'none', borderRadius: 4,
+                            opacity: pickerSelectedTiles.length > 0 ? 1 : 0.5,
+                          }}
+                        >OK</button>
+                        <button
+                          onClick={() => setPickingTileForFrame(null)}
+                          style={{
+                            padding: '3px 8px', fontSize: 10, cursor: 'pointer',
+                            background: 'var(--bg-raised)', color: 'var(--text-secondary)',
+                            border: 'none', borderRadius: 4,
+                          }}
+                        >✕</button>
+                      </div>
+                    </div>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${pickerCols}, 36px)`,
+                      gap: 3,
+                    }}>
+                      {availTiles.map((tileIdx) => {
+                        const tx = tileIdx % ps.cols;
+                        const ty = Math.floor(tileIdx / ps.cols);
+                        const isSel = pickerSelectedTiles.includes(tileIdx);
+                        return (
+                          <div
+                            key={tileIdx}
+                            onClick={() => toggleTile(tileIdx)}
+                            style={{
+                              width: 36, height: 36,
+                              background: isSel ? 'var(--accent-dark)' : 'var(--bg-dark)',
+                              border: isSel ? '2px solid var(--accent-light)' : '1px solid var(--bg-raised)',
+                              borderRadius: 3, cursor: 'pointer',
+                              position: 'relative', overflow: 'hidden',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                            title={`Tile ${tileIdx}`}
+                          >
+                            {tilesetUrl && (
+                              <div style={{
+                                position: 'absolute', inset: 0,
+                                backgroundImage: `url(${tilesetUrl})`,
+                                backgroundPosition: `${-tx * ps.tileWidth}px ${-ty * ps.tileHeight}px`,
+                                backgroundSize: `${ps.cols * ps.tileWidth}px ${ps.rows * ps.tileHeight}px`,
+                                backgroundRepeat: 'no-repeat',
+                                imageRendering: 'pixelated',
+                              }} />
+                            )}
+                            <span style={{
+                              position: 'absolute', bottom: 0, right: 1,
+                              fontSize: 7, color: '#aaa',
+                              background: 'rgba(0,0,0,0.5)', padding: '0 2px', borderRadius: 2,
+                            }}>
+                              {tileIdx}
+                            </span>
+                            {isSel && <span style={{
+                              position: 'absolute', top: 0, left: 1,
+                              fontSize: 8, color: 'var(--accent-light)',
+                            }}>✓</span>}
+                          </div>
+                        );
+                      })}
+                      {availTiles.length === 0 && (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
+                          No hay tiles disponibles
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Frame thumbnails */}
               <div style={{
@@ -742,7 +1046,17 @@ export function SpriteTab() {
                     }}
                     title={`Frame ${i + 1}${parentSprite && (parentSprite.skippedFrames ?? []).includes(f.tileIndex) ? ' (omitido)' : ''}`}
                   >
-                    <span>{f.tileIndex}</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (parentSprite) setPickingTileForFrame(i);
+                      }}
+                      style={{
+                        cursor: 'pointer', textDecoration: 'underline',
+                        textDecorationColor: 'var(--accent-light)',
+                      }}
+                      title="Cambiar tile"
+                    >{f.tileIndex}</span>
                     <span style={{ fontSize: 8, color: i === currentFrameIdx ? 'var(--accent-light)' : '#666' }}>{f.duration}ms</span>
                     <span
                       onClick={(e) => { e.stopPropagation(); parentSprite && removeFrame(parentSprite.id, anim.id, i); }}
@@ -830,12 +1144,44 @@ export function SpriteTab() {
           >
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 12,
+              gap: 8, marginBottom: 12,
             }}>
-              <span style={{ color: '#f0c040', fontSize: 14, fontWeight: 700 }}>
+              <span style={{ color: '#f0c040', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap' }}>
                 Saltar frames vacíos
               </span>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ fontSize: 10, color: 'var(--text-muted)' }}>H:</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={selectedSprite.cols}
+                  onChange={(e) => {
+                    const v = Math.max(1, parseInt(e.target.value) || 1);
+                    updateSpriteSheet(selectedSprite.id, { cols: v });
+                    setCurrentSpriteFrame(0);
+                  }}
+                  style={{
+                    width: 40, padding: '2px 4px', fontSize: 10,
+                    background: 'var(--bg-dark)', color: 'var(--text-primary)',
+                    border: '1px solid var(--bg-raised)', borderRadius: 3,
+                  }}
+                />
+                <label style={{ fontSize: 10, color: 'var(--text-muted)' }}>V:</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={selectedSprite.rows}
+                  onChange={(e) => {
+                    const v = Math.max(1, parseInt(e.target.value) || 1);
+                    updateSpriteSheet(selectedSprite.id, { rows: v });
+                    setCurrentSpriteFrame(0);
+                  }}
+                  style={{
+                    width: 40, padding: '2px 4px', fontSize: 10,
+                    background: 'var(--bg-dark)', color: 'var(--text-primary)',
+                    border: '1px solid var(--bg-raised)', borderRadius: 3,
+                  }}
+                />
                 <button
                   onClick={autoDetectEmpty}
                   style={{
@@ -866,7 +1212,7 @@ export function SpriteTab() {
                 const tx = tileIdx % selectedSprite.cols;
                 const ty = Math.floor(tileIdx / selectedSprite.cols);
                 const cellW = Math.max(40, Math.min(80, 480 / selectedSprite.cols));
-                const cellH = cellW * (selectedSprite.tileHeight / selectedSprite.tileWidth);
+                const cellH = selectedSprite.tileWidth > 0 ? cellW * (selectedSprite.tileHeight / selectedSprite.tileWidth) : cellW;
                 return (
                   <div
                     key={tileIdx}

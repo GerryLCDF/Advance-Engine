@@ -178,7 +178,8 @@ Advance Studio puede generar una ROM `.gba` directamente desde el editor:
 - **Compilación**: genera `main.c` y `Makefile`, luego ejecuta `make` mediante `devkitARM` para producir el `.elf` y el `.gba`.
 - La conversión de píxeles usa `R>>3 | G>>3<<5 | B>>3<<10` para mapear RGB888 → BGR555.
 - Tool auxiliar: `tools/gba_quantize.lua` (script Aseprite) para cuantizar sprites al espacio de color GBA de 32768 colores, con dithering Floyd-Steinberg opcional.
+- **Música en ROM**: La canción asignada al SplashScreen (`backgroundSong`) se incrusta en el código C y se reproduce durante el bucle principal usando los 4 canales de sonido del GBA (Pulse 1/2, Wave, Noise).
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.34.0**
+Definida en `src/version.ts` — semver. Actual: **0.37.0**

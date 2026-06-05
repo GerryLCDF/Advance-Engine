@@ -55,11 +55,14 @@ export interface AnimationFrame {
   duration: number;
 }
 
+export type AnimationMode = 'once' | 'loop' | 'pingpong';
+
 export interface Animation {
   id: string;
   name: string;
   frames: AnimationFrame[];
-  loop: boolean;
+  mode: AnimationMode;
+  speed: number; // 0.25–4, default 1
 }
 
 export interface SpriteSheet {
