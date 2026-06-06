@@ -44,6 +44,7 @@ interface AdvanceAPI {
     readText: (filePath: string) => Promise<{ success: boolean; data?: string; reason?: string }>;
     writeText: (filePath: string, content: string) => Promise<{ success: boolean; reason?: string }>;
     copy: (src: string, dest: string) => Promise<{ success: boolean; reason?: string }>;
+    copyCover: (srcPath: string, projectDir: string) => Promise<{ success: boolean; destPath?: string; reason?: string }>;
     readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; width?: number; height?: number; reason?: string }>;
     readVideo: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; size?: number; reason?: string }>;
     extractVideoFrames: (videoPath: string, fps: number) => Promise<{ success: boolean; frames?: string[]; frameCount?: number; duration?: number; fps?: number; reason?: string }>;

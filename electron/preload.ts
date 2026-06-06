@@ -62,6 +62,7 @@ export interface AdvanceAPI {
     readText: (filePath: string) => Promise<{ success: boolean; data?: string; reason?: string }>;
     writeText: (filePath: string, content: string) => Promise<{ success: boolean; reason?: string }>;
     copy: (src: string, dest: string) => Promise<{ success: boolean; reason?: string }>;
+    copyCover: (srcPath: string, projectDir: string) => Promise<{ success: boolean; destPath?: string; reason?: string }>;
     readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; width?: number; height?: number; reason?: string }>;
     readVideo: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; size?: number; reason?: string }>;
     extractVideoFrames: (videoPath: string, fps: number) => Promise<{ success: boolean; frames?: string[]; frameCount?: number; duration?: number; fps?: number; reason?: string }>;
@@ -122,6 +123,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     readText: (filePath: string) => ipcRenderer.invoke('file:readText', filePath),
     writeText: (filePath: string, content: string) => ipcRenderer.invoke('file:writeText', filePath, content),
     copy: (src: string, dest: string) => ipcRenderer.invoke('file:copy', src, dest),
+    copyCover: (srcPath: string, projectDir: string) => ipcRenderer.invoke('file:copyCover', srcPath, projectDir),
     readImage: (filePath: string) => ipcRenderer.invoke('file:readImage', filePath),
     readVideo: (filePath: string) => ipcRenderer.invoke('file:readVideo', filePath),
     extractVideoFrames: (videoPath: string, fps: number) => ipcRenderer.invoke('file:extractVideoFrames', videoPath, fps),

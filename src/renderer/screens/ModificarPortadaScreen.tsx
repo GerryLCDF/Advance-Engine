@@ -75,9 +75,23 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
   };
 
   const handleSave = async () => {
-    setDraft({ draftTemplate: localTemplate, draftCoverPath: localCover });
+    let finalCover = localCover;
+    if (projectId !== '__draft__' && localCover && !localCover.startsWith('/')) {
+      const project = projects.find((p) => p.id === projectId);
+      const projectDir = project?.path;
+      if (projectDir) {
+        const api = window.advanceAPI;
+        if (api?.file?.copyCover) {
+          const result = await api.file.copyCover(localCover, projectDir);
+          if (result.success && result.destPath) {
+            finalCover = result.destPath;
+          }
+        }
+      }
+    }
+    setDraft({ draftTemplate: localTemplate, draftCoverPath: finalCover });
     if (projectId !== '__draft__') {
-      await updateProject(projectId, { template: localTemplate, coverPath: localCover });
+      await updateProject(projectId, { template: localTemplate, coverPath: finalCover });
       setActiveScreen({ type: 'editar', projectId });
     } else {
       setActiveScreen({ type: 'launcher' });

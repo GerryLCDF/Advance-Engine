@@ -31,7 +31,7 @@ const CARTUCHO_MARCO = '/recursos/cartucho.png';
 const DEFAULT_COVER  = '/recursos/portada.png';
 
 // Offsets calibrados para que la portada quede dentro de la ventana del cartucho
-// Estos valores se ajustan según el pixel art del cartucho.png (480x360 src)
+// Estos valores se ajustan según el pixel art del cartucho.png (480x270 src)
 const WINDOW_INSET = {
   top:    '11%',
   left:   '12%',
@@ -49,9 +49,9 @@ interface CartuchoDisplayProps {
 }
 
 const SIZES = {
-  sm:  { width: 96,  height: 72,  fontSize: 9,  radius: 4 },
-  md:  { width: 192, height: 144, fontSize: 12, radius: 8 },
-  lg:  { width: 240, height: 180, fontSize: 13, radius: 10 },
+  sm:  { width: 96,  height: 54,  fontSize: 9,  radius: 4 },
+  md:  { width: 192, height: 108, fontSize: 12, radius: 8 },
+  lg:  { width: 256, height: 144, fontSize: 13, radius: 10 },
 };
 
 // Mapa de colores de tinte para el marco según la plantilla elegida
@@ -78,7 +78,7 @@ export function CartuchoDisplay({
   const resolvedCover = coverPath
     ? coverPath.startsWith('/')
       ? coverPath
-      : `atom://${coverPath.replace(/\\/g, '/')}`
+      : `atom://local/${coverPath.replace(/\\/g, '/')}`
     : DEFAULT_COVER;
 
   return (

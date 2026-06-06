@@ -1,4 +1,4 @@
-# Advance Studio
+# Advance Engine
 
 Motor de desarrollo visual para Game Boy Advance hecho con Electron + React + Vite + TypeScript.
 
@@ -172,7 +172,7 @@ Usa `activeScreen` + `AnimatePresence` (sin React Router). Las pantallas se supe
 
 ## Exportación GBA
 
-Advance Studio puede generar una ROM `.gba` directamente desde el editor:
+Advance Engine puede generar una ROM `.gba` directamente desde el editor:
 
 - **Splash Screen personalizado**: imagen de fondo (redimensionada a 240×160) con duración configurable en segundos. Se convierte a formato BGR555 (15-bit) y se incluye como array C en el código fuente.
 - **Compilación**: genera `main.c` y `Makefile`, luego ejecuta `make` mediante `devkitARM` para producir el `.elf` y el `.gba`.

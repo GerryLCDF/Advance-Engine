@@ -1,9 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, protocol, net, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, protocol, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { exec, execFileSync } from 'child_process';
-import { pathToFileURL } from 'url';
 import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning } from './emuWindow';
 
 // isDev: true cuando se corre con NODE_ENV=development (npm run dev)
@@ -236,6 +235,19 @@ ipcMain.handle('file:copy', async (_e, src: string, dest: string) => {
     ensureDir(path.dirname(normalizedDest));
     fs.copyFileSync(path.resolve(src), normalizedDest);
     return { success: true };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
+ipcMain.handle('file:copyCover', async (_e, srcPath: string, projectDir: string) => {
+  try {
+    const src = path.resolve(srcPath);
+    const dest = path.join(projectDir, 'cover.png');
+    if (!fs.existsSync(src)) return { success: false, reason: 'Origen no encontrado' };
+    ensureDir(projectDir);
+    fs.copyFileSync(src, dest);
+    return { success: true, destPath: dest };
   } catch (err) {
     return { success: false, reason: String(err) };
   }
@@ -651,9 +663,24 @@ ipcMain.on('window-restore', () => {
 
 app.whenReady().then(() => {
   // Registrar protocolo atom: para servir imágenes locales (portadas)
+  // Formato: atom://local/<ruta-absoluta-con-barras-normales>
   protocol.handle('atom', (request) => {
-    const filePath = decodeURIComponent(request.url.slice('atom://'.length));
-    return net.fetch(pathToFileURL(filePath).href);
+    try {
+      const url = new URL(request.url);
+      // url.pathname incluye / inicial, lo removemos
+      const rawPath = decodeURIComponent(url.pathname).slice(1);
+      const filePath = path.resolve(rawPath);
+      const data = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = ext === '.png' ? 'image/png'
+        : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+        : ext === '.gif' ? 'image/gif'
+        : ext === '.webp' ? 'image/webp'
+        : 'application/octet-stream';
+      return new Response(data, { headers: { 'Content-Type': mime } });
+    } catch (err) {
+      return new Response(null, { status: 404, statusText: 'Not found' });
+    }
   });
 
   initPaths();

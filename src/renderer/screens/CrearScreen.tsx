@@ -30,6 +30,19 @@ export function CrearScreen() {
     });
     if (project) {
       try {
+        // Copy cover image to project folder if present
+        if (draftCoverPath && !draftCoverPath.startsWith('/')) {
+          const api = window.advanceAPI;
+          if (api?.file?.copyCover) {
+            const result = await api.file.copyCover(draftCoverPath, project.path);
+            if (result.success && result.destPath) {
+              const st = useAppStore.getState();
+              await st.updateProject(project.id, { coverPath: result.destPath });
+              project.coverPath = result.destPath;
+            }
+          }
+        }
+
         const api = window.advanceAPI;
         if (api?.project?.save) {
           const st = useAppStore.getState();
