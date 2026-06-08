@@ -29,6 +29,8 @@ export interface Scene {
   height: number;
   x: number;
   y: number;
+  cameraX: number;
+  cameraY: number;
   backgroundColor: string;
   backgroundImage?: string;
   type: 'platformer' | 'topdown' | 'rpg' | 'fighting';

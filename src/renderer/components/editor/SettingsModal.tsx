@@ -79,6 +79,10 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setMundoGridOpacity = useAppStore((s) => s.setMundoGridOpacity);
   const clickAnimation = useAppStore((s) => s.clickAnimation);
   const setClickAnimation = useAppStore((s) => s.setClickAnimation);
+  const mundoGridStrokeWidth = useAppStore((s) => s.mundoGridStrokeWidth);
+  const setMundoGridStrokeWidth = useAppStore((s) => s.setMundoGridStrokeWidth);
+  const mundoGridColor = useAppStore((s) => s.mundoGridColor);
+  const setMundoGridColor = useAppStore((s) => s.setMundoGridColor);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab === 'general' ? 'general' : (initialTab as SettingsTab) || 'general');
   const [activeSection, setActiveSection] = useState<GeneralSection>('theme');
@@ -94,6 +98,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const [localMundoShowGrid, setLocalMundoShowGrid] = useState(false);
   const [localMundoGridSize, setLocalMundoGridSize] = useState(16);
   const [localMundoGridOpacity, setLocalMundoGridOpacity] = useState(0.15);
+  const [localMundoStrokeWidth, setLocalMundoStrokeWidth] = useState(0.5);
+  const [localMundoColor, setLocalMundoColor] = useState('#4488ff');
   const [localClickAnimation, setLocalClickAnimation] = useState(false);
 
   // Initialize local Mundo grid settings from store
@@ -102,6 +108,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setLocalMundoShowGrid(state.mundoShowGrid);
     setLocalMundoGridSize(state.mundoGridSize);
     setLocalMundoGridOpacity(state.mundoGridOpacity);
+    setLocalMundoStrokeWidth(state.mundoGridStrokeWidth);
+    setLocalMundoColor(state.mundoGridColor);
     setLocalClickAnimation(state.clickAnimation);
   }, []);
 
@@ -183,6 +191,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setMundoShowGrid(localMundoShowGrid);
     setMundoGridSize(localMundoGridSize);
     setMundoGridOpacity(localMundoGridOpacity);
+    setMundoGridStrokeWidth(localMundoStrokeWidth);
+    setMundoGridColor(localMundoColor);
     setClickAnimation(localClickAnimation);
     onClose();
   }
@@ -617,28 +627,145 @@ export function SettingsModal({ onClose, initialTab }: Props) {
               </div>
             </div>
           ) : activeTab === 'mundo' ? (
-            <div style={{ flex: 1, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 700 }}>Mundo</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Animación de clic</label>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ flex: 1, padding: 20, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 700 }}>Grid</span>
                   <button
-                    onClick={() => setLocalClickAnimation(!localClickAnimation)}
+                    onClick={() => setLocalMundoShowGrid(!localMundoShowGrid)}
                     style={{
                       width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
-                      background: localClickAnimation ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                      background: localMundoShowGrid ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
                     }}
                   >
                     <div style={{
                       position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
                       background: '#fff', transition: 'left 0.15s',
-                      left: localClickAnimation ? 24 : 2,
+                      left: localMundoShowGrid ? 24 : 2,
                     }} />
                   </button>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localClickAnimation ? 'Sí' : 'No'}</span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localMundoShowGrid ? 'Sí' : 'No'}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 150 }}>
+                  {/* Controls */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 200 }}>
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Tamaño de celda (px)</label>
+                        <input
+                          type="number"
+                          value={localMundoGridSize}
+                          onChange={(e) => setLocalMundoGridSize(parseInt(e.target.value) || 1)}
+                          min={1} max={128}
+                          style={{
+                            width: 60, height: 24, borderRadius: 4, border: '1px solid var(--border-color)',
+                            background: 'var(--bg-dark)', color: 'var(--text)', padding: '0 6px',
+                            fontSize: 12, textAlign: 'center',
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color de línea</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <input
+                            type="color"
+                            value={localMundoColor}
+                            onChange={(e) => setLocalMundoColor(e.target.value)}
+                            style={{ width: 28, height: 24, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }}
+                          />
+                          <input
+                            value={localMundoColor}
+                            onChange={(e) => setLocalMundoColor(e.target.value)}
+                            style={{
+                              width: 64, background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)', borderRadius: 4,
+                              color: 'var(--text)', fontSize: 11, padding: '4px 6px', outline: 'none', fontFamily: 'monospace',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Grosor de línea</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
+                          <input
+                            type="range"
+                            value={localMundoStrokeWidth}
+                            onChange={(e) => setLocalMundoStrokeWidth(parseFloat(e.target.value))}
+                            min={0.1} max={3} step={0.1}
+                            style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                          />
+                          <span style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace', minWidth: 24 }}>{localMundoStrokeWidth.toFixed(1)}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Opacidad</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
+                          <input
+                            type="range"
+                            value={localMundoGridOpacity}
+                            onChange={(e) => setLocalMundoGridOpacity(parseFloat(e.target.value))}
+                            min={0} max={1} step={0.01}
+                            style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                          />
+                          <span style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace', minWidth: 32 }}>{Math.round(localMundoGridOpacity * 100)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Preview */}
+                  <div style={{
+                    width: 180, height: 126, flexShrink: 0, borderRadius: 6, overflow: 'hidden',
+                    border: '1px solid var(--border-color)', background: 'var(--bg-dark)',
+                    position: 'relative',
+                  }}>
+                    <svg
+                      width="100%" height="100%"
+                      viewBox="0 0 180 126"
+                      preserveAspectRatio="xMidYMid meet"
+                      style={{ position: 'absolute', inset: 0 }}
+                    >
+                      <defs>
+                        <pattern id="checker" width="16" height="16" patternUnits="userSpaceOnUse">
+                          <rect x="0" y="0" width="8" height="8" fill="#555" />
+                          <rect x="8" y="0" width="8" height="8" fill="#333" />
+                          <rect x="0" y="8" width="8" height="8" fill="#333" />
+                          <rect x="8" y="8" width="8" height="8" fill="#555" />
+                        </pattern>
+                      </defs>
+                      <rect x="0" y="0" width="180" height="126" fill="url(#checker)" />
+                      {localMundoShowGrid && Array.from({ length: Math.floor(180 / localMundoGridSize) + 1 }, (_, i) => (
+                        <line key={`pv${i}`} x1={i * localMundoGridSize} y1={0} x2={i * localMundoGridSize} y2={126}
+                          stroke={localMundoColor} strokeWidth={localMundoStrokeWidth} opacity={localMundoGridOpacity} />
+                      ))}
+                      {localMundoShowGrid && Array.from({ length: Math.floor(126 / localMundoGridSize) + 1 }, (_, i) => (
+                        <line key={`ph${i}`} x1={0} y1={i * localMundoGridSize} x2={180} y2={i * localMundoGridSize}
+                          stroke={localMundoColor} strokeWidth={localMundoStrokeWidth} opacity={localMundoGridOpacity} />
+                      ))}
+                    </svg>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Animación de clic</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
+                    <button
+                      onClick={() => setLocalClickAnimation(!localClickAnimation)}
+                      style={{
+                        width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
+                        background: localClickAnimation ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
+                        background: '#fff', transition: 'left 0.15s',
+                        left: localClickAnimation ? 24 : 2,
+                      }} />
+                    </button>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localClickAnimation ? 'Sí' : 'No'}</span>
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 'auto' }}>
+              <div style={{ flexShrink: 0, padding: '12px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button onClick={cancel}
                   style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
                   Cancelar

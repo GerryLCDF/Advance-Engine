@@ -27,7 +27,8 @@ let _copiedAnimationFrame: { frame: AnimationFrame; animId: string } | null = nu
 
 const defaultScene = (): Scene => ({
   id: uid(), name: 'Nueva escena', width: 240, height: 160,
-  x: 60, y: 20, backgroundColor: '#6b8cff', type: 'platformer', actors: [],
+  x: 60, y: 20, cameraX: 0, cameraY: 0,
+  backgroundColor: '#6b8cff', type: 'platformer', actors: [],
 });
 
 const defaultSplashScreen = (): SplashScreen => ({
@@ -332,12 +333,17 @@ interface AppState {
   setMundoGridSize: (val: number) => void;
   mundoGridOpacity: number;
   setMundoGridOpacity: (val: number) => void;
+  mundoGridStrokeWidth: number;
+  setMundoGridStrokeWidth: (val: number) => void;
+  mundoGridColor: string;
+  setMundoGridColor: (val: string) => void;
   clickAnimation: boolean;
   setClickAnimation: (val: boolean) => void;
 
   // ── Pipeline / Proyecto ─────────────────────────────────────────────────
   projectDir: string | null;
   setProjectDir: (dir: string | null) => void;
+  resetEditorState: () => void;
   exportLog: string[];
   addExportLog: (msg: string) => void;
   clearExportLog: () => void;
@@ -636,12 +642,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMundoGridSize: (val) => set({ mundoGridSize: val }),
   mundoGridOpacity: 0.15,
   setMundoGridOpacity: (val) => set({ mundoGridOpacity: val }),
+  mundoGridStrokeWidth: 0.5,
+  setMundoGridStrokeWidth: (val) => set({ mundoGridStrokeWidth: val }),
+  mundoGridColor: '#4488ff',
+  setMundoGridColor: (val) => set({ mundoGridColor: val }),
   clickAnimation: false,
   setClickAnimation: (val) => set({ clickAnimation: val }),
 
   // ── Pipeline / Proyecto ─────────────────────────────────────────────────
   projectDir: null,
   setProjectDir: (dir) => set({ projectDir: dir }),
+  resetEditorState: () => set({
+    scenes: [],
+    sceneConnections: [],
+    splashScreen: defaultSplashScreen(),
+    spriteSheets: [],
+    backgrounds: [],
+    songs: [],
+    dialogues: [],
+    sounds: [],
+    scripts: [],
+    dirty: false,
+    exportLog: [],
+    selectedNodeId: '',
+    _songsUndoStack: [],
+    _songsRedoStack: [],
+    _mundoUndoStack: [],
+    _mundoRedoStack: [],
+    _spriteUndoStack: [],
+    _spriteRedoStack: [],
+    spriteZoom: 1,
+    imagenZoom: 1,
+  }),
   exportLog: [],
   addExportLog: (msg) => set((s) => ({ exportLog: [...s.exportLog, msg] })),
   clearExportLog: () => set({ exportLog: [] }),
@@ -874,7 +906,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateScene: (id, patch) => {
     get()._snapshotMundo();
     set((s) => ({
-      scenes: s.scenes.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)),
+      scenes: s.scenes.map((sc) => {
+        if (sc.id !== id) return sc;
+        const next = { ...sc, ...patch };
+        if (patch.width !== undefined) next.cameraX = Math.min(next.cameraX, Math.max(next.width - 240, 0));
+        if (patch.height !== undefined) next.cameraY = Math.min(next.cameraY, Math.max(next.height - 160, 0));
+        return next;
+      }),
     }));
   },
   removeScene: (id) => {

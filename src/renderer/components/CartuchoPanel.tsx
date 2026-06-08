@@ -35,9 +35,8 @@ export function CartuchoPanel({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
         gap: 12,
-        padding: '20px 16px',
+        padding: '20px 16px 0',
       }}
     >
       {/* Preview del cartucho con nombre en tiempo real */}

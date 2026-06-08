@@ -8,6 +8,7 @@ export interface InspectorField {
   min?: number;
   max?: number;
   step?: number;
+  readonly?: boolean;
   onChange: (val: string | number | boolean) => void;
 }
 
@@ -175,17 +176,19 @@ function FieldRow({ field }: { field: InspectorField }) {
         max={field.max}
         step={field.step}
         value={field.value as string | number}
+        readOnly={field.readonly}
         onChange={(e) => field.onChange(field.type === 'number' ? Number(e.target.value) : e.target.value)}
         style={{
           flex: 1,
-          background: '#141420',
+          background: field.readonly ? 'var(--bg-canvas)' : '#141420',
           border: '1px solid var(--border-light)',
           borderRadius: 4,
-          color: 'var(--text)',
+          color: field.readonly ? 'var(--text-muted)' : 'var(--text)',
           fontSize: 11,
           padding: '3px 6px',
           outline: 'none',
           width: 0,
+          cursor: field.readonly ? 'default' : 'text',
         }}
       />
     </div>

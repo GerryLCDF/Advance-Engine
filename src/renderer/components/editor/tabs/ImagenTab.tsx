@@ -284,6 +284,9 @@ export function ImagenTab() {
     ];
     if (selectedLayer.imagePath) {
       fields.push({ label: 'Reescalar', type: 'toggle', value: !!selectedLayer.rescale, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { rescale: v as boolean }) });
+      if (imgSize) {
+        fields.push({ label: 'Resolución', type: 'text', value: `${imgSize.w} × ${imgSize.h} px`, readonly: true, onChange: () => {} });
+      }
     }
     if (canAnimate) {
       fields.push({ label: 'Animación', type: 'toggle', value: !!selectedLayer.animated, onChange: (v) => parentBg && updateLayer(parentBg.id, selectedLayer.id, { animated: v as boolean, animationSpeed: v ? (selectedLayer.animationSpeed || 5) : undefined, animationFramesX: v ? frameCols : undefined, animationFramesY: v ? frameRows : undefined, animationLoop: v ? (selectedLayer.animationLoop || 'loop') : undefined }) });

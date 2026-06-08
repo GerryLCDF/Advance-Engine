@@ -45,22 +45,21 @@ export function CrearScreen() {
 
         const api = window.advanceAPI;
         if (api?.project?.save) {
-          const st = useAppStore.getState();
           const result = await api.project.save(project.id, {
             name: project.name,
             state: {
-              scenes: st.scenes,
-              sceneConnections: st.sceneConnections,
-              backgrounds: st.backgrounds ?? [],
-              sprites: st.spriteSheets ?? [],
-              songs: st.songs,
-              sounds: st.sounds ?? [],
-              dialogues: st.dialogues ?? [],
-              scripts: st.scripts ?? [],
+              scenes: [],
+              sceneConnections: [],
+              backgrounds: [],
+              sprites: [],
+              songs: [],
+              sounds: [],
+              dialogues: [],
+              scripts: [],
             },
           });
           if (result.success && result.path) {
-            st.setProjectDir(result.path);
+            useAppStore.getState().setProjectDir(result.path);
             console.log('[Crear] Carpeta creada en:', result.path);
           } else {
             console.error('[Crear] Error al guardar:', result.reason);
@@ -69,6 +68,8 @@ export function CrearScreen() {
       } catch (err) {
         console.error('[Crear] Excepción:', err);
       }
+      // Limpiar estado del editor y del draft
+      useAppStore.getState().resetEditorState();
       resetDraft();
       setActiveScreen({ type: 'editor', projectId: project.id });
     }

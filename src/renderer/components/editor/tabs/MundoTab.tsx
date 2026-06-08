@@ -12,7 +12,7 @@ const GBA_W = 240;
 const GBA_H = 160;
 
 const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 8;
+const MAX_ZOOM = 32;
 
 export function MundoTab() {
   const scenes = useAppStore((s) => s.scenes);
@@ -49,8 +49,13 @@ export function MundoTab() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sceneId: string } | null>(null);
 
   // ── Grid ──
-  const [showGrid, setShowGrid] = useState(false);
-  const [gridSize, setGridSize] = useState(16);
+  const mundoShowGrid = useAppStore((s) => s.mundoShowGrid);
+  const setMundoShowGrid = useAppStore((s) => s.setMundoShowGrid);
+  const mundoGridSize = useAppStore((s) => s.mundoGridSize);
+  const setMundoGridSize = useAppStore((s) => s.setMundoGridSize);
+  const mundoGridOpacity = useAppStore((s) => s.mundoGridOpacity);
+  const mundoGridStrokeWidth = useAppStore((s) => s.mundoGridStrokeWidth);
+  const mundoGridColor = useAppStore((s) => s.mundoGridColor);
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
   const gridMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -91,10 +96,7 @@ export function MundoTab() {
   // ── Panel resize is managed by ResizableEditorLayout ────────────────────
 
   // Keep latest scene list and selection for wheel handler
-  const scenesRef = useRef(scenes);
-  scenesRef.current = scenes;
-  const selectedRef = useRef(selectedNodeId);
-  selectedRef.current = selectedNodeId;
+  // (reserved for future use)
 
   // Attach wheel listener with { passive: false } so preventDefault works
   useEffect(() => {
@@ -109,16 +111,8 @@ export function MundoTab() {
         const delta = -e.deltaY * 0.001;
         setZoom((z) => {
           const newZ = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z + delta));
-          const sid = selectedRef.current;
-          if (sid) {
-            const sc = scenesRef.current.find((s) => s.id === sid);
-            if (sc) {
-              const cx = sc.x + 200;
-              const cy = sc.y + 50;
-              setPanX((px) => mx - (mx - px) * (newZ / z));
-              setPanY((py) => my - (my - py) * (newZ / z));
-            }
-          }
+          setPanX((px) => mx - (mx - px) * (newZ / z));
+          setPanY((py) => my - (my - py) * (newZ / z));
           return newZ;
         });
       } else if (e.shiftKey) {
@@ -330,6 +324,19 @@ export function MundoTab() {
     return () => document.removeEventListener('keydown', handler);
   }, [ctxMenu]);
 
+  // Reaccionar a cambios de rescale en capas de imagen: si una escena usa una capa con rescale=true, forzar 240×160
+  useEffect(() => {
+    const st = useAppStore.getState();
+    for (const sc of st.scenes) {
+      if (!sc.backgroundImage) continue;
+      const layer = st.backgrounds.flatMap((bg) => bg.layers).find((l) => l.imagePath === sc.backgroundImage);
+      if (!layer) continue;
+      if (layer.rescale && (sc.width !== 240 || sc.height !== 160)) {
+        st.updateScene(sc.id, { width: 240, height: 160 });
+      }
+    }
+  }, [backgrounds]);
+
   const inspectorSections: InspectorSection[] = [];
   if (selectedScene) {
     inspectorSections.push({
@@ -340,24 +347,44 @@ export function MundoTab() {
           ]
         : [
             { label: 'Nombre', type: 'text', value: selectedScene.name, onChange: (v) => updateScene(selectedScene.id, { name: v as string }) },
-            { label: 'Ancho (px)', type: 'number', value: selectedScene.width, min: 240, step: 1, onChange: (v) => updateScene(selectedScene.id, { width: v as number, height: Math.round((v as number) * 2 / 3) }) },
-            { label: 'Alto (px)', type: 'number', value: selectedScene.height, min: 160, step: 1, onChange: (v) => updateScene(selectedScene.id, { height: v as number, width: Math.round((v as number) * 3 / 2) }) },
+            { label: 'Ancho (px)', type: 'number', value: selectedScene.width, min: 240, step: 1, onChange: (v) => updateScene(selectedScene.id, { width: v as number }) },
+            { label: 'Alto (px)', type: 'number', value: selectedScene.height, min: 160, step: 1, onChange: (v) => updateScene(selectedScene.id, { height: v as number }) },
           ],
     });
     // Show read-only dimensions when background image is set
     if (selectedScene.backgroundImage) {
+      const dLayer = backgrounds.flatMap((bg) => bg.layers).find((l) => l.imagePath === selectedScene.backgroundImage);
       inspectorSections.push({
         title: 'Dimensiones',
         content: (
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '2px 0' }}>
             {selectedScene.width} × {selectedScene.height} px
             <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
-              Definido automáticamente por la imagen de fondo
+              {dLayer?.rescale ? 'Reescalada a GBA (240×160)' : 'Tamaño original de la imagen'}
             </div>
           </div>
         ),
       });
     }
+    // Camara (viewport) — solo si la escena es mas grande que la pantalla GBA
+    if (selectedScene.width > 240 || selectedScene.height > 160) {
+      inspectorSections.push({
+        title: 'Camara',
+        fields: [
+          {
+            label: 'Camara X', type: 'number', value: selectedScene.cameraX,
+            min: 0, max: selectedScene.width - 240, step: 1,
+            onChange: (v) => updateScene(selectedScene.id, { cameraX: Math.min(Math.max(v as number, 0), selectedScene.width - 240) as number }),
+          },
+          {
+            label: 'Camara Y', type: 'number', value: selectedScene.cameraY,
+            min: 0, max: selectedScene.height - 160, step: 1,
+            onChange: (v) => updateScene(selectedScene.id, { cameraY: Math.min(Math.max(v as number, 0), selectedScene.height - 160) as number }),
+          },
+        ],
+      });
+    }
+
     // Imagen de fondo
     const sceneBgImg = imageOptions.find((img) => img.value === selectedScene.backgroundImage);
     inspectorSections.push({
@@ -414,9 +441,13 @@ export function MundoTab() {
                       onClick={async () => {
                         const api = window.advanceAPI;
                         if (!api) return;
+                        const matchingBgLayer = backgrounds.flatMap((bg) => bg.layers).find((l) => l.imagePath === img.value);
                         const result = await api.file.readImage(img.value);
                         const patch: Partial<Scene> = { backgroundImage: img.value };
-                        if (result.success && result.width && result.height) {
+                        if (matchingBgLayer?.rescale) {
+                          patch.width = 240;
+                          patch.height = 160;
+                        } else if (result.success && result.width && result.height) {
                           patch.width = result.width;
                           patch.height = result.height;
                         }
@@ -838,10 +869,10 @@ export function MundoTab() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <ToolBtn
-                active={showGrid}
-                onClick={() => setShowGrid((v) => !v)}
+                active={mundoShowGrid}
+                onClick={() => setMundoShowGrid(!mundoShowGrid)}
                 title="Mostrar grid"
-                style={{ opacity: showGrid ? 1 : 0.5 }}
+                style={{ opacity: mundoShowGrid ? 1 : 0.5 }}
               >
                 #
               </ToolBtn>
@@ -860,11 +891,11 @@ export function MundoTab() {
                     {[1, 2, 4, 8, 16, 32, 64].map((s) => (
                       <div
                         key={s}
-                        onClick={() => { setGridSize(s); setGridMenuOpen(false); }}
+                        onClick={() => { setMundoGridSize(s); setGridMenuOpen(false); }}
                         style={{
                           padding: '4px 8px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
-                          background: gridSize === s ? 'var(--accent)' : 'transparent',
-                          color: gridSize === s ? '#fff' : 'var(--text-secondary)',
+                          background: mundoGridSize === s ? 'var(--accent)' : 'transparent',
+                          color: mundoGridSize === s ? '#fff' : 'var(--text-secondary)',
                         }}
                       >
                         {s}×{s}
@@ -948,6 +979,11 @@ export function MundoTab() {
                       onSelect={() => { if (!hasMoved.current) setSelectedNodeId(splashScreen.id); }}
                       updateSplashScreen={updateSplashScreen}
                       dragZoom={zoom}
+                      showGrid={mundoShowGrid}
+                      gridSize={mundoGridSize}
+                      gridOpacity={mundoGridOpacity}
+                      gridStrokeWidth={mundoGridStrokeWidth}
+                      gridColor={mundoGridColor}
                     />
               {/* Scene cards */}
               {scenes.map((sc) => {
@@ -968,8 +1004,11 @@ export function MundoTab() {
                       }}
                       updateScene={updateScene}
                       dragZoom={zoom}
-                      showGrid={showGrid}
-                      gridSize={gridSize}
+                      showGrid={mundoShowGrid}
+                      gridSize={mundoGridSize}
+                      gridOpacity={mundoGridOpacity}
+                      gridStrokeWidth={mundoGridStrokeWidth}
+                      gridColor={mundoGridColor}
                       animPaused={!!sceneAnimPaused[sc.id]}
                     />
                 );
@@ -1110,7 +1149,7 @@ function ToolBtn({ children, active, onClick, title, style }: { children: React.
   );
 }
 
-function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onContextMenu, updateScene, dragZoom, showGrid, gridSize, animPaused }: {
+function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onContextMenu, updateScene, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor, animPaused }: {
   scene: Scene; selected: boolean; isConnecting: boolean;
   tool: string; connectFrom: string | null;
   onSelect: (id: string) => void;
@@ -1119,9 +1158,11 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   dragZoom: number;
   showGrid: boolean;
   gridSize: number;
+  gridOpacity: number;
+  gridStrokeWidth: number;
+  gridColor: string;
   animPaused: boolean;
 }) {
-  const imageSmoothing = useAppStore((s) => s.imageSmoothing);
   const backgrounds = useAppStore((s) => s.backgrounds);
   const songs = useAppStore((s) => s.songs);
   const clickAnimation = useAppStore((s) => s.clickAnimation);
@@ -1152,8 +1193,8 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
 
   const isAnimated = matchingLayer?.animated && !!matchingLayer.animationFramesX && !!matchingLayer.animationFramesY;
   const totalFrames = isAnimated ? (matchingLayer!.animationFramesX! * matchingLayer!.animationFramesY!) : 0;
-  // rescale=false → aggressive GBA fill (fill); rescale=true → keep image's natural scale (contain)
-  const imageFit: React.CSSProperties['objectFit'] = matchingLayer ? (matchingLayer.rescale ? 'contain' : 'fill') : 'cover';
+  // rescale=false → mostrar la imagen completa (contain); rescale=true → forzar a llenar 240×160 (fill)
+  const imageFit: React.CSSProperties['objectFit'] = matchingLayer ? (matchingLayer.rescale ? 'fill' : 'contain') : 'contain';
 
   // Reset frame on layer/image change
   useEffect(() => { setAnimFrame(0); animDirRef.current = 1; }, [scene.backgroundImage, isAnimated]);
@@ -1224,16 +1265,16 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         left: 0, top: 0,
         transform: `translate(${scene.x}px, ${scene.y}px)`,
         willChange: dragging ? 'transform' : 'auto',
-        width: 400,
+        display: 'flex', flexDirection: 'column',
         background: clickAnimation && selected ? 'var(--bg-panel)' : 'transparent',
         border: selected ? `2px solid var(--accent-light)` : '2px solid transparent',
-        borderRadius: clickAnimation && selected ? 0 : 8,
+        borderRadius: 0,
         overflow: 'hidden',
         padding: clickAnimation && selected ? 10 : 0,
         cursor: tool === 'connect' ? 'crosshair' : dragging ? 'grabbing' : 'grab',
         zIndex: dragging ? 10 : 1,
         userSelect: 'none',
-        transition: clickAnimation ? 'border-color 0.15s, background 0.15s, border-radius 0.15s, padding 0.15s' : 'none',
+        transition: clickAnimation ? 'border-color 0.15s, background 0.15s, padding 0.15s' : 'none',
         opacity: clickAnimation && selected ? 1 : 0.85,
       }}
       onMouseDown={handleMouseDown}
@@ -1257,20 +1298,16 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
           <span style={{ fontSize: 10, color: '#6b8cff', flexShrink: 0 }}>🎵 {bgSongObj.name}</span>
         )}
       </div>
-      {/* Mini-map */}
+      {/* Mini-map — pixel exacto */}
       <div style={{
-        width: clickAnimation && selected ? '100%' : '360px',
-        paddingBottom: `${(scene.height / scene.width) * 100}%`,
+        width: scene.width,
+        height: scene.height,
         position: 'relative',
-        borderRadius: clickAnimation && selected ? 0 : 4,
         overflow: 'hidden',
-        margin: '0 auto',
       }}>
         <div style={{
           position: 'absolute', inset: 0,
           background: bgImageUrl ? 'transparent' : scene.backgroundColor,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, color: '#ffffff88',
         }}>
           {bgImageUrl && (
             isAnimated ? (
@@ -1283,13 +1320,13 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                     width: `${matchingLayer!.animationFramesX! * 100}%`,
                     height: `${matchingLayer!.animationFramesY! * 100}%`,
                     maxWidth: 'none',
-                    imageRendering: imageSmoothing ? 'auto' : 'pixelated',
+                    imageRendering: 'pixelated',
                   }}
                 />
               </div>
             ) : (
               <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: imageFit, imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', imageRendering: 'pixelated' }}
               />
             )
           )}
@@ -1302,12 +1339,27 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
               preserveAspectRatio="xMidYMid meet"
             >
               {Array.from({ length: Math.floor(scene.width / gridSize) + 1 }, (_, i) => (
-                <line key={`gv${i}`} x1={i * gridSize} y1={0} x2={i * gridSize} y2={scene.height} stroke="rgba(255,255,255,0.12)" strokeWidth={0.5} />
+                <line key={`gv${i}`} x1={i * gridSize} y1={0} x2={i * gridSize} y2={scene.height} stroke={gridColor} strokeWidth={gridStrokeWidth} opacity={gridOpacity} />
               ))}
               {Array.from({ length: Math.floor(scene.height / gridSize) + 1 }, (_, i) => (
-                <line key={`gh${i}`} x1={0} y1={i * gridSize} x2={scene.width} y2={i * gridSize} stroke="rgba(255,255,255,0.12)" strokeWidth={0.5} />
+                <line key={`gh${i}`} x1={0} y1={i * gridSize} x2={scene.width} y2={i * gridSize} stroke={gridColor} strokeWidth={gridStrokeWidth} opacity={gridOpacity} />
               ))}
             </svg>
+          )}
+          {/* Viewport overlay — rectangulo de la camara (240x160) en coordenadas de pixel exacto */}
+          {(scene.width > 240 || scene.height > 160) && (
+            <div style={{
+              position: 'absolute',
+              left: scene.cameraX,
+              top: scene.cameraY,
+              width: 240,
+              height: 160,
+              boxSizing: 'border-box',
+              border: '2px dashed var(--accent)',
+              pointerEvents: 'none',
+              zIndex: 3,
+              backgroundColor: 'rgba(255,255,255,0.06)',
+            }} />
           )}
           {selected && (
             <div style={{
@@ -1327,13 +1379,17 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   );
 }
 
-function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }: {
+function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor }: {
   splash: SplashScreen; selected: boolean;
   onSelect: () => void;
   updateSplashScreen: (patch: Partial<SplashScreen>) => void;
   dragZoom: number;
+  showGrid: boolean;
+  gridSize: number;
+  gridOpacity: number;
+  gridStrokeWidth: number;
+  gridColor: string;
 }) {
-  const imageSmoothing = useAppStore((s) => s.imageSmoothing);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef({ startX: 0, startY: 0, origX: 0, origY: 0 });
   const [bgImageUrl, setBgImageUrl] = useState('');
@@ -1398,10 +1454,10 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }
         left: 0, top: 0,
         transform: `translate(${splash.x}px, ${splash.y}px)`,
         willChange: dragging ? 'transform' : 'auto',
-        width: 400,
+        display: 'flex', flexDirection: 'column',
         background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
         border: `2px solid ${selected ? 'var(--accent-light)' : '#3a3a5a'}`,
-        borderRadius: 8, padding: 10,
+        borderRadius: 0, padding: 10,
         cursor: dragging ? 'grabbing' : 'grab',
         zIndex: dragging ? 10 : 1,
         userSelect: 'none',
@@ -1417,8 +1473,9 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }
         {splash.name}
       </div>
       <div style={{
-        width: '100%', paddingBottom: '66.67%', position: 'relative',
-        borderRadius: 4, marginBottom: 4, overflow: 'hidden',
+        width: 240, height: 160, position: 'relative',
+        marginBottom: 4, overflow: 'hidden',
+        borderRadius: 0,
       }}>
         <div style={{
           position: 'absolute', inset: 0,
@@ -1428,21 +1485,37 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom }
         }}>
           {videoUrl && (
             <video ref={videoRef} src={videoUrl} autoPlay loop muted playsInline
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', imageRendering: 'pixelated' }}
             />
           )}
           {bgImageUrl && !videoUrl && (
             <img src={bgImageUrl} alt="" draggable={false} onDragStart={(e) => e.preventDefault()}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', imageRendering: imageSmoothing ? 'auto' : 'pixelated' }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', imageRendering: 'pixelated' }}
             />
           )}
-          <span style={{ position: 'relative', zIndex: 1, background: '#00000066', padding: '2px 6px', borderRadius: 4 }}>
+          <span style={{ position: 'relative', zIndex: 1, background: '#00000066', padding: '2px 6px', borderRadius: 0 }}>
             Splash — {splash.duration}s{videoUrl ? ' 🎬' : ''}
           </span>
           <div style={{
             position: 'absolute', inset: 0,
-            border: '2px solid rgba(255,255,255,0.1)', borderRadius: 2, pointerEvents: 'none',
+            border: '2px solid rgba(255,255,255,0.1)', borderRadius: 0, pointerEvents: 'none',
           }} />
+          {showGrid && (
+            <svg style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              pointerEvents: 'none', zIndex: 2,
+            }}
+              viewBox="0 0 240 160"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {Array.from({ length: Math.floor(240 / gridSize) + 1 }, (_, i) => (
+                <line key={`sgv${i}`} x1={i * gridSize} y1={0} x2={i * gridSize} y2={160} stroke={gridColor} strokeWidth={gridStrokeWidth} opacity={gridOpacity} />
+              ))}
+              {Array.from({ length: Math.floor(160 / gridSize) + 1 }, (_, i) => (
+                <line key={`sgh${i}`} x1={0} y1={i * gridSize} x2={240} y2={i * gridSize} stroke={gridColor} strokeWidth={gridStrokeWidth} opacity={gridOpacity} />
+              ))}
+            </svg>
+          )}
         </div>
       </div>
       {splash.backgroundSong && (
