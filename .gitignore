@@ -12,3 +12,7 @@ recursos/
 RULES.md
 PENDIENTES.md
 diario-desarrollo.md
+public/testIMG/
+test_padded.gba
+test_padded.gba.sha1
+tools/
