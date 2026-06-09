@@ -337,6 +337,10 @@ interface AppState {
   setMundoGridStrokeWidth: (val: number) => void;
   mundoGridColor: string;
   setMundoGridColor: (val: string) => void;
+  connColorOut: string;
+  setConnColorOut: (val: string) => void;
+  connColorIn: string;
+  setConnColorIn: (val: string) => void;
   clickAnimation: boolean;
   setClickAnimation: (val: boolean) => void;
 
@@ -646,6 +650,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMundoGridStrokeWidth: (val) => set({ mundoGridStrokeWidth: val }),
   mundoGridColor: '#4488ff',
   setMundoGridColor: (val) => set({ mundoGridColor: val }),
+  connColorOut: '#3b82f6',
+  setConnColorOut: (val) => set({ connColorOut: val }),
+  connColorIn: '#f59e0b',
+  setConnColorIn: (val) => set({ connColorIn: val }),
   clickAnimation: false,
   setClickAnimation: (val) => set({ clickAnimation: val }),
 

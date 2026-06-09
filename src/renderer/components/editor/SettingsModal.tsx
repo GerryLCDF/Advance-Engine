@@ -83,6 +83,10 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setMundoGridStrokeWidth = useAppStore((s) => s.setMundoGridStrokeWidth);
   const mundoGridColor = useAppStore((s) => s.mundoGridColor);
   const setMundoGridColor = useAppStore((s) => s.setMundoGridColor);
+  const connColorOut = useAppStore((s) => s.connColorOut);
+  const setConnColorOut = useAppStore((s) => s.setConnColorOut);
+  const connColorIn = useAppStore((s) => s.connColorIn);
+  const setConnColorIn = useAppStore((s) => s.setConnColorIn);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab === 'general' ? 'general' : (initialTab as SettingsTab) || 'general');
   const [activeSection, setActiveSection] = useState<GeneralSection>('theme');
@@ -100,7 +104,24 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const [localMundoGridOpacity, setLocalMundoGridOpacity] = useState(0.15);
   const [localMundoStrokeWidth, setLocalMundoStrokeWidth] = useState(0.5);
   const [localMundoColor, setLocalMundoColor] = useState('#4488ff');
+  const [localConnColorOut, setLocalConnColorOut] = useState('#3b82f6');
+  const [localConnColorIn, setLocalConnColorIn] = useState('#f59e0b');
   const [localClickAnimation, setLocalClickAnimation] = useState(false);
+  const [hoveredReset, setHoveredReset] = useState<string | null>(null);
+
+  const MUNDO_DEFAULTS = {
+    showGrid: false, gridSize: 16, gridOpacity: 0.15, strokeWidth: 0.5, gridColor: '#4488ff',
+    connColorOut: '#3b82f6', connColorIn: '#f59e0b', clickAnimation: false,
+  };
+
+  const isMundoModified = localMundoShowGrid !== MUNDO_DEFAULTS.showGrid
+    || localMundoGridSize !== MUNDO_DEFAULTS.gridSize
+    || localMundoGridOpacity !== MUNDO_DEFAULTS.gridOpacity
+    || localMundoStrokeWidth !== MUNDO_DEFAULTS.strokeWidth
+    || localMundoColor !== MUNDO_DEFAULTS.gridColor
+    || localConnColorOut !== MUNDO_DEFAULTS.connColorOut
+    || localConnColorIn !== MUNDO_DEFAULTS.connColorIn
+    || localClickAnimation !== MUNDO_DEFAULTS.clickAnimation;
 
   // Initialize local Mundo grid settings from store
   useEffect(() => {
@@ -110,6 +131,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setLocalMundoGridOpacity(state.mundoGridOpacity);
     setLocalMundoStrokeWidth(state.mundoGridStrokeWidth);
     setLocalMundoColor(state.mundoGridColor);
+    setLocalConnColorOut(state.connColorOut);
+    setLocalConnColorIn(state.connColorIn);
     setLocalClickAnimation(state.clickAnimation);
   }, []);
 
@@ -193,6 +216,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setMundoGridOpacity(localMundoGridOpacity);
     setMundoGridStrokeWidth(localMundoStrokeWidth);
     setMundoGridColor(localMundoColor);
+    setConnColorOut(localConnColorOut);
+    setConnColorIn(localConnColorIn);
     setClickAnimation(localClickAnimation);
     onClose();
   }
@@ -651,7 +676,12 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 200 }}>
                     <div style={{ display: 'flex', gap: 16 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Tamaño de celda (px)</label>
+                        <div onMouseEnter={() => setHoveredReset('gridSize')} onMouseLeave={() => setHoveredReset(null)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                          <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Tamaño de celda (px)</label>
+                          <button onClick={() => setLocalMundoGridSize(16)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridSize' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                        </div>
                         <input
                           type="number"
                           value={localMundoGridSize}
@@ -665,7 +695,12 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                         />
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color de línea</label>
+                        <div onMouseEnter={() => setHoveredReset('gridColor')} onMouseLeave={() => setHoveredReset(null)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                          <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color de línea</label>
+                          <button onClick={() => setLocalMundoColor('#4488ff')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridColor' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <input
                             type="color"
@@ -686,7 +721,12 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                     </div>
                     <div style={{ display: 'flex', gap: 16 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Grosor de línea</label>
+                        <div onMouseEnter={() => setHoveredReset('strokeWidth')} onMouseLeave={() => setHoveredReset(null)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                          <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Grosor de línea</label>
+                          <button onClick={() => setLocalMundoStrokeWidth(0.5)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'strokeWidth' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
                           <input
                             type="range"
@@ -699,7 +739,12 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Opacidad</label>
+                        <div onMouseEnter={() => setHoveredReset('gridOpacity')} onMouseLeave={() => setHoveredReset(null)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                          <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Opacidad</label>
+                          <button onClick={() => setLocalMundoGridOpacity(0.15)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridOpacity' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
                           <input
                             type="range"
@@ -745,8 +790,48 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                     </svg>
                   </div>
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
+                  <span style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>Conexiones</span>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                      <div onMouseEnter={() => setHoveredReset('connColorOut')} onMouseLeave={() => setHoveredReset(null)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color salida</label>
+                        <button onClick={() => setLocalConnColorOut('#3b82f6')}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connColorOut' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="color" value={localConnColorOut} onChange={(e) => setLocalConnColorOut(e.target.value)}
+                          style={{ width: 28, height: 24, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }} />
+                        <input value={localConnColorOut} onChange={(e) => setLocalConnColorOut(e.target.value)}
+                          style={{ width: 64, background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)', borderRadius: 4,
+                            color: 'var(--text)', fontSize: 11, padding: '4px 6px', outline: 'none', fontFamily: 'monospace' }} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                      <div onMouseEnter={() => setHoveredReset('connColorIn')} onMouseLeave={() => setHoveredReset(null)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                        <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color entrada</label>
+                        <button onClick={() => setLocalConnColorIn('#f59e0b')}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connColorIn' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="color" value={localConnColorIn} onChange={(e) => setLocalConnColorIn(e.target.value)}
+                          style={{ width: 28, height: 24, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }} />
+                        <input value={localConnColorIn} onChange={(e) => setLocalConnColorIn(e.target.value)}
+                          style={{ width: 64, background: 'var(--bg-dark)', border: '1px solid var(--bg-raised)', borderRadius: 4,
+                            color: 'var(--text)', fontSize: 11, padding: '4px 6px', outline: 'none', fontFamily: 'monospace' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
-                  <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Animación de clic</label>
+                  <div onMouseEnter={() => setHoveredReset('clickAnim')} onMouseLeave={() => setHoveredReset(null)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                    <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Animación de clic</label>
+                    <button onClick={() => setLocalClickAnimation(false)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'clickAnim' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                  </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
                     <button
                       onClick={() => setLocalClickAnimation(!localClickAnimation)}
@@ -765,15 +850,32 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                   </div>
                 </div>
               </div>
-              <div style={{ flexShrink: 0, padding: '12px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button onClick={cancel}
-                  style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-                <button onClick={applyMundo}
-                  style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
-                  Aplicar
-                </button>
+              <div style={{ flexShrink: 0, padding: '12px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                {isMundoModified && (
+                  <button onClick={() => {
+                    setLocalMundoShowGrid(MUNDO_DEFAULTS.showGrid);
+                    setLocalMundoGridSize(MUNDO_DEFAULTS.gridSize);
+                    setLocalMundoGridOpacity(MUNDO_DEFAULTS.gridOpacity);
+                    setLocalMundoStrokeWidth(MUNDO_DEFAULTS.strokeWidth);
+                    setLocalMundoColor(MUNDO_DEFAULTS.gridColor);
+                    setLocalConnColorOut(MUNDO_DEFAULTS.connColorOut);
+                    setLocalConnColorIn(MUNDO_DEFAULTS.connColorIn);
+                    setLocalClickAnimation(MUNDO_DEFAULTS.clickAnimation);
+                  }}
+                    style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                    Restablecer
+                  </button>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={cancel}
+                    style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={applyMundo}
+                    style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                    Aplicar
+                  </button>
+                </div>
               </div>
             </div>
           ) : (

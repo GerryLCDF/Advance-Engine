@@ -56,6 +56,8 @@ export function MundoTab() {
   const mundoGridOpacity = useAppStore((s) => s.mundoGridOpacity);
   const mundoGridStrokeWidth = useAppStore((s) => s.mundoGridStrokeWidth);
   const mundoGridColor = useAppStore((s) => s.mundoGridColor);
+  const connColorOut = useAppStore((s) => s.connColorOut);
+  const connColorIn = useAppStore((s) => s.connColorIn);
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
   const gridMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -92,6 +94,43 @@ export function MundoTab() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hasMoved = useRef(false);
   const mouseCanvasPos = useRef({ x: 0, y: 0 });
+  const [mouseWorld, setMouseWorld] = useState({ x: 0, y: 0 });
+  const [highlightedConnId, setHighlightedConnId] = useState<string | null>(null);
+
+  const visibleConnections = useMemo(() => {
+    if (!selectedNodeId) return [];
+    return connections.filter(
+      (c) => c.fromSceneId === selectedNodeId || c.toSceneId === selectedNodeId
+    );
+  }, [connections, selectedNodeId]);
+
+  const svgBounds = useMemo(() => {
+    if (scenes.length === 0) return { x: -500, y: -500, w: 1000, h: 1000 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const sc of scenes) {
+      const r = sc.x + sc.width;
+      const b = sc.y + 18 + sc.height;
+      if (sc.x < minX) minX = sc.x;
+      if (sc.y < minY) minY = sc.y;
+      if (r > maxX) maxX = r;
+      if (b > maxY) maxY = b;
+    }
+    // Also include connections endpoint (splash center)
+    const pad = 300;
+    return { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
+  }, [scenes]);
+
+  // Recalc mouseWorld when pan/zoom change (e.g. after wheel zoom)
+  useEffect(() => {
+    setMouseWorld((prev) => {
+      const mx = mouseCanvasPos.current.x;
+      const my = mouseCanvasPos.current.y;
+      const newX = (mx - panX) / zoom;
+      const newY = (my - panY) / zoom;
+      if (Math.abs(newX - prev.x) < 0.01 && Math.abs(newY - prev.y) < 0.01) return prev;
+      return { x: newX, y: newY };
+    });
+  }, [panX, panY, zoom]);
 
   // ── Panel resize is managed by ResizableEditorLayout ────────────────────
 
@@ -212,10 +251,11 @@ export function MundoTab() {
       id: 'connections',
       title: 'Conexiones',
       collapsed: true,
-      items: connections.map((c) => {
+      items: visibleConnections.map((c) => {
         const from = scenes.find((s) => s.id === c.fromSceneId);
         const to = scenes.find((s) => s.id === c.toSceneId);
-        return { id: c.id, label: `${from?.name ?? '?'} → ${to?.name ?? '?'}`, icon: '🔗' };
+        const isFrom = c.fromSceneId === selectedNodeId;
+        return { id: c.id, label: `${from?.name ?? '?'} → ${to?.name ?? '?'}`, color: isFrom ? connColorOut : connColorIn };
       }),
     },
   ];
@@ -835,7 +875,15 @@ export function MundoTab() {
         <HierarchyPanel
           sections={hierarchySections}
           selectedId={selectedNodeId}
-          onSelect={setSelectedNodeId}
+          onSelect={(id) => {
+            const isConn = connections.some((c) => c.id === id);
+            if (isConn) {
+              setHighlightedConnId(id);
+              setTimeout(() => setHighlightedConnId(null), 1500);
+            } else {
+              setSelectedNodeId(id);
+            }
+          }}
           onContextMenu={(id, x, y) => {
             if (id === splashScreen.id) return;
             setCtxMenu({ x, y, sceneId: id });
@@ -930,7 +978,10 @@ export function MundoTab() {
             }}
             onMouseMove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
-              mouseCanvasPos.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+              const sx = e.clientX - rect.left;
+              const sy = e.clientY - rect.top;
+              mouseCanvasPos.current = { x: sx, y: sy };
+              setMouseWorld({ x: (sx - panX) / zoom, y: (sy - panY) / zoom });
             }}
             onClick={(e) => {
               if (hasMoved.current) return;
@@ -951,26 +1002,71 @@ export function MundoTab() {
             }}>
               {/* Connection lines */}
               <svg style={{
-                position: 'absolute', left: 0, top: 0,
-                width: 8000, height: 8000,
-                pointerEvents: 'none', zIndex: 0,
+                position: 'absolute',
+                left: svgBounds.x, top: svgBounds.y,
+                width: svgBounds.w, height: svgBounds.h,
+                pointerEvents: 'none', zIndex: 100,
               }}>
-                {connections.map((c) => {
+                <defs>
+                  <marker id="arrowOut" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill={connColorOut} />
+                  </marker>
+                  <marker id="arrowIn" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill={connColorIn} />
+                  </marker>
+                </defs>
+                <style>{`@keyframes flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -20; } }`}</style>
+                {visibleConnections.map((c) => {
                   const fromSc = scenes.find((s) => s.id === c.fromSceneId);
                   const toSc = scenes.find((s) => s.id === c.toSceneId);
                   if (!fromSc || !toSc) return null;
+                  const isFrom = c.fromSceneId === selectedNodeId;
+                  const strokeColor = isFrom ? connColorOut : connColorIn;
+                  const markerId = isFrom ? 'url(#arrowOut)' : 'url(#arrowIn)';
+                  const isHighlighted = highlightedConnId === c.id;
+                  const x1 = fromSc.x + fromSc.width / 2 - svgBounds.x;
+                  const y1 = fromSc.y + 18 + fromSc.height / 2 - svgBounds.y;
+                  const x2 = toSc.x + toSc.width / 2 - svgBounds.x;
+                  const y2 = toSc.y + 18 + toSc.height / 2 - svgBounds.y;
+                  const dx = Math.abs(x2 - x1) * 0.4;
+                  const hw = isHighlighted ? 4 : 2;
                   return (
-                    <line
-                      key={c.id}
-                      x1={fromSc.x + 80} y1={fromSc.y + 50}
-                      x2={toSc.x + 80} y2={toSc.y + 50}
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      strokeDasharray="6 3"
-                      opacity={0.6}
-                    />
+                    <g key={c.id}>
+                      {isHighlighted && (
+                        <path
+                          d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                          fill="none" stroke={strokeColor} strokeWidth={12} opacity={0.2}
+                        />
+                      )}
+                      <path
+                        d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                        fill="none" stroke={strokeColor} strokeWidth={hw}
+                        strokeDasharray="8 6"
+                        markerEnd={markerId}
+                        opacity={isHighlighted ? 1 : 0.6}
+                        style={isHighlighted ? { animation: 'flow 0.6s linear infinite' } : undefined}
+                      />
+                    </g>
                   );
                 })}
+                {connectFrom && (() => {
+                  const fromSc = scenes.find((s) => s.id === connectFrom);
+                  if (!fromSc) return null;
+                  const x1 = fromSc.x + fromSc.width / 2 - svgBounds.x;
+                  const y1 = fromSc.y + 18 + fromSc.height / 2 - svgBounds.y;
+                  const x2 = mouseWorld.x - svgBounds.x;
+                  const y2 = mouseWorld.y - svgBounds.y;
+                  const dx = Math.abs(x2 - x1) * 0.4;
+                  return (
+                    <path
+                      d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                      fill="none" stroke={connColorOut} strokeWidth={2}
+                      strokeDasharray="6 4"
+                      markerEnd="url(#arrowOut)"
+                      opacity={0.5}
+                    />
+                  );
+                })()}
               </svg>
               {/* SplashScreen card */}
                     <SplashCard
@@ -1294,6 +1390,11 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         marginBottom: 4,
       }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scene.name}</span>
+        {(scene.width > 240 || scene.height > 160) && (
+          <span style={{ fontSize: 9, color: '#ffaa44', flexShrink: 0, background: 'rgba(255,170,68,0.15)', padding: '1px 5px', borderRadius: 4 }}>
+            CAM {scene.cameraX},{scene.cameraY}
+          </span>
+        )}
         {bgSongObj && selected && (
           <span style={{ fontSize: 10, color: '#6b8cff', flexShrink: 0 }}>🎵 {bgSongObj.name}</span>
         )}
