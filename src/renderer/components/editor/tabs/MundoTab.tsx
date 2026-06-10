@@ -30,6 +30,7 @@ export function MundoTab() {
   const removeScene = useAppStore((s) => s.removeScene);
   const updateScene = useAppStore((s) => s.updateScene);
   const addConnection = useAppStore((s) => s.addConnection);
+  const removeConnection = useAppStore((s) => s.removeConnection);
   const backgrounds = useAppStore((s) => s.backgrounds);
   const exportLog = useAppStore((s) => s.exportLog);
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -58,6 +59,7 @@ export function MundoTab() {
   const mundoGridColor = useAppStore((s) => s.mundoGridColor);
   const connColorOut = useAppStore((s) => s.connColorOut);
   const connColorIn = useAppStore((s) => s.connColorIn);
+  const connStrokeWidth = useAppStore((s) => s.connStrokeWidth);
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
   const gridMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -71,7 +73,75 @@ export function MundoTab() {
       const result = await api.file.readImage(splashScreen.backgroundImage!);
       if (!cancelled && result.success && result.dataUrl) {
         const img = new Image();
-        img.onload = () => { if (!cancelled) setSplashImgSize({ w: img.naturalWidth, h: img.naturalHeight }); };
+        img.onload = () => { if (!cancelled) setSplashImgSize({ w: img.naturalWidth, h: img.naturalHeight     });
+    const splashNextScene = scenes.find((s) => s.id === splashScreen.nextSceneId);
+    inspectorSections.push({
+      title: 'Siguiente escena',
+      content: (
+        <div ref={sceneDropdownRef} style={{ position: 'relative' }}>
+          <div
+            onClick={() => setSceneDropdownOpen(!sceneDropdownOpen)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+              borderRadius: 4, color: splashScreen.nextSceneId ? '#fff' : 'var(--text-muted)',
+            }}
+          >
+            <span>{splashNextScene?.name ?? 'Ninguna'}</span>
+            <span style={{ fontSize: 8, opacity: 0.6 }}>{sceneDropdownOpen ? '▲' : '▼'}</span>
+          </div>
+          {sceneDropdownOpen && (
+            <div style={{
+              position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 2,
+              background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+              borderRadius: 4, padding: 4, zIndex: 100, maxHeight: 200, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}>
+              <input
+                type="text"
+                value={sceneSearch}
+                onChange={(e) => setSceneSearch(e.target.value)}
+                placeholder="Buscar escena..."
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                style={{
+                  width: '100%', padding: '4px 6px', fontSize: 11, boxSizing: 'border-box',
+                  background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
+                  borderRadius: 4, color: '#fff', outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto', maxHeight: 140 }}>
+                <div
+                  onClick={() => { updateSplashScreen({ nextSceneId: '' }); setSceneDropdownOpen(false); setSceneSearch(''); }}
+                  style={{
+                    padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                    background: !splashScreen.nextSceneId ? 'var(--accent)' : 'transparent',
+                    color: !splashScreen.nextSceneId ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  Ninguna
+                </div>
+                {filteredScenes.map((s) => (
+                  <div
+                    key={s.id}
+                    onClick={() => { updateSplashScreen({ nextSceneId: s.id }); setSceneDropdownOpen(false); setSceneSearch(''); }}
+                    style={{
+                      padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                      background: splashScreen.nextSceneId === s.id ? 'var(--accent)' : 'transparent',
+                      color: splashScreen.nextSceneId === s.id ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {s.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ),
+    });
+  };
         img.onerror = () => { if (!cancelled) setSplashImgSize(null); };
         img.src = result.dataUrl;
       }
@@ -97,12 +167,22 @@ export function MundoTab() {
   const [mouseWorld, setMouseWorld] = useState({ x: 0, y: 0 });
   const [highlightedConnId, setHighlightedConnId] = useState<string | null>(null);
 
+  const splashConnection = useMemo(() => {
+    if (!splashScreen.nextSceneId) return null;
+    return { id: '__splash_conn__', fromSceneId: splashScreen.id, toSceneId: splashScreen.nextSceneId, label: '' };
+  }, [splashScreen.nextSceneId, splashScreen.id]);
+
   const visibleConnections = useMemo(() => {
     if (!selectedNodeId) return [];
-    return connections.filter(
+    const storeConns = connections.filter(
       (c) => c.fromSceneId === selectedNodeId || c.toSceneId === selectedNodeId
     );
-  }, [connections, selectedNodeId]);
+    const result = [...storeConns];
+    if (splashConnection && (splashConnection.fromSceneId === selectedNodeId || splashConnection.toSceneId === selectedNodeId)) {
+      result.push(splashConnection);
+    }
+    return result;
+  }, [connections, selectedNodeId, splashConnection]);
 
   const svgBounds = useMemo(() => {
     if (scenes.length === 0) return { x: -500, y: -500, w: 1000, h: 1000 };
@@ -115,10 +195,18 @@ export function MundoTab() {
       if (r > maxX) maxX = r;
       if (b > maxY) maxY = b;
     }
+    // Include splash screen in bounds
+    const sp = splashScreen;
+    const spR = sp.x + 260;
+    const spB = sp.y + 200;
+    if (sp.x < minX) minX = sp.x;
+    if (sp.y < minY) minY = sp.y;
+    if (spR > maxX) maxX = spR;
+    if (spB > maxY) maxY = spB;
     // Also include connections endpoint (splash center)
     const pad = 300;
     return { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
-  }, [scenes]);
+  }, [scenes, splashScreen.x, splashScreen.y]);
 
   // Recalc mouseWorld when pan/zoom change (e.g. after wheel zoom)
   useEffect(() => {
@@ -252,8 +340,8 @@ export function MundoTab() {
       title: 'Conexiones',
       collapsed: true,
       items: visibleConnections.map((c) => {
-        const from = scenes.find((s) => s.id === c.fromSceneId);
-        const to = scenes.find((s) => s.id === c.toSceneId);
+        const from = scenes.find((s) => s.id === c.fromSceneId) ?? (c.fromSceneId === splashScreen.id ? splashScreen : undefined);
+        const to = scenes.find((s) => s.id === c.toSceneId) ?? (c.toSceneId === splashScreen.id ? splashScreen : undefined);
         const isFrom = c.fromSceneId === selectedNodeId;
         return { id: c.id, label: `${from?.name ?? '?'} → ${to?.name ?? '?'}`, color: isFrom ? connColorOut : connColorIn };
       }),
@@ -271,6 +359,9 @@ export function MundoTab() {
   const [tipoDropdownOpen, setTipoDropdownOpen] = useState(false);
   const [tipoSearch, setTipoSearch] = useState('');
   const tipoDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [sceneDropdownOpen, setSceneDropdownOpen] = useState(false);
+  const [sceneSearch, setSceneSearch] = useState('');
+  const sceneDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const filteredSongs = useMemo(() => {
     if (!songSearch) return songs;
@@ -289,6 +380,12 @@ export function MundoTab() {
     const q = imgSearch.toLowerCase();
     return imageOptions.filter((img) => img.label.toLowerCase().includes(q));
   }, [imageOptions, imgSearch]);
+
+  const filteredScenes = useMemo(() => {
+    if (!sceneSearch) return scenes;
+    const q = sceneSearch.toLowerCase();
+    return scenes.filter((s) => s.name.toLowerCase().includes(q));
+  }, [scenes, sceneSearch]);
 
   const TIPO_OPTIONS = [
     { value: 'platformer', label: 'Platformer' },
@@ -840,14 +937,29 @@ export function MundoTab() {
   const handleSceneBoxClick = (sceneId: string) => {
     if (sceneId === splashScreen.id) {
       setSelectedNodeId(sceneId);
+      if (tool === 'connect') {
+        if (connectFrom === null) {
+          setConnectFrom(sceneId);
+        } else if (connectFrom !== sceneId) {
+          // clicking splash as target -> cancel (splash only outgoing)
+          setConnectFrom(null);
+        }
+      }
       return;
     }
     if (tool === 'connect') {
       if (connectFrom === null) {
         setConnectFrom(sceneId);
       } else if (connectFrom !== sceneId) {
-        addConnection(connectFrom, sceneId);
-        setConnectFrom(null);
+        if (connectFrom === splashScreen.id) {
+          // splash → scene: use nextSceneId (only one connection allowed)
+          connections.filter((c) => c.fromSceneId === splashScreen.id).forEach((c) => removeConnection(c.id));
+          updateSplashScreen({ nextSceneId: sceneId });
+          setConnectFrom(null);
+        } else {
+          addConnection(connectFrom, sceneId);
+          setConnectFrom(null);
+        }
       }
     } else if (tool === 'remove') {
       removeScene(sceneId);
@@ -876,10 +988,9 @@ export function MundoTab() {
           sections={hierarchySections}
           selectedId={selectedNodeId}
           onSelect={(id) => {
-            const isConn = connections.some((c) => c.id === id);
+            const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
             if (isConn) {
-              setHighlightedConnId(id);
-              setTimeout(() => setHighlightedConnId(null), 1500);
+              setHighlightedConnId((prev) => prev === id ? null : id);
             } else {
               setSelectedNodeId(id);
             }
@@ -972,6 +1083,10 @@ export function MundoTab() {
             style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: isPanning ? 'grabbing' : 'grab', minHeight: 0 }}
             onMouseDown={(e) => {
               setCtxMenu(null);
+              if (e.button === 2 && connectFrom) {
+                setConnectFrom(null);
+                return;
+              }
               if (e.button === 1 || tool === 'select' || tool === 'add') {
                 handleMouseDownCanvas(e);
               }
@@ -1015,36 +1130,46 @@ export function MundoTab() {
                     <polygon points="0 0, 8 3, 0 6" fill={connColorIn} />
                   </marker>
                 </defs>
-                <style>{`@keyframes flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -20; } }`}</style>
+                <style>{`@keyframes flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -16; } }`}</style>
                 {visibleConnections.map((c) => {
-                  const fromSc = scenes.find((s) => s.id === c.fromSceneId);
-                  const toSc = scenes.find((s) => s.id === c.toSceneId);
+                  const fromSc = scenes.find((s) => s.id === c.fromSceneId) ?? (c.fromSceneId === splashScreen.id ? splashScreen : undefined);
+                  const toSc = scenes.find((s) => s.id === c.toSceneId) ?? (c.toSceneId === splashScreen.id ? splashScreen : undefined);
                   if (!fromSc || !toSc) return null;
                   const isFrom = c.fromSceneId === selectedNodeId;
                   const strokeColor = isFrom ? connColorOut : connColorIn;
                   const markerId = isFrom ? 'url(#arrowOut)' : 'url(#arrowIn)';
                   const isHighlighted = highlightedConnId === c.id;
-                  const x1 = fromSc.x + fromSc.width / 2 - svgBounds.x;
-                  const y1 = fromSc.y + 18 + fromSc.height / 2 - svgBounds.y;
-                  const x2 = toSc.x + toSc.width / 2 - svgBounds.x;
-                  const y2 = toSc.y + 18 + toSc.height / 2 - svgBounds.y;
+                  const getCenter = (node: typeof fromSc) => {
+                    if ('width' in node) {
+                      // Scene node
+                      return { x: node.x + node.width / 2, y: node.y + 18 + node.height / 2 };
+                    }
+                    // Splash node: fixed card size 260w × ~206h
+                    return { x: node.x + 130, y: node.y + 108 };
+                  };
+                  const c1 = getCenter(fromSc);
+                  const c2 = getCenter(toSc);
+                  const x1 = c1.x - svgBounds.x;
+                  const y1 = c1.y - svgBounds.y;
+                  const x2 = c2.x - svgBounds.x;
+                  const y2 = c2.y - svgBounds.y;
                   const dx = Math.abs(x2 - x1) * 0.4;
-                  const hw = isHighlighted ? 4 : 2;
+                  const hw = isHighlighted ? connStrokeWidth * 2 : connStrokeWidth;
                   return (
                     <g key={c.id}>
                       {isHighlighted && (
                         <path
                           d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
-                          fill="none" stroke={strokeColor} strokeWidth={12} opacity={0.2}
+                          fill="none" stroke={strokeColor} strokeWidth={connStrokeWidth * 4} opacity={0.2}
                         />
                       )}
                       <path
                         d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
                         fill="none" stroke={strokeColor} strokeWidth={hw}
-                        strokeDasharray="8 6"
+                        strokeDasharray="12 4"
                         markerEnd={markerId}
                         opacity={isHighlighted ? 1 : 0.6}
-                        style={isHighlighted ? { animation: 'flow 0.6s linear infinite' } : undefined}
+                        style={isHighlighted ? { animation: 'flow 0.8s linear infinite' } : undefined}
                       />
                     </g>
                   );
@@ -1060,8 +1185,8 @@ export function MundoTab() {
                   return (
                     <path
                       d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
-                      fill="none" stroke={connColorOut} strokeWidth={2}
-                      strokeDasharray="6 4"
+                       fill="none" stroke={connColorOut} strokeWidth={connStrokeWidth}
+                        strokeDasharray="12 4"
                       markerEnd="url(#arrowOut)"
                       opacity={0.5}
                     />
@@ -1072,7 +1197,7 @@ export function MundoTab() {
                     <SplashCard
                       splash={splashScreen}
                       selected={selectedNodeId === splashScreen.id}
-                      onSelect={() => { if (!hasMoved.current) setSelectedNodeId(splashScreen.id); }}
+                      onSelect={() => { if (!hasMoved.current) handleSceneBoxClick(splashScreen.id); }}
                       updateSplashScreen={updateSplashScreen}
                       dragZoom={zoom}
                       showGrid={mundoShowGrid}
@@ -1447,20 +1572,17 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
               ))}
             </svg>
           )}
-          {/* Viewport overlay — rectangulo de la camara (240x160) en coordenadas de pixel exacto */}
+          {/* Viewport overlay — rectangulo de la camara (240x160) arrastrable */}
           {(scene.width > 240 || scene.height > 160) && (
-            <div style={{
-              position: 'absolute',
-              left: scene.cameraX,
-              top: scene.cameraY,
-              width: 240,
-              height: 160,
-              boxSizing: 'border-box',
-              border: '2px dashed var(--accent)',
-              pointerEvents: 'none',
-              zIndex: 3,
-              backgroundColor: 'rgba(255,255,255,0.06)',
-            }} />
+            <CameraRect
+              cameraX={scene.cameraX}
+              cameraY={scene.cameraY}
+              sceneWidth={scene.width}
+              sceneHeight={scene.height}
+              sceneId={scene.id}
+              dragZoom={dragZoom}
+              updateScene={updateScene}
+            />
           )}
           {selected && (
             <div style={{
@@ -1477,6 +1599,59 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         </div>
       )}
     </div>
+  );
+}
+
+function CameraRect({ cameraX, cameraY, sceneWidth, sceneHeight, sceneId, dragZoom, updateScene }: {
+  cameraX: number; cameraY: number; sceneWidth: number; sceneHeight: number;
+  sceneId: string; dragZoom: number;
+  updateScene: (id: string, patch: Partial<Scene>) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDragging(true);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: cameraX, origY: cameraY };
+    const handleMove = (ev: MouseEvent) => {
+      ev.preventDefault();
+      if (!dragRef.current) return;
+      const dx = (ev.clientX - dragRef.current.startX) / dragZoom;
+      const dy = (ev.clientY - dragRef.current.startY) / dragZoom;
+      const maxX = Math.max(0, sceneWidth - 240);
+      const maxY = Math.max(0, sceneHeight - 160);
+      const newX = Math.round(Math.max(0, Math.min(maxX, dragRef.current.origX + dx)));
+      const newY = Math.round(Math.max(0, Math.min(maxY, dragRef.current.origY + dy)));
+      updateScene(sceneId, { cameraX: newX, cameraY: newY });
+    };
+    const handleUp = () => {
+      setDragging(false);
+      dragRef.current = null;
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+    };
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+  }, [cameraX, cameraY, sceneWidth, sceneHeight, sceneId, dragZoom, updateScene]);
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      style={{
+        position: 'absolute',
+        left: cameraX,
+        top: cameraY,
+        width: 240,
+        height: 160,
+        boxSizing: 'border-box',
+        border: dragging ? '2px solid #fff' : '2px dashed var(--accent)',
+        cursor: dragging ? 'grabbing' : 'move',
+        zIndex: 3,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+      }}
+    />
   );
 }
 

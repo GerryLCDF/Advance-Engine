@@ -248,12 +248,52 @@ export function generateGBAProject(
   splashImageCArray?: string,
   splashDuration?: number,
   splashSong?: Song,
+  sceneImageCArray?: string,
+  sceneBackgroundColor?: string,
 ): string {
   log.add(`Generando proyecto GBA: ${name}`);
   log.add(`Autor: ${author}`);
 
   const hasSplash = splashImageCArray && splashDuration && splashDuration > 0;
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
+  const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
+
+  function hexColor(cssColor: string): number {
+    let hex = cssColor.replace('#', '');
+    if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+    const r = parseInt(hex.slice(0,2), 16);
+    const g = parseInt(hex.slice(2,4), 16);
+    const b = parseInt(hex.slice(4,6), 16);
+    return ((r>>3) | ((g>>3)<<5) | ((b>>3)<<10)) & 0x7FFF;
+  }
+
+  function renderScene(): string {
+    if (sceneImageCArray) {
+      return `  {
+    int i;
+    for (i = 0; i < PIXEL_COUNT; i++) screen[i] = sceneData[i];
+  }
+
+  while (1) waitVSync();
+`;
+    }
+    if (sceneBackgroundColor) {
+      const color = sceneBackgroundColor;
+      const hex = `0x${hexColor(color).toString(16).padStart(4, '0')}`;
+      return `  {
+    int i;
+    for (i = 0; i < PIXEL_COUNT; i++) screen[i] = ${hex};
+  }
+
+  while (1) waitVSync();
+`;
+    }
+    // fallback: purple
+    return `  memset(screen, 0, sizeof(splashScreenData));
+
+  while (1) waitVSync();
+`;
+  }
 
   let cCode = `/*
  * ${name} — Generado por Advance Engine
@@ -281,6 +321,20 @@ static void waitVSync(void) {
 
 const u16 splashScreenData[PIXEL_COUNT] = ${splashImageCArray};
 `;
+  }
+
+  if (hasScene) {
+    const sceneHex = sceneBackgroundColor ? `0x${hexColor(sceneBackgroundColor).toString(16).padStart(4, '0')}` : '0x0000';
+    cCode += `
+// ── Scene after splash ─────────────────────────────────────────────────
+`;
+    if (sceneImageCArray) {
+      cCode += `const u16 sceneData[PIXEL_COUNT] = ${sceneImageCArray};
+`;
+    } else {
+      cCode += `#define SCENE_COLOR ${sceneHex}
+`;
+    }
   }
 
   if (hasMusic) {
@@ -325,24 +379,7 @@ int main() {
       }
     }
   }
-
-  memset(screen, 0, sizeof(splashScreenData));
-
-  {
-    int step = 0;
-    u32 accum = 0;
-    while (1) {
-      waitVSync();
-      accum += SONG_BPM;
-      if (accum >= 900) {
-        accum -= 900;
-        playStep(step);
-        step++;
-        if (step >= SONG_STEPS) step = 0;
-      }
-    }
-  }
-`;
+` + renderScene();
     } else {
       cCode += `
   {
@@ -350,10 +387,7 @@ int main() {
     int i;
     for (i = 0; i < frames; i++) waitVSync();
   }
-  memset(screen, 0, sizeof(splashScreenData));
-
-  while (1) waitVSync();
-`;
+` + renderScene();
     }
   } else {
     cCode += `

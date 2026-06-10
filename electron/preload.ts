@@ -70,6 +70,7 @@ export interface AdvanceAPI {
     readBinary: (filePath: string) => Promise<{ success: boolean; base64?: string; reason?: string }>;
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => Promise<{ success: boolean; width?: number; height?: number; reason?: string }>;
     convertImageToGbaBase64: (imagePath: string) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
+    cropImageToGbaBase64: (imagePath: string, cropX: number, cropY: number) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
     delete: (filePath: string) => Promise<{ success: boolean; reason?: string }>;
   };
   // Directorios
@@ -131,6 +132,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     readBinary: (filePath: string) => ipcRenderer.invoke('file:readBinary', filePath),
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => ipcRenderer.invoke('file:convertImageToGbaBitmap', imagePath, outputPath),
     convertImageToGbaBase64: (imagePath: string) => ipcRenderer.invoke('file:convertImageToGbaBase64', imagePath),
+    cropImageToGbaBase64: (imagePath: string, cropX: number, cropY: number) => ipcRenderer.invoke('file:cropImageToGbaBase64', imagePath, cropX, cropY),
     delete: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
   },
   dir: {

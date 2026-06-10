@@ -341,6 +341,8 @@ interface AppState {
   setConnColorOut: (val: string) => void;
   connColorIn: string;
   setConnColorIn: (val: string) => void;
+  connStrokeWidth: number;
+  setConnStrokeWidth: (val: number) => void;
   clickAnimation: boolean;
   setClickAnimation: (val: boolean) => void;
 
@@ -654,6 +656,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setConnColorOut: (val) => set({ connColorOut: val }),
   connColorIn: '#f59e0b',
   setConnColorIn: (val) => set({ connColorIn: val }),
+  connStrokeWidth: 2,
+  setConnStrokeWidth: (val) => set({ connStrokeWidth: val }),
   clickAnimation: false,
   setClickAnimation: (val) => set({ clickAnimation: val }),
 
@@ -736,6 +740,56 @@ export const useAppStore = create<AppState>((set, get) => ({
         log.add(`Canción de splash: "${splashSong.name}"`);
       }
 
+      // ── Scene target after splash ─────────────────────────────────────
+      let sceneCArray: string | undefined;
+      let sceneColor: string | undefined;
+      if (state.splashScreen?.nextSceneId) {
+        const targetScene = state.scenes.find((s) => s.id === state.splashScreen.nextSceneId);
+        if (targetScene) {
+          sceneColor = targetScene.backgroundColor || '#000000';
+          const imgPath = targetScene.backgroundImage;
+          if (imgPath) {
+            try {
+              const api = window.advanceAPI;
+              const hasCamera = (targetScene.cameraX || 0) !== 0 || (targetScene.cameraY || 0) !== 0 || targetScene.width > 240 || targetScene.height > 160;
+              let gbaResult;
+              if (hasCamera) {
+                log.add(`Escena "${targetScene.name}": recortando fondo en cámara (${targetScene.cameraX},${targetScene.cameraY})...`);
+                gbaResult = await api.file.cropImageToGbaBase64(imgPath, targetScene.cameraX || 0, targetScene.cameraY || 0);
+              }
+              if (!hasCamera || !gbaResult?.success) {
+                log.add(`Escena "${targetScene.name}": redimensionando fondo...`);
+                gbaResult = await api.file.convertImageToGbaBase64(imgPath);
+              }
+              if (gbaResult.success && gbaResult.base64) {
+                const binaryStr = atob(gbaResult.base64);
+                const values: string[] = [];
+                for (let i = 0; i < binaryStr.length; i += 2) {
+                  const lo = binaryStr.charCodeAt(i);
+                  const hi = binaryStr.charCodeAt(i + 1);
+                  const val = (hi << 8) | lo;
+                  values.push(`0x${val.toString(16).padStart(4, '0')}`);
+                }
+                const lines: string[] = [];
+                for (let i = 0; i < values.length; i += 16) {
+                  lines.push('  ' + values.slice(i, i + 16).join(', '));
+                }
+                sceneCArray = '{\n' + lines.join(',\n') + '\n}';
+                log.add(`Escena "${targetScene.name}": array C generado (${values.length} u16)`);
+              } else {
+                log.add(`[WARN] Escena "${targetScene.name}": falló conversión — ${gbaResult.reason || 'desconocido'}`);
+              }
+            } catch (err: any) {
+              log.add(`[WARN] Escena "${targetScene.name}": error — ${String(err)}`);
+            }
+          } else {
+            log.add(`Escena "${targetScene.name}": sin imagen de fondo, se usará color sólido`);
+          }
+        } else {
+          log.add(`[WARN] nextSceneId "${state.splashScreen.nextSceneId}" no coincide con ninguna escena`);
+        }
+      }
+
       const cCode = generateGBAProject({
         scenes: state.scenes,
         sceneConnections: state.sceneConnections,
@@ -745,7 +799,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         sounds: state.sounds ?? [],
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
-      }, project.name, project.author, log, splashCArray, splashDuration, splashSong);
+      }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneCArray, sceneColor);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
@@ -960,6 +1014,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   sceneConnections: [],
   addConnection: (fromSceneId, toSceneId) => {
     get()._snapshotMundo();
+    const splashId = get().splashScreen.id;
+    if (fromSceneId === splashId) {
+      // splash only uses nextSceneId, not SceneConnection
+      get().updateSplashScreen({ nextSceneId: toSceneId });
+      return;
+    }
+    if (toSceneId === splashId) return; // splash only outgoing
     set((s) => ({
       sceneConnections: [...s.sceneConnections, { id: uid(), fromSceneId, toSceneId, label: '' }],
     }));
@@ -972,9 +1033,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // ── SplashScreen ────────────────────────────────────────────────────────
-  updateSplashScreen: (patch) => set((s) => ({
-    splashScreen: { ...s.splashScreen, ...patch },
-  })),
+  updateSplashScreen: (patch) => set((s) => {
+    // If nextSceneId is set or cleared, remove any stale SceneConnections from splash
+    if ('nextSceneId' in patch) {
+      return {
+        splashScreen: { ...s.splashScreen, ...patch },
+        sceneConnections: s.sceneConnections.filter((c) => c.fromSceneId !== s.splashScreen.id),
+      };
+    }
+    return { splashScreen: { ...s.splashScreen, ...patch } };
+  }),
 
   // ── Sprite ─────────────────────────────────────────────────────────────
   spriteSheets: [defaultSpriteSheet()],

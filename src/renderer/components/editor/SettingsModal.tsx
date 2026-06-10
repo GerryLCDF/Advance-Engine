@@ -87,6 +87,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setConnColorOut = useAppStore((s) => s.setConnColorOut);
   const connColorIn = useAppStore((s) => s.connColorIn);
   const setConnColorIn = useAppStore((s) => s.setConnColorIn);
+  const connStrokeWidth = useAppStore((s) => s.connStrokeWidth);
+  const setConnStrokeWidth = useAppStore((s) => s.setConnStrokeWidth);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab === 'general' ? 'general' : (initialTab as SettingsTab) || 'general');
   const [activeSection, setActiveSection] = useState<GeneralSection>('theme');
@@ -106,12 +108,13 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const [localMundoColor, setLocalMundoColor] = useState('#4488ff');
   const [localConnColorOut, setLocalConnColorOut] = useState('#3b82f6');
   const [localConnColorIn, setLocalConnColorIn] = useState('#f59e0b');
+  const [localConnStrokeWidth, setLocalConnStrokeWidth] = useState(2);
   const [localClickAnimation, setLocalClickAnimation] = useState(false);
   const [hoveredReset, setHoveredReset] = useState<string | null>(null);
 
   const MUNDO_DEFAULTS = {
     showGrid: false, gridSize: 16, gridOpacity: 0.15, strokeWidth: 0.5, gridColor: '#4488ff',
-    connColorOut: '#3b82f6', connColorIn: '#f59e0b', clickAnimation: false,
+    connColorOut: '#3b82f6', connColorIn: '#f59e0b', connStrokeWidth: 2, clickAnimation: false,
   };
 
   const isMundoModified = localMundoShowGrid !== MUNDO_DEFAULTS.showGrid
@@ -121,6 +124,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     || localMundoColor !== MUNDO_DEFAULTS.gridColor
     || localConnColorOut !== MUNDO_DEFAULTS.connColorOut
     || localConnColorIn !== MUNDO_DEFAULTS.connColorIn
+    || localConnStrokeWidth !== MUNDO_DEFAULTS.connStrokeWidth
     || localClickAnimation !== MUNDO_DEFAULTS.clickAnimation;
 
   // Initialize local Mundo grid settings from store
@@ -133,6 +137,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setLocalMundoColor(state.mundoGridColor);
     setLocalConnColorOut(state.connColorOut);
     setLocalConnColorIn(state.connColorIn);
+    setLocalConnStrokeWidth(state.connStrokeWidth);
     setLocalClickAnimation(state.clickAnimation);
   }, []);
 
@@ -218,6 +223,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     setMundoGridColor(localMundoColor);
     setConnColorOut(localConnColorOut);
     setConnColorIn(localConnColorIn);
+    setConnStrokeWidth(localConnStrokeWidth);
     setClickAnimation(localClickAnimation);
     onClose();
   }
@@ -824,6 +830,44 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                       </div>
                     </div>
                   </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 200 }}>
+                    <div onMouseEnter={() => setHoveredReset('connStrokeWidth')} onMouseLeave={() => setHoveredReset(null)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Grosor de línea</label>
+                      <button onClick={() => setLocalConnStrokeWidth(2)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connStrokeWidth' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
+                      <input type="range"
+                        value={localConnStrokeWidth}
+                        onChange={(e) => setLocalConnStrokeWidth(parseFloat(e.target.value))}
+                        min={0.5} max={6} step={0.5}
+                        style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }} />
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace', minWidth: 24 }}>{localConnStrokeWidth.toFixed(1)}</span>
+                    </div>
+                  </div>
+                  {/* Preview */}
+                  <div style={{
+                    width: '100%', height: 48, borderRadius: 6, overflow: 'hidden',
+                    border: '1px solid var(--border-color)', background: 'var(--bg-dark)', position: 'relative',
+                  }}>
+                    <svg width="100%" height="100%" viewBox="0 0 520 48" preserveAspectRatio="none" style={{ display: 'block' }}>
+                      <defs>
+                        <marker id="arrowOut" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                          <path d="M0,0 L8,3 L0,6" fill={localConnColorOut} />
+                        </marker>
+                        <marker id="arrowIn" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                          <path d="M0,0 L8,3 L0,6" fill={localConnColorIn} />
+                        </marker>
+                      </defs>
+                      <path d="M0,24 C120,8 200,40 260,24"
+                        fill="none" stroke={localConnColorOut} strokeWidth={localConnStrokeWidth}
+                        markerEnd="url(#arrowOut)" />
+                      <path d="M260,24 C320,8 400,40 520,24"
+                        fill="none" stroke={localConnColorIn} strokeWidth={localConnStrokeWidth}
+                        markerEnd="url(#arrowIn)" />
+                    </svg>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
                   <div onMouseEnter={() => setHoveredReset('clickAnim')} onMouseLeave={() => setHoveredReset(null)}
@@ -860,6 +904,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                     setLocalMundoColor(MUNDO_DEFAULTS.gridColor);
                     setLocalConnColorOut(MUNDO_DEFAULTS.connColorOut);
                     setLocalConnColorIn(MUNDO_DEFAULTS.connColorIn);
+                    setLocalConnStrokeWidth(MUNDO_DEFAULTS.connStrokeWidth);
                     setLocalClickAnimation(MUNDO_DEFAULTS.clickAnimation);
                   }}
                     style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>

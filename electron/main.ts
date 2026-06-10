@@ -343,6 +343,56 @@ function convertToGbaBitmapBuffer(imagePath: string): { buffer: Buffer; width: n
   return { buffer: gbaBuf, width: origSize.width, height: origSize.height };
 }
 
+function cropToGbaBitmapBuffer(imagePath: string, cropX: number, cropY: number): { buffer: Buffer; width: number; height: number } | null {
+  const resolvedPath = path.resolve(imagePath);
+  if (!fs.existsSync(resolvedPath)) return null;
+  const img = nativeImage.createFromPath(resolvedPath);
+  if (img.isEmpty()) return null;
+  const origSize = img.getSize();
+  // If image is smaller than or equal to GBA, just resize full image
+  if (origSize.width <= GBA_SCREEN_W && origSize.height <= GBA_SCREEN_H) {
+    const resized = img.resize({ width: GBA_SCREEN_W, height: GBA_SCREEN_H });
+    const bmp = resized.toBitmap();
+    const buf = Buffer.alloc(GBA_PIXEL_COUNT * 2);
+    for (let i = 0; i < GBA_PIXEL_COUNT; i++) {
+      const off = i * 4;
+      const gbaColor = ((bmp[off + 2] >> 3) | ((bmp[off + 1] >> 3) << 5) | ((bmp[off] >> 3) << 10)) & 0x7FFF;
+      buf.writeUInt16LE(gbaColor, i * 2);
+    }
+    return { buffer: buf, width: GBA_SCREEN_W, height: GBA_SCREEN_H };
+  }
+  // Clamp crop to image bounds
+  const clampX = Math.max(0, Math.min(cropX, origSize.width - GBA_SCREEN_W));
+  const clampY = Math.max(0, Math.min(cropY, origSize.height - GBA_SCREEN_H));
+  // Get full bitmap and manually extract the crop region
+  const fullBmp: any = img.toBitmap();
+  const bmpW = fullBmp.width ?? origSize.width;
+  const bmpH = fullBmp.height ?? origSize.height;
+  const rowStride = fullBmp.rowStride ?? bmpW * 4;
+  const scaleX = bmpW / origSize.width;
+  const scaleY = bmpH / origSize.height;
+  const sx = Math.round(clampX * scaleX);
+  const sy = Math.round(clampY * scaleY);
+  const gbaBuf = Buffer.alloc(GBA_PIXEL_COUNT * 2);
+  for (let y = 0; y < GBA_SCREEN_H; y++) {
+    for (let x = 0; x < GBA_SCREEN_W; x++) {
+      const px = sx + Math.round(x * scaleX);
+      const py = sy + Math.round(y * scaleY);
+      if (px >= bmpW || py >= bmpH) {
+        gbaBuf.writeUInt16LE(0, (y * GBA_SCREEN_W + x) * 2);
+        continue;
+      }
+      const off = py * rowStride + px * 4;
+      const b = fullBmp[off];
+      const g = fullBmp[off + 1];
+      const r = fullBmp[off + 2];
+      const gbaColor = ((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10)) & 0x7FFF;
+      gbaBuf.writeUInt16LE(gbaColor, (y * GBA_SCREEN_W + x) * 2);
+    }
+  }
+  return { buffer: gbaBuf, width: GBA_SCREEN_W, height: GBA_SCREEN_H };
+}
+
 ipcMain.handle('file:convertImageToGbaBitmap', async (_e, imagePath: string, outputPath: string) => {
   try {
     const result = convertToGbaBitmapBuffer(imagePath);
@@ -358,6 +408,16 @@ ipcMain.handle('file:convertImageToGbaBitmap', async (_e, imagePath: string, out
 ipcMain.handle('file:convertImageToGbaBase64', async (_e, imagePath: string) => {
   try {
     const result = convertToGbaBitmapBuffer(imagePath);
+    if (!result) return { success: false, reason: 'No se pudo cargar la imagen' };
+    return { success: true, base64: result.buffer.toString('base64'), width: result.width, height: result.height };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
+ipcMain.handle('file:cropImageToGbaBase64', async (_e, imagePath: string, cropX: number, cropY: number) => {
+  try {
+    const result = cropToGbaBitmapBuffer(imagePath, cropX, cropY);
     if (!result) return { success: false, reason: 'No se pudo cargar la imagen' };
     return { success: true, base64: result.buffer.toString('base64'), width: result.width, height: result.height };
   } catch (err) {

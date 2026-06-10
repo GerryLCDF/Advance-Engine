@@ -49,6 +49,7 @@ export interface SplashScreen {
   duration: number; // 1-5 seconds for static images / max seconds for video
   videoPath?: string;
   videoFps?: number; // frames per second for video export (default 15)
+  nextSceneId?: string; // scene to transition to after splash
 }
 
 // ── Sprite ────────────────────────────────────────────────────────────────
