@@ -4,6 +4,7 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, SplashScreen } from '../../../types/editor';
+import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 
 const SCREEN_W = 240;
 const SCREEN_H = 160;
@@ -28,6 +29,8 @@ export function MundoTab() {
   const setTerminalHeight = useAppStore((s) => s.setTerminalHeight);
   const addScene = useAppStore((s) => s.addScene);
   const removeScene = useAppStore((s) => s.removeScene);
+  const setCollisionTile = useAppStore((s) => s.setCollisionTile);
+  const clearCollisionMap = useAppStore((s) => s.clearCollisionMap);
   const updateScene = useAppStore((s) => s.updateScene);
   const addConnection = useAppStore((s) => s.addConnection);
   const removeConnection = useAppStore((s) => s.removeConnection);
@@ -62,6 +65,9 @@ export function MundoTab() {
   const connStrokeWidth = useAppStore((s) => s.connStrokeWidth);
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
   const gridMenuRef = useRef<HTMLDivElement | null>(null);
+  const [collisionBrush, setCollisionBrush] = useState<CollisionBrush>('block');
+  const [collisionPaintValue, setCollisionPaintValue] = useState(COLLISION_SOLID);
+  const [collisionBlockSize, setCollisionBlockSize] = useState(1);
 
   // Detect splash image dimensions for warning conditions
   useEffect(() => {
@@ -1077,6 +1083,86 @@ export function MundoTab() {
             )}
           </div>
 
+          {tool === 'collision' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 2,
+              padding: '4px 10px', background: 'var(--bg-panel)',
+              borderBottom: '1px solid var(--border-color)',
+              flexShrink: 0,
+            }}>
+              {/* Brush modes */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 2,
+                background: 'var(--bg-canvas)', borderRadius: 20,
+                padding: '3px 4px',
+              }}>
+                <div style={{ position: 'relative' }}>
+                  <ToolBtn
+                    active={collisionBrush === 'block'}
+                    onClick={() => setCollisionBrush('block')}
+                    title="Bloque (pintar)"
+                  >▣</ToolBtn>
+                  {collisionBrush === 'block' && (
+                    <div style={{
+                      position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+                      top: '100%', marginTop: 2, zIndex: 50,
+                      display: 'flex', gap: 1,
+                      background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+                      borderRadius: 4, padding: 2,
+                    }}>
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <div key={s}
+                          onClick={() => setCollisionBlockSize(s)}
+                          style={{
+                            width: 16, height: 16, fontSize: 9, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: collisionBlockSize === s ? 'var(--accent)' : 'transparent',
+                            color: collisionBlockSize === s ? '#fff' : 'var(--text-secondary)',
+                            borderRadius: 2,
+                          }}
+                        >{s}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
+                <ToolBtn active={false} title="Barita (seleccionar) — pronto">⌾</ToolBtn>
+                <ToolBtn active={false} title="Dibujar (arrastrar) — pronto">✎</ToolBtn>
+              </div>
+              <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 4px' }} />
+              {/* Collision type palette — cada swatch muestra visualmente el tipo */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {[
+                  { value: 1, color: '#ff4444', icon: <rect x={0} y={0} width={16} height={16} fill="#ff4444" rx={1} />, title: 'Sólido' },
+                  { value: 2, color: '#ffdd44', icon: <><rect x={0} y={0} width={16} height={8} fill="#ffdd44" rx={1} /><rect x={0} y={8} width={16} height={8} fill="#ffdd4444" rx={1} /></>, title: 'One-way ↑ (sólido arriba)' },
+                  { value: 3, color: '#ff8844', icon: <><rect x={0} y={8} width={16} height={8} fill="#ff8844" rx={1} /><rect x={0} y={0} width={16} height={8} fill="#ff884444" rx={1} /></>, title: 'One-way ↓ (sólido abajo)' },
+                  { value: 4, color: '#4488ff', icon: <><rect x={0} y={0} width={8} height={16} fill="#4488ff" rx={1} /><rect x={8} y={0} width={8} height={16} fill="#4488ff44" rx={1} /></>, title: 'One-way ← (sólido izquierda)' },
+                  { value: 5, color: '#44ddff', icon: <><rect x={8} y={0} width={8} height={16} fill="#44ddff" rx={1} /><rect x={0} y={0} width={8} height={16} fill="#44ddff44" rx={1} /></>, title: 'One-way → (sólido derecha)' },
+                  { value: 6, color: '#44cc44', icon: <><rect x={0} y={0} width={16} height={16} fill="#44cc44" rx={1} /><line x1={3} y1={4} x2={13} y2={4} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={8} x2={13} y2={8} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={12} x2={13} y2={12} stroke="#fff" strokeWidth={1.5} /></>, title: 'Escalera' },
+                  { value: 7, color: '#ff66bb', icon: <polygon points="0,16 16,16 16,0" fill="#ff66bb" />, title: 'Rampa ↘' },
+                ].map((p) => (
+                  <div key={p.value}
+                    onClick={() => setCollisionPaintValue(p.value)}
+                    style={{
+                      width: 20, height: 20, cursor: 'pointer',
+                      border: collisionPaintValue === p.value ? '2px solid #fff' : '2px solid transparent',
+                      outline: collisionPaintValue === p.value ? '1px solid var(--accent)' : 'none',
+                      outlineOffset: 1,
+                      borderRadius: 3,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(0,0,0,0.3)',
+                    }}
+                    title={p.title}
+                  >
+                    <svg width={16} height={16} viewBox="0 0 16 16">
+                      {p.icon}
+                    </svg>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Flow canvas con zoom/pan (Godot-style) */}
           <div
             ref={canvasContainerRef}
@@ -1231,6 +1317,10 @@ export function MundoTab() {
                       gridStrokeWidth={mundoGridStrokeWidth}
                       gridColor={mundoGridColor}
                       animPaused={!!sceneAnimPaused[sc.id]}
+                      collisionPaintValue={tool === 'collision' ? collisionPaintValue : undefined}
+                      collisionBrush={tool === 'collision' ? collisionBrush : undefined}
+                      collisionBlockSize={collisionBlockSize}
+                      setCollisionTile={setCollisionTile}
                     />
                 );
               })}
@@ -1370,7 +1460,7 @@ function ToolBtn({ children, active, onClick, title, style }: { children: React.
   );
 }
 
-function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onContextMenu, updateScene, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor, animPaused }: {
+function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onContextMenu, updateScene, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor, animPaused, collisionPaintValue, collisionBrush, collisionBlockSize, setCollisionTile }: {
   scene: Scene; selected: boolean; isConnecting: boolean;
   tool: string; connectFrom: string | null;
   onSelect: (id: string) => void;
@@ -1383,6 +1473,10 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   gridStrokeWidth: number;
   gridColor: string;
   animPaused: boolean;
+  collisionPaintValue?: number;
+  collisionBrush?: CollisionBrush;
+  collisionBlockSize?: number;
+  setCollisionTile?: (sceneId: string, col: number, row: number, value: number) => void;
 }) {
   const backgrounds = useAppStore((s) => s.backgrounds);
   const songs = useAppStore((s) => s.songs);
@@ -1392,6 +1486,8 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   const [bgImageUrl, setBgImageUrl] = useState('');
   const [animFrame, setAnimFrame] = useState(0);
   const animDirRef = useRef(1);
+  const imageContainerRef = useRef<HTMLDivElement | null>(null);
+  const [paintHover, setPaintHover] = useState<{col: number; row: number} | null>(null);
 
   useEffect(() => {
     if (!scene.backgroundImage) { setBgImageUrl(''); return; }
@@ -1447,6 +1543,56 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+
+    // Collision painting mode
+    if (tool === 'collision' && setCollisionTile && collisionPaintValue !== undefined && collisionBrush === 'block') {
+      const container = imageContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+      const tileSize = scene.collisionTileSize || 8;
+      const tileCol = Math.floor(mx / tileSize);
+      const tileRow = Math.floor(my / tileSize);
+      const cols = Math.ceil(scene.width / tileSize);
+      const rows = Math.ceil(scene.height / tileSize);
+      const paint = () => {
+        const bs = collisionBlockSize ?? 1;
+        for (let dy = 0; dy < bs; dy++) {
+          for (let dx = 0; dx < bs; dx++) {
+            const c = tileCol + dx;
+            const r = tileRow + dy;
+            if (c < cols && r < rows) setCollisionTile(scene.id, c, r, collisionPaintValue!);
+          }
+        }
+      };
+      paint();
+      const handleMove = (ev: MouseEvent) => {
+        const r2 = container.getBoundingClientRect();
+        const mx2 = (ev.clientX - r2.left);
+        const my2 = (ev.clientY - r2.top);
+        const tc = Math.floor(mx2 / tileSize);
+        const tr = Math.floor(my2 / tileSize);
+        if (tc !== tileCol || tr !== tileRow) {
+          const bs = collisionBlockSize ?? 1;
+          for (let dy = 0; dy < bs; dy++) {
+            for (let dx = 0; dx < bs; dx++) {
+              const c = tc + dx;
+              const r = tr + dy;
+              if (c < cols && r < rows) setCollisionTile(scene.id, c, r, collisionPaintValue!);
+            }
+          }
+        }
+      };
+      const handleUp = () => {
+        document.removeEventListener('mousemove', handleMove);
+        document.removeEventListener('mouseup', handleUp);
+      };
+      document.addEventListener('mousemove', handleMove);
+      document.addEventListener('mouseup', handleUp);
+      return;
+    }
+
     onSelect(scene.id);
     if (tool !== 'move') return;
     const startX = e.clientX;
@@ -1475,7 +1621,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     };
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleUp);
-  }, [scene.id, scene.x, scene.y, onSelect, updateScene, dragZoom, tool]);
+  }, [scene.id, scene.x, scene.y, onSelect, updateScene, dragZoom, tool, setCollisionTile, collisionPaintValue, collisionBrush, collisionBlockSize, scene.collisionTileSize, scene.width, scene.height]);
 
   const bgSongObj = useMemo(() => songs.find((so) => so.id === scene.backgroundSong), [songs, scene.backgroundSong]);
 
@@ -1492,7 +1638,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         borderRadius: 0,
         overflow: 'hidden',
         padding: clickAnimation && selected ? 10 : 0,
-        cursor: tool === 'connect' ? 'crosshair' : dragging ? 'grabbing' : 'grab',
+        cursor: tool === 'connect' ? 'crosshair' : tool === 'collision' ? 'crosshair' : dragging ? 'grabbing' : 'grab',
         zIndex: dragging ? 10 : 1,
         userSelect: 'none',
         transition: clickAnimation ? 'border-color 0.15s, background 0.15s, padding 0.15s' : 'none',
@@ -1525,12 +1671,29 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         )}
       </div>
       {/* Mini-map — pixel exacto */}
-      <div style={{
+      <div ref={imageContainerRef} style={{
         width: scene.width,
         height: scene.height,
         position: 'relative',
         overflow: 'hidden',
-      }}>
+      }}
+        onMouseMove={(e) => {
+          if (tool !== 'collision' || !collisionPaintValue) { setPaintHover(null); return; }
+          const rect = e.currentTarget.getBoundingClientRect();
+          const mx = (e.clientX - rect.left);
+          const my = (e.clientY - rect.top);
+          const col = Math.floor(mx / scene.collisionTileSize);
+          const row = Math.floor(my / scene.collisionTileSize);
+          const cols = Math.ceil(scene.width / scene.collisionTileSize);
+          const rows = Math.ceil(scene.height / scene.collisionTileSize);
+          if (col >= 0 && col < cols && row >= 0 && row < rows) {
+            setPaintHover({ col, row });
+          } else {
+            setPaintHover(null);
+          }
+        }}
+        onMouseLeave={() => setPaintHover(null)}
+      >
         <div style={{
           position: 'absolute', inset: 0,
           background: bgImageUrl ? 'transparent' : scene.backgroundColor,
@@ -1572,6 +1735,46 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
               ))}
             </svg>
           )}
+          {/* Collision overlay */}
+          <svg style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            pointerEvents: 'none', zIndex: 2,
+          }}
+            viewBox={`0 0 ${scene.width} ${scene.height}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {scene.collisionMap?.map((row, ri) =>
+              row.map((val, ci) => {
+                if (val === COLLISION_EMPTY) return null;
+                const palette = COLLISION_PALETTE.find((p) => p.value === val);
+                if (!palette) return null;
+                const ts = scene.collisionTileSize || 8;
+                return (
+                  <rect key={`c${ci}_${ri}`}
+                    x={ci * ts}
+                    y={ri * ts}
+                    width={ts}
+                    height={ts}
+                    fill={`${palette.color}66`}
+                    stroke={palette.color}
+                    strokeWidth={0.5}
+                  />
+                );
+              })
+            )}
+            {paintHover && (
+              <rect
+                x={paintHover.col * (scene.collisionTileSize || 8)}
+                y={paintHover.row * (scene.collisionTileSize || 8)}
+                width={(scene.collisionTileSize || 8) * (collisionBlockSize ?? 1)}
+                height={(scene.collisionTileSize || 8) * (collisionBlockSize ?? 1)}
+                fill="rgba(255,255,255,0.15)"
+                stroke="#fff"
+                strokeWidth={1}
+                strokeDasharray="2 2"
+              />
+            )}
+          </svg>
           {/* Viewport overlay — rectangulo de la camara (240x160) arrastrable */}
           {(scene.width > 240 || scene.height > 160) && (
             <CameraRect

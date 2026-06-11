@@ -5,6 +5,7 @@ import type {
   Song, DialogueEntry, Actor, Animation, AnimationFrame,
   BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen,
 } from '../types/editor';
+import { createCollisionMap } from '../types/editor';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
   { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
@@ -29,6 +30,7 @@ const defaultScene = (): Scene => ({
   id: uid(), name: 'Nueva escena', width: 240, height: 160,
   x: 60, y: 20, cameraX: 0, cameraY: 0,
   backgroundColor: '#6b8cff', type: 'platformer', actors: [],
+  collisionTileSize: 8, collisionMap: createCollisionMap(240, 160, 8),
 });
 
 const defaultSplashScreen = (): SplashScreen => ({
@@ -365,6 +367,8 @@ interface AppState {
   addScene: (x?: number, y?: number) => void;
   updateScene: (id: string, patch: Partial<Scene>) => void;
   removeScene: (id: string) => void;
+  setCollisionTile: (sceneId: string, col: number, row: number, value: number) => void;
+  clearCollisionMap: (sceneId: string) => void;
   addActor: (sceneId: string) => void;
   updateActor: (sceneId: string, actorId: string, patch: Partial<Actor>) => void;
   removeActor: (sceneId: string, actorId: string) => void;
@@ -856,7 +860,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       set({
         projectDir: path,
-        scenes: result.state.scenes ?? [],
+        scenes: (result.state.scenes ?? []).map((sc: any) => ({
+          ...sc,
+          collisionTileSize: sc.collisionTileSize ?? 8,
+          collisionMap: sc.collisionMap ?? createCollisionMap(sc.width, sc.height, sc.collisionTileSize ?? 8),
+        })),
         sceneConnections: result.state.sceneConnections ?? [],
         splashScreen: result.state.splashScreen ?? defaultSplashScreen(),
         backgrounds: result.state.backgrounds ?? [],
@@ -971,8 +979,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       scenes: s.scenes.map((sc) => {
         if (sc.id !== id) return sc;
         const next = { ...sc, ...patch };
-        if (patch.width !== undefined) next.cameraX = Math.min(next.cameraX, Math.max(next.width - 240, 0));
-        if (patch.height !== undefined) next.cameraY = Math.min(next.cameraY, Math.max(next.height - 160, 0));
+        const ts = patch.collisionTileSize ?? sc.collisionTileSize ?? 8;
+        next.collisionTileSize = ts;
+        if (patch.width !== undefined || patch.height !== undefined) {
+          const w = patch.width ?? sc.width;
+          const h = patch.height ?? sc.height;
+          next.cameraX = Math.min(next.cameraX, Math.max(w - 240, 0));
+          next.cameraY = Math.min(next.cameraY, Math.max(h - 160, 0));
+          next.collisionMap = createCollisionMap(w, h, ts);
+        }
+        if (patch.collisionTileSize !== undefined) {
+          next.collisionMap = createCollisionMap(next.width, next.height, patch.collisionTileSize);
+        }
         return next;
       }),
     }));
@@ -980,6 +998,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeScene: (id) => {
     get()._snapshotMundo();
     set((s) => ({ scenes: s.scenes.filter((sc) => sc.id !== id) }));
+  },
+  setCollisionTile: (sceneId, col, row, value) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      scenes: s.scenes.map((sc) => {
+        if (sc.id !== sceneId) return sc;
+        const map = (sc.collisionMap || createCollisionMap(sc.width, sc.height, sc.collisionTileSize || 8)).map((r) => [...r]);
+        if (map[row] && map[row][col] !== undefined) map[row][col] = value;
+        return { ...sc, collisionTileSize: sc.collisionTileSize || 8, collisionMap: map };
+      }),
+    }));
+  },
+  clearCollisionMap: (sceneId) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      scenes: s.scenes.map((sc) =>
+        sc.id !== sceneId ? sc : { ...sc, collisionTileSize: sc.collisionTileSize || 8, collisionMap: createCollisionMap(sc.width, sc.height, sc.collisionTileSize || 8) }
+      ),
+    }));
   },
   addActor: (sceneId) => {
     get()._snapshotMundo();

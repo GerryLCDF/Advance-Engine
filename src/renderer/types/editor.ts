@@ -2,6 +2,34 @@
 
 export type EditorTab = 'mundo' | 'scripting' | 'sprite' | 'imagen' | 'music' | 'sound' | 'dialogo';
 
+// ── Collision ────────────────────────────────────────────────────────────
+export const COLLISION_EMPTY = 0;
+export const COLLISION_SOLID = 1;
+export const COLLISION_ONE_WAY_UP = 2;
+export const COLLISION_ONE_WAY_DOWN = 3;
+export const COLLISION_ONE_WAY_LEFT = 4;
+export const COLLISION_ONE_WAY_RIGHT = 5;
+export const COLLISION_LADDER = 6;
+export const COLLISION_SLOPE = 7;
+
+export type CollisionBrush = 'block' | 'bucket' | 'wand' | 'draw';
+
+export const COLLISION_PALETTE: { value: number; label: string; color: string }[] = [
+  { value: COLLISION_SOLID, label: 'Sólido', color: '#ff4444' },
+  { value: COLLISION_ONE_WAY_UP, label: 'One-way ↑', color: '#ffdd44' },
+  { value: COLLISION_ONE_WAY_DOWN, label: 'One-way ↓', color: '#ff8844' },
+  { value: COLLISION_ONE_WAY_LEFT, label: 'One-way ←', color: '#4488ff' },
+  { value: COLLISION_ONE_WAY_RIGHT, label: 'One-way →', color: '#44ddff' },
+  { value: COLLISION_LADDER, label: 'Escalera', color: '#44cc44' },
+  { value: COLLISION_SLOPE, label: 'Rampa', color: '#ff66bb' },
+];
+
+export function createCollisionMap(sceneWidth: number, sceneHeight: number, tileSize: number): number[][] {
+  const cols = Math.ceil(sceneWidth / tileSize);
+  const rows = Math.ceil(sceneHeight / tileSize);
+  return Array.from({ length: rows }, () => Array(cols).fill(COLLISION_EMPTY));
+}
+
 // ── Mundo (Scene/World) ──────────────────────────────────────────────────
 export interface Actor {
   id: string;
@@ -36,6 +64,8 @@ export interface Scene {
   type: 'platformer' | 'topdown' | 'rpg' | 'fighting';
   actors: Actor[];
   backgroundSong?: string;
+  collisionTileSize: number;
+  collisionMap: number[][];
 }
 
 // ── SplashScreen ─────────────────────────────────────────────────────────
