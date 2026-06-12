@@ -4,7 +4,7 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, SplashScreen } from '../../../types/editor';
-import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
+import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 
 const SCREEN_W = 240;
 const SCREEN_H = 160;
@@ -68,6 +68,14 @@ export function MundoTab() {
   const [collisionBrush, setCollisionBrush] = useState<CollisionBrush>('block');
   const [collisionPaintValue, setCollisionPaintValue] = useState(COLLISION_SOLID);
   const [collisionBlockSize, setCollisionBlockSize] = useState(1);
+
+  // Auto-switch to draw tool when a ramp color is selected
+  useEffect(() => {
+    if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) {
+      if (tool !== 'collision') setTool('collision');
+      if (collisionBrush !== 'draw') setCollisionBrush('draw');
+    }
+  }, [collisionPaintValue]);
 
   // Detect splash image dimensions for warning conditions
   useEffect(() => {
@@ -1020,6 +1028,10 @@ export function MundoTab() {
               background: 'var(--bg-canvas)', borderRadius: 20,
               padding: '3px 4px',
             }}>
+              {(collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) ? (
+                <span style={{ fontSize: 10, color: '#888', padding: '0 8px' }}>🔒 Lápiz (rampa)</span>
+              ) : (
+                <>
               <ToolBtn active={tool === 'move'} onClick={() => { setTool('move'); setConnectFrom(null); }} title="Mover">✥</ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'add'} onClick={() => { setTool('add'); setConnectFrom(null); }} title="Agregar escena">+</ToolBtn>
@@ -1031,6 +1043,8 @@ export function MundoTab() {
               </ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'collision'} onClick={() => { setTool('collision'); setConnectFrom(null); }} title="Pintar colisión">▦</ToolBtn>
+                </>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <ToolBtn
@@ -1083,86 +1097,6 @@ export function MundoTab() {
             )}
           </div>
 
-          {tool === 'collision' && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 2,
-              padding: '4px 10px', background: 'var(--bg-panel)',
-              borderBottom: '1px solid var(--border-color)',
-              flexShrink: 0,
-            }}>
-              {/* Brush modes */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 2,
-                background: 'var(--bg-canvas)', borderRadius: 20,
-                padding: '3px 4px',
-              }}>
-                <div style={{ position: 'relative' }}>
-                  <ToolBtn
-                    active={collisionBrush === 'block'}
-                    onClick={() => setCollisionBrush('block')}
-                    title="Bloque (pintar)"
-                  >▣</ToolBtn>
-                  {collisionBrush === 'block' && (
-                    <div style={{
-                      position: 'absolute', left: '50%', transform: 'translateX(-50%)',
-                      top: '100%', marginTop: 2, zIndex: 50,
-                      display: 'flex', gap: 1,
-                      background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
-                      borderRadius: 4, padding: 2,
-                    }}>
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <div key={s}
-                          onClick={() => setCollisionBlockSize(s)}
-                          style={{
-                            width: 16, height: 16, fontSize: 9, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: collisionBlockSize === s ? 'var(--accent)' : 'transparent',
-                            color: collisionBlockSize === s ? '#fff' : 'var(--text-secondary)',
-                            borderRadius: 2,
-                          }}
-                        >{s}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
-                <ToolBtn active={false} title="Barita (seleccionar) — pronto">⌾</ToolBtn>
-                <ToolBtn active={false} title="Dibujar (arrastrar) — pronto">✎</ToolBtn>
-              </div>
-              <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 4px' }} />
-              {/* Collision type palette — cada swatch muestra visualmente el tipo */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                {[
-                  { value: 1, color: '#ff4444', icon: <rect x={0} y={0} width={16} height={16} fill="#ff4444" rx={1} />, title: 'Sólido' },
-                  { value: 2, color: '#ffdd44', icon: <><rect x={0} y={0} width={16} height={8} fill="#ffdd44" rx={1} /><rect x={0} y={8} width={16} height={8} fill="#ffdd4444" rx={1} /></>, title: 'One-way ↑ (sólido arriba)' },
-                  { value: 3, color: '#ff8844', icon: <><rect x={0} y={8} width={16} height={8} fill="#ff8844" rx={1} /><rect x={0} y={0} width={16} height={8} fill="#ff884444" rx={1} /></>, title: 'One-way ↓ (sólido abajo)' },
-                  { value: 4, color: '#4488ff', icon: <><rect x={0} y={0} width={8} height={16} fill="#4488ff" rx={1} /><rect x={8} y={0} width={8} height={16} fill="#4488ff44" rx={1} /></>, title: 'One-way ← (sólido izquierda)' },
-                  { value: 5, color: '#44ddff', icon: <><rect x={8} y={0} width={8} height={16} fill="#44ddff" rx={1} /><rect x={0} y={0} width={8} height={16} fill="#44ddff44" rx={1} /></>, title: 'One-way → (sólido derecha)' },
-                  { value: 6, color: '#44cc44', icon: <><rect x={0} y={0} width={16} height={16} fill="#44cc44" rx={1} /><line x1={3} y1={4} x2={13} y2={4} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={8} x2={13} y2={8} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={12} x2={13} y2={12} stroke="#fff" strokeWidth={1.5} /></>, title: 'Escalera' },
-                  { value: 7, color: '#ff66bb', icon: <polygon points="0,16 16,16 16,0" fill="#ff66bb" />, title: 'Rampa ↘' },
-                ].map((p) => (
-                  <div key={p.value}
-                    onClick={() => setCollisionPaintValue(p.value)}
-                    style={{
-                      width: 20, height: 20, cursor: 'pointer',
-                      border: collisionPaintValue === p.value ? '2px solid #fff' : '2px solid transparent',
-                      outline: collisionPaintValue === p.value ? '1px solid var(--accent)' : 'none',
-                      outlineOffset: 1,
-                      borderRadius: 3,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: 'rgba(0,0,0,0.3)',
-                    }}
-                    title={p.title}
-                  >
-                    <svg width={16} height={16} viewBox="0 0 16 16">
-                      {p.icon}
-                    </svg>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Flow canvas con zoom/pan (Godot-style) */}
           <div
             ref={canvasContainerRef}
@@ -1193,6 +1127,91 @@ export function MundoTab() {
               }
             }}
           >
+            {tool === 'collision' && (
+              <div style={{
+                position: 'absolute', top: 6, left: 6,
+                zIndex: 50, display: 'flex', alignItems: 'center', gap: 2,
+                padding: '4px 10px', background: 'rgba(45,45,51,0.92)',
+                borderRadius: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                backdropFilter: 'blur(6px)',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 2,
+                  background: 'var(--bg-canvas)', borderRadius: 20,
+                  padding: '3px 4px',
+                }}>
+                  <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
+                  <ToolBtn active={false} title="Barita (seleccionar) — pronto">⌾</ToolBtn>
+                  <ToolBtn active={collisionBrush === 'draw'}
+                    onClick={() => {
+                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) return;
+                      setCollisionBrush('draw');
+                    }}
+                    title="Dibujar (arrastra para pintar, clic derecho para borrar)"
+                  >✎</ToolBtn>
+                  <ToolBtn active={collisionBrush === 'rectangle'}
+                    onClick={() => {
+                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) return;
+                      setCollisionBrush('rectangle');
+                    }}
+                    title="Cuadro (arrastra para dibujar un rectángulo, clic derecho para borrar)"
+                  >▢</ToolBtn>
+                  {collisionBrush === 'draw' && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4,
+                      transition: 'opacity 0.2s, transform 0.2s',
+                    }}>
+                      <input type="range" min={1} max={6} step={1}
+                        value={collisionBlockSize}
+                        onChange={(e) => setCollisionBlockSize(Number(e.target.value))}
+                        style={{ width: 48, height: 4, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: 10, color: 'var(--text-secondary)', minWidth: 28, textAlign: 'center' }}>
+                        {collisionBlockSize * 8}px
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 4px' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  {[
+                    { value: 1, color: '#ff4444', icon: <rect x={0} y={0} width={16} height={16} fill="#ff4444" rx={1} />, title: 'Sólido' },
+                    { value: 2, color: '#ffdd44', icon: <><rect x={0} y={0} width={16} height={8} fill="#ffdd44" rx={1} /><rect x={0} y={8} width={16} height={8} fill="#ffdd4444" rx={1} /></>, title: 'One-way ↑' },
+                    { value: 3, color: '#ff8844', icon: <><rect x={0} y={8} width={16} height={8} fill="#ff8844" rx={1} /><rect x={0} y={0} width={16} height={8} fill="#ff884444" rx={1} /></>, title: 'One-way ↓' },
+                    { value: 4, color: '#4488ff', icon: <><rect x={0} y={0} width={8} height={16} fill="#4488ff" rx={1} /><rect x={8} y={0} width={8} height={16} fill="#4488ff44" rx={1} /></>, title: 'One-way ←' },
+                    { value: 5, color: '#44ddff', icon: <><rect x={8} y={0} width={8} height={16} fill="#44ddff" rx={1} /><rect x={0} y={0} width={8} height={16} fill="#44ddff44" rx={1} /></>, title: 'One-way →' },
+                    { value: 6, color: '#44cc44', icon: <><rect x={0} y={0} width={16} height={16} fill="#44cc44" rx={1} /><line x1={3} y1={4} x2={13} y2={4} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={8} x2={13} y2={8} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={12} x2={13} y2={12} stroke="#fff" strokeWidth={1.5} /></>, title: 'Escalera' },
+                    { value: 7, color: '#ff66bb', icon: <polygon points="0,16 16,16 16,0" fill="#ff66bb" />, title: 'Rampa ↘' },
+                    { value: 8, color: '#bb66ff', icon: <polygon points="0,0 16,0 0,16" fill="#bb66ff" />, title: 'Rampa ↙' },
+                  ].map((p) => (
+                    <div key={p.value}
+                      onClick={() => {
+                        setCollisionPaintValue(p.value);
+                        if (p.value === COLLISION_SLOPE || p.value === COLLISION_SLOPE_INV) {
+                          setTool('collision');
+                          setCollisionBrush('draw');
+                        }
+                      }}
+                      style={{
+                        width: 20, height: 20, cursor: 'pointer',
+                        border: collisionPaintValue === p.value ? '2px solid #fff' : '2px solid transparent',
+                        outline: collisionPaintValue === p.value ? '1px solid var(--accent)' : 'none',
+                        outlineOffset: 1,
+                        borderRadius: 3,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(0,0,0,0.3)',
+                      }}
+                      title={p.title}
+                    >
+                      <svg width={16} height={16} viewBox="0 0 16 16">
+                        {p.icon}
+                      </svg>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Transform wrapper */}
             <div style={{
               transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
@@ -1487,7 +1506,8 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   const [animFrame, setAnimFrame] = useState(0);
   const animDirRef = useRef(1);
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
-  const [paintHover, setPaintHover] = useState<{col: number; row: number} | null>(null);
+  const [paintRect, setPaintRect] = useState<{x1: number; y1: number; x2: number; y2: number} | null>(null);
+  const paintStartRef = useRef<{x: number; y: number} | null>(null);
 
   useEffect(() => {
     if (!scene.backgroundImage) { setBgImageUrl(''); return; }
@@ -1539,60 +1559,186 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     return () => clearInterval(timer);
   }, [isAnimated, animPaused, matchingLayer?.animationSpeed, matchingLayer?.animationLoop, totalFrames]);
 
+  const batchCollisionTiles = useAppStore((s) => s.batchCollisionTiles);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
 
-    // Collision painting mode
-    if (tool === 'collision' && setCollisionTile && collisionPaintValue !== undefined && collisionBrush === 'block') {
+    // Collision mode: draw (tile brush with line interpolation)
+    // For ramp values (7, 8): line mode — draw a line, fill tiles on release
+    if (tool === 'collision' && setCollisionTile && collisionBrush === 'draw') {
+      if (e.button !== 0 && e.button !== 2) return;
+      const paintValue = e.button === 2 ? 0 : (collisionPaintValue ?? 0);
+      const isRamp = paintValue === COLLISION_SLOPE || paintValue === COLLISION_SLOPE_INV;
       const container = imageContainerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      const mx = (e.clientX - rect.left);
-      const my = (e.clientY - rect.top);
+      const mx = (e.clientX - rect.left) / dragZoom;
+      const my = (e.clientY - rect.top) / dragZoom;
       const tileSize = scene.collisionTileSize || 8;
-      const tileCol = Math.floor(mx / tileSize);
-      const tileRow = Math.floor(my / tileSize);
-      const cols = Math.ceil(scene.width / tileSize);
-      const rows = Math.ceil(scene.height / tileSize);
-      const paint = () => {
-        const bs = collisionBlockSize ?? 1;
-        for (let dy = 0; dy < bs; dy++) {
-          for (let dx = 0; dx < bs; dx++) {
-            const c = tileCol + dx;
-            const r = tileRow + dy;
-            if (c < cols && r < rows) setCollisionTile(scene.id, c, r, collisionPaintValue!);
-          }
-        }
-      };
-      paint();
-      const handleMove = (ev: MouseEvent) => {
-        const r2 = container.getBoundingClientRect();
-        const mx2 = (ev.clientX - r2.left);
-        const my2 = (ev.clientY - r2.top);
-        const tc = Math.floor(mx2 / tileSize);
-        const tr = Math.floor(my2 / tileSize);
-        if (tc !== tileCol || tr !== tileRow) {
-          const bs = collisionBlockSize ?? 1;
-          for (let dy = 0; dy < bs; dy++) {
-            for (let dx = 0; dx < bs; dx++) {
-              const c = tc + dx;
-              const r = tr + dy;
-              if (c < cols && r < rows) setCollisionTile(scene.id, c, r, collisionPaintValue!);
+
+      // Ramp line mode — relleno triangular siguiendo la línea
+      if (isRamp) {
+        const isBaseDown = paintValue === COLLISION_SLOPE; // pink = base down
+        paintStartRef.current = { x: mx, y: my };
+        setPaintRect({ x1: mx, y1: my, x2: mx, y2: my });
+        const handleMove = (ev: MouseEvent) => {
+          const r2 = container.getBoundingClientRect();
+          const mx2 = (ev.clientX - r2.left) / dragZoom;
+          const my2 = (ev.clientY - r2.top) / dragZoom;
+          setPaintRect({ x1: paintStartRef.current!.x, y1: paintStartRef.current!.y, x2: mx2, y2: my2 });
+        };
+        const handleUp = (ev: MouseEvent) => {
+          document.removeEventListener('mousemove', handleMove);
+          document.removeEventListener('mouseup', handleUp);
+          const r2 = container.getBoundingClientRect();
+          const ex = (ev.clientX - r2.left) / dragZoom;
+          const ey = (ev.clientY - r2.top) / dragZoom;
+          const sx = paintStartRef.current!.x;
+          const sy = paintStartRef.current!.y;
+          const nCols = Math.ceil(scene.width / tileSize);
+          const nRows = Math.ceil(scene.height / tileSize);
+          // Fill all tiles on the "base" side of the diagonal line
+          const minTileCol = Math.max(0, Math.floor(Math.min(sx, ex) / tileSize));
+          const maxTileCol = Math.min(nCols - 1, Math.floor(Math.max(sx, ex) / tileSize));
+          const minTileRow = Math.max(0, Math.floor(Math.min(sy, ey) / tileSize));
+          const maxTileRow = Math.min(nRows - 1, Math.floor(Math.max(sy, ey) / tileSize));
+          const tiles: [number, number, number][] = [];
+          const rampVal = paintValue;
+          for (let tc = minTileCol; tc <= maxTileCol; tc++) {
+            for (let tr = minTileRow; tr <= maxTileRow; tr++) {
+              const tileCx = tc * tileSize + tileSize / 2;
+              const tileCy = tr * tileSize + tileSize / 2;
+              // Calculate line Y at this tile's X
+              let lineY = sy;
+              if (ex !== sx) {
+                lineY = sy + (ey - sy) * (tileCx - sx) / (ex - sx);
+              }
+              const isBelow = tileCy > lineY;
+              const fill = isBaseDown ? isBelow : !isBelow;
+              if (fill) tiles.push([tc, tr, rampVal]);
             }
           }
+          if (tiles.length) batchCollisionTiles(scene.id, tiles);
+          paintStartRef.current = null;
+          setPaintRect(null);
+        };
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('mouseup', handleUp);
+        return;
+      }
+
+      // Regular tile brush mode (non-ramp)
+      const bs = collisionBlockSize ?? 1;
+      const offset = Math.floor(bs / 2);
+      const nCols = Math.ceil(scene.width / tileSize);
+      const nRows = Math.ceil(scene.height / tileSize);
+      const addTiles = (tc: number, tr: number) => {
+        const tiles: [number, number, number][] = [];
+        for (let dy = 0; dy < bs; dy++) {
+          for (let dx = 0; dx < bs; dx++) {
+            const c = tc + dx;
+            const r = tr + dy;
+            if (c >= 0 && r >= 0 && c < nCols && r < nRows) tiles.push([c, r, paintValue]);
+          }
         }
+        if (tiles.length) batchCollisionTiles(scene.id, tiles);
+      };
+      const tc0 = Math.floor(mx / tileSize) - offset;
+      const tr0 = Math.floor(my / tileSize) - offset;
+      addTiles(tc0, tr0);
+      paintStartRef.current = { x: tc0, y: tr0 };
+      const handleMove = (ev: MouseEvent) => {
+        const r2 = container.getBoundingClientRect();
+        const mx2 = (ev.clientX - r2.left) / dragZoom;
+        const my2 = (ev.clientY - r2.top) / dragZoom;
+        const tc = Math.floor(mx2 / tileSize) - offset;
+        const tr = Math.floor(my2 / tileSize) - offset;
+        setPaintRect({ x1: tc * tileSize, y1: tr * tileSize, x2: (tc + bs) * tileSize, y2: (tr + bs) * tileSize });
+        const last = paintStartRef.current;
+        if (!last || (tc === last.x && tr === last.y)) return;
+        // Bresenham line interpolation from last tile to current tile
+        const dx = tc - last.x;
+        const dy = tr - last.y;
+        const adx = Math.abs(dx);
+        const ady = Math.abs(dy);
+        const sx = dx > 0 ? 1 : -1;
+        const sy = dy > 0 ? 1 : -1;
+        let err = adx - ady;
+        let cx = last.x, cy = last.y;
+        while (cx !== tc || cy !== tr) {
+          const e2 = 2 * err;
+          if (e2 > -ady) { err -= ady; cx += sx; }
+          if (e2 < adx) { err += adx; cy += sy; }
+          addTiles(cx, cy);
+        }
+        paintStartRef.current = { x: tc, y: tr };
       };
       const handleUp = () => {
         document.removeEventListener('mousemove', handleMove);
         document.removeEventListener('mouseup', handleUp);
+        paintStartRef.current = null;
       };
       document.addEventListener('mousemove', handleMove);
       document.addEventListener('mouseup', handleUp);
       return;
     }
 
+    // Collision mode: rectangle (draw a rect, fill on release)
+    if (tool === 'collision' && setCollisionTile && collisionBrush === 'rectangle') {
+      if (e.button !== 0 && e.button !== 2) return;
+      const paintValue = e.button === 2 ? 0 : (collisionPaintValue ?? 0);
+      const container = imageContainerRef.current;
+      if (!container) return;
+      const cr = container.getBoundingClientRect();
+      const sx = (e.clientX - cr.left) / dragZoom;
+      const sy = (e.clientY - cr.top) / dragZoom;
+      paintStartRef.current = { x: sx, y: sy };
+      setPaintRect({ x1: sx, y1: sy, x2: sx, y2: sy });
+      const handleMove = (ev: MouseEvent) => {
+        const r2 = container.getBoundingClientRect();
+        const mx = (ev.clientX - r2.left) / dragZoom;
+        const my = (ev.clientY - r2.top) / dragZoom;
+        if (paintStartRef.current) {
+          setPaintRect({
+            x1: paintStartRef.current.x, y1: paintStartRef.current.y,
+            x2: mx, y2: my,
+          });
+        }
+      };
+      const handleUp = (ev: MouseEvent) => {
+        document.removeEventListener('mousemove', handleMove);
+        document.removeEventListener('mouseup', handleUp);
+        if (!paintStartRef.current) return;
+        const r2 = container.getBoundingClientRect();
+        const ex = (ev.clientX - r2.left) / dragZoom;
+        const ey = (ev.clientY - r2.top) / dragZoom;
+        const x1 = Math.min(paintStartRef.current.x, ex);
+        const y1 = Math.min(paintStartRef.current.y, ey);
+        const x2 = Math.max(paintStartRef.current.x, ex);
+        const y2 = Math.max(paintStartRef.current.y, ey);
+        const tileSize = scene.collisionTileSize || 8;
+        const col1 = Math.max(0, Math.floor(x1 / tileSize));
+        const row1 = Math.max(0, Math.floor(y1 / tileSize));
+        const col2 = Math.min(Math.ceil(scene.width / tileSize) - 1, Math.floor(x2 / tileSize));
+        const row2 = Math.min(Math.ceil(scene.height / tileSize) - 1, Math.floor(y2 / tileSize));
+        const tiles: [number, number, number][] = [];
+        for (let r = row1; r <= row2; r++) {
+          for (let c = col1; c <= col2; c++) {
+            tiles.push([c, r, paintValue]);
+          }
+        }
+        if (tiles.length) batchCollisionTiles(scene.id, tiles);
+        paintStartRef.current = null;
+        setPaintRect(null);
+      };
+      document.addEventListener('mousemove', handleMove);
+      document.addEventListener('mouseup', handleUp);
+      return;
+    }
+
+    if (e.button !== 0) return;
     onSelect(scene.id);
     if (tool !== 'move') return;
     const startX = e.clientX;
@@ -1621,7 +1767,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     };
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleUp);
-  }, [scene.id, scene.x, scene.y, onSelect, updateScene, dragZoom, tool, setCollisionTile, collisionPaintValue, collisionBrush, collisionBlockSize, scene.collisionTileSize, scene.width, scene.height]);
+  }, [scene.id, scene.x, scene.y, onSelect, updateScene, dragZoom, tool, setCollisionTile, collisionPaintValue, collisionBrush, collisionBlockSize, scene.collisionTileSize, scene.width, scene.height, batchCollisionTiles]);
 
   const bgSongObj = useMemo(() => songs.find((so) => so.id === scene.backgroundSong), [songs, scene.backgroundSong]);
 
@@ -1646,7 +1792,10 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
       }}
       onMouseDown={handleMouseDown}
       onClick={() => onSelect(scene.id)}
-      onContextMenu={(e) => onContextMenu?.(e, scene.id)}
+      onContextMenu={(e) => {
+        if (tool === 'collision' && (collisionBrush === 'draw' || collisionBrush === 'rectangle')) { e.preventDefault(); return; }
+        onContextMenu?.(e, scene.id);
+      }}
       onMouseEnter={(e) => {
         if (clickAnimation && !selected) e.currentTarget.style.background = 'var(--bg-raised)';
       }}
@@ -1678,21 +1827,24 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         overflow: 'hidden',
       }}
         onMouseMove={(e) => {
-          if (tool !== 'collision' || !collisionPaintValue) { setPaintHover(null); return; }
-          const rect = e.currentTarget.getBoundingClientRect();
-          const mx = (e.clientX - rect.left);
-          const my = (e.clientY - rect.top);
-          const col = Math.floor(mx / scene.collisionTileSize);
-          const row = Math.floor(my / scene.collisionTileSize);
-          const cols = Math.ceil(scene.width / scene.collisionTileSize);
-          const rows = Math.ceil(scene.height / scene.collisionTileSize);
-          if (col >= 0 && col < cols && row >= 0 && row < rows) {
-            setPaintHover({ col, row });
+          if (tool !== 'collision') { setPaintRect(null); return; }
+          const pv = collisionPaintValue ?? 0;
+          const isRamp = pv === COLLISION_SLOPE || pv === COLLISION_SLOPE_INV;
+          if (collisionBrush === 'draw' && !paintStartRef.current && !isRamp) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const mx = (e.clientX - rect.left) / dragZoom;
+            const my = (e.clientY - rect.top) / dragZoom;
+            const tileSize = scene.collisionTileSize || 8;
+            const bs = collisionBlockSize ?? 1;
+            const offset = Math.floor(bs / 2);
+            const tc = Math.floor(mx / tileSize) - offset;
+            const tr = Math.floor(my / tileSize) - offset;
+            setPaintRect({ x1: tc * tileSize, y1: tr * tileSize, x2: (tc + bs) * tileSize, y2: (tr + bs) * tileSize });
           } else {
-            setPaintHover(null);
+            setPaintRect(null);
           }
         }}
-        onMouseLeave={() => setPaintHover(null)}
+        onMouseLeave={() => { if (!paintStartRef.current) setPaintRect(null); }}
       >
         <div style={{
           position: 'absolute', inset: 0,
@@ -1749,31 +1901,64 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                 const palette = COLLISION_PALETTE.find((p) => p.value === val);
                 if (!palette) return null;
                 const ts = scene.collisionTileSize || 8;
+                const hs = ts / 2;
+                if (val === 2) {
+                  return <rect key={`c${ci}_${ri}`} x={ci * ts} y={ri * ts} width={ts} height={hs} fill={palette.color} />;
+                }
+                if (val === 3) {
+                  return <rect key={`c${ci}_${ri}`} x={ci * ts} y={ri * ts + hs} width={ts} height={hs} fill={palette.color} />;
+                }
+                if (val === 4) {
+                  return <rect key={`c${ci}_${ri}`} x={ci * ts} y={ri * ts} width={hs} height={ts} fill={palette.color} />;
+                }
+                if (val === 5) {
+                  return <rect key={`c${ci}_${ri}`} x={ci * ts + hs} y={ri * ts} width={hs} height={ts} fill={palette.color} />;
+                }
+                if (val === 6) {
+                  const x = ci * ts, y = ri * ts;
+                  return (
+                    <path key={`c${ci}_${ri}`} fill={palette.color} fillRule="evenodd"
+                      d={`M${x} ${y} h${ts} v${ts} h-${ts} Z M${x+2} ${y+2} h4 v2 h-4 Z M${x+2} ${y+6} h4 v2 h-4 Z`}
+                    />
+                  );
+                }
+                if (val === 7) {
+                  const x = ci * ts, y = ri * ts;
+                  return <polygon key={`c${ci}_${ri}`} points={`${x+ts},${y} ${x+ts},${y+ts} ${x},${y+ts}`} fill={palette.color} />;
+                }
+                if (val === 8) {
+                  const x = ci * ts, y = ri * ts;
+                  return <polygon key={`c${ci}_${ri}`} points={`${x},${y} ${x+ts},${y} ${x},${y+ts}`} fill={palette.color} />;
+                }
                 return (
                   <rect key={`c${ci}_${ri}`}
                     x={ci * ts}
                     y={ri * ts}
                     width={ts}
                     height={ts}
-                    fill={`${palette.color}66`}
-                    stroke={palette.color}
-                    strokeWidth={0.5}
+                    fill={palette.color}
                   />
                 );
               })
             )}
-            {paintHover && (
-              <rect
-                x={paintHover.col * (scene.collisionTileSize || 8)}
-                y={paintHover.row * (scene.collisionTileSize || 8)}
-                width={(scene.collisionTileSize || 8) * (collisionBlockSize ?? 1)}
-                height={(scene.collisionTileSize || 8) * (collisionBlockSize ?? 1)}
-                fill="rgba(255,255,255,0.15)"
-                stroke="#fff"
-                strokeWidth={1}
-                strokeDasharray="2 2"
+            {paintRect && (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) ? (
+              <line x1={paintRect.x1} y1={paintRect.y1} x2={paintRect.x2} y2={paintRect.y2}
+                stroke="#fff" strokeWidth={1} strokeLinecap="square"
               />
-            )}
+            ) : paintRect && (() => {
+              const x = Math.min(paintRect.x1, paintRect.x2);
+              const y = Math.min(paintRect.y1, paintRect.y2);
+              const w = Math.max(paintRect.x1, paintRect.x2) - x;
+              const h = Math.max(paintRect.y1, paintRect.y2) - y;
+              return (
+                <rect x={x} y={y} width={w || 1} height={h || 1}
+                  fill="rgba(255,255,255,0.12)"
+                  stroke="#fff"
+                  strokeWidth={1}
+                  strokeDasharray="3 2"
+                />
+              );
+            })()}
           </svg>
           {/* Viewport overlay — rectangulo de la camara (240x160) arrastrable */}
           {(scene.width > 240 || scene.height > 160) && (

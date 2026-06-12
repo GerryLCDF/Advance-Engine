@@ -368,6 +368,7 @@ interface AppState {
   updateScene: (id: string, patch: Partial<Scene>) => void;
   removeScene: (id: string) => void;
   setCollisionTile: (sceneId: string, col: number, row: number, value: number) => void;
+  batchCollisionTiles: (sceneId: string, tiles: [number, number, number][]) => void;
   clearCollisionMap: (sceneId: string) => void;
   addActor: (sceneId: string) => void;
   updateActor: (sceneId: string, actorId: string, patch: Partial<Actor>) => void;
@@ -1007,6 +1008,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         const map = (sc.collisionMap || createCollisionMap(sc.width, sc.height, sc.collisionTileSize || 8)).map((r) => [...r]);
         if (map[row] && map[row][col] !== undefined) map[row][col] = value;
         return { ...sc, collisionTileSize: sc.collisionTileSize || 8, collisionMap: map };
+      }),
+    }));
+  },
+  batchCollisionTiles: (sceneId, tiles: [number, number, number][]) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      scenes: s.scenes.map((sc) => {
+        if (sc.id !== sceneId) return sc;
+        const ts = sc.collisionTileSize || 8;
+        const map = (sc.collisionMap || createCollisionMap(sc.width, sc.height, ts)).map((r) => [...r]);
+        for (const [col, row, val] of tiles) {
+          if (map[row] && map[row][col] !== undefined) map[row][col] = val;
+        }
+        return { ...sc, collisionTileSize: ts, collisionMap: map };
       }),
     }));
   },

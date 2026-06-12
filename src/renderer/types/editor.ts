@@ -11,8 +11,9 @@ export const COLLISION_ONE_WAY_LEFT = 4;
 export const COLLISION_ONE_WAY_RIGHT = 5;
 export const COLLISION_LADDER = 6;
 export const COLLISION_SLOPE = 7;
+export const COLLISION_SLOPE_INV = 8;
 
-export type CollisionBrush = 'block' | 'bucket' | 'wand' | 'draw';
+export type CollisionBrush = 'block' | 'bucket' | 'wand' | 'draw' | 'rectangle';
 
 export const COLLISION_PALETTE: { value: number; label: string; color: string }[] = [
   { value: COLLISION_SOLID, label: 'Sólido', color: '#ff4444' },
@@ -22,6 +23,7 @@ export const COLLISION_PALETTE: { value: number; label: string; color: string }[
   { value: COLLISION_ONE_WAY_RIGHT, label: 'One-way →', color: '#44ddff' },
   { value: COLLISION_LADDER, label: 'Escalera', color: '#44cc44' },
   { value: COLLISION_SLOPE, label: 'Rampa', color: '#ff66bb' },
+  { value: COLLISION_SLOPE_INV, label: 'Rampa inversa', color: '#bb66ff' },
 ];
 
 export function createCollisionMap(sceneWidth: number, sceneHeight: number, tileSize: number): number[][] {
