@@ -4,7 +4,102 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, SplashScreen } from '../../../types/editor';
-import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
+import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
+
+// ── Slope helpers ──────────────────────────────────────────────────────
+const SLOPE_DEFS: Record<number, number[]> = {
+  [COLLISION_SLOPE]:    [1,2,3,4,5,6,7,8],
+  [COLLISION_SLOPE_INV]: [8,7,6,5,4,3,2,1],
+  [COLLISION_SLOPE_26]: [0,0,0,0,2,4,6,8],
+};
+const SLOPE_ENCODE_BASE = 100;
+
+function decodeSlope(value: number): { counts: number[]; forward: boolean } | null {
+  if (value < SLOPE_ENCODE_BASE) return null;
+  const code = value - SLOPE_ENCODE_BASE;
+  const forward = Math.floor(code / 1073741824) % 2 === 0;
+  const counts: number[] = [];
+  for (let i = 0; i < 8; i++)
+    counts.push(Math.floor(code / Math.pow(2, i * 4)) % 16);
+  return { counts, forward };
+}
+
+function encodeSlope(counts: number[], forward: boolean): number {
+  let code = forward ? 0 : 1073741824;
+  for (let i = 0; i < 8; i++)
+    code += (counts[i] & 0xF) * Math.pow(2, i * 4);
+  return SLOPE_ENCODE_BASE + code;
+}
+
+function tilePixelCounts(
+  sx: number, sy: number, ex: number, ey: number,
+  col: number, row: number, ts: number, isBelow: boolean,
+): number[] {
+  const sxt = sx / ts, syt = sy / ts;
+  const ext = ex / ts, eyt = ey / ts;
+  const h = Math.abs(ext - sxt);
+  const v = Math.abs(eyt - syt);
+
+  if (h >= v && v > 0 && h % v === 0 && h / v <= 8 && h / v === Math.floor(h / v)) {
+    const N = h / v;
+    const relCol = ex > sx ? col - sxt : sxt - col;
+    const relRow = row - syt;
+    if (relRow === 0 && relCol >= 0 && relCol < N) {
+      const tileX = relCol;
+      if (isBelow) {
+        const t = N - 1 - tileX;
+        const counts: number[] = [];
+        for (let py = 0; py < ts; py++)
+          counts.push(Math.min(ts, Math.max(0, (py + 1) * N - ts * t)));
+        return counts;
+      } else {
+        const counts: number[] = [];
+        for (let py = 0; py < ts; py++)
+          counts.push(Math.min(ts, Math.max(0, (ts - py) * N - ts * tileX)));
+        return counts;
+      }
+    }
+    return [];
+  }
+
+  const tx = col * ts;
+  const ty = row * ts;
+  let hasFill = false, hasEmpty = false;
+  const counts: number[] = [];
+  for (let py = 0; py < ts; py++) {
+    let n = 0;
+    for (let px = 0; px < ts; px++) {
+      const gx = tx + px + 0.5;
+      const gy = ty + py + 0.5;
+      let ly = sy;
+      if (ex !== sx) ly = sy + (ey - sy) * (gx - sx) / (ex - sx);
+      const below = gy >= ly;
+      if (isBelow ? below : !below) n++;
+    }
+    counts.push(n);
+    if (n > 0 && n < ts) hasFill = true;
+    if (n === 0) hasEmpty = true;
+    if (n === ts && hasEmpty) hasFill = true;
+  }
+  if (!hasFill) return [];
+  return counts;
+}
+
+function bresenhamLine(x0: number, y0: number, x1: number, y1: number): { x: number; y: number }[] {
+  const pts: { x: number; y: number }[] = [];
+  const ix0 = Math.round(x0), iy0 = Math.round(y0), ix1 = Math.round(x1), iy1 = Math.round(y1);
+  const dx = Math.abs(ix1 - ix0), dy = -Math.abs(iy1 - iy0);
+  const sx = ix0 < ix1 ? 1 : -1, sy = iy0 < iy1 ? 1 : -1;
+  let err = dx + dy, x = ix0, y = iy0;
+  while (true) {
+    pts.push({ x, y });
+    if (x === ix1 && y === iy1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x += sx; }
+    if (e2 <= dx) { err += dx; y += sy; }
+  }
+  return pts;
+}
 
 const SCREEN_W = 240;
 const SCREEN_H = 160;
@@ -1580,44 +1675,42 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
 
       // Ramp line mode — relleno triangular siguiendo la línea
       if (isRamp) {
-        const isBaseDown = paintValue === COLLISION_SLOPE; // pink = base down
-        paintStartRef.current = { x: mx, y: my };
-        setPaintRect({ x1: mx, y1: my, x2: mx, y2: my });
+        const snapCorner = (v: number) => Math.round(v / tileSize) * tileSize;
+        const clamp = (v: number, lim: number) => Math.max(0, Math.min(v, lim));
+        const sx = clamp(snapCorner(mx), scene.width);
+        const sy = clamp(snapCorner(my), scene.height);
+        paintStartRef.current = { x: sx, y: sy };
+        setPaintRect({ x1: sx, y1: sy, x2: sx, y2: sy });
+
         const handleMove = (ev: MouseEvent) => {
           const r2 = container.getBoundingClientRect();
-          const mx2 = (ev.clientX - r2.left) / dragZoom;
-          const my2 = (ev.clientY - r2.top) / dragZoom;
-          setPaintRect({ x1: paintStartRef.current!.x, y1: paintStartRef.current!.y, x2: mx2, y2: my2 });
+          const mx2 = clamp((ev.clientX - r2.left) / dragZoom, scene.width);
+          const my2 = clamp((ev.clientY - r2.top) / dragZoom, scene.height);
+          const ex = clamp(snapCorner(mx2), scene.width);
+          const ey = clamp(snapCorner(my2), scene.height);
+          setPaintRect({ x1: sx, y1: sy, x2: ex, y2: ey });
         };
         const handleUp = (ev: MouseEvent) => {
           document.removeEventListener('mousemove', handleMove);
           document.removeEventListener('mouseup', handleUp);
           const r2 = container.getBoundingClientRect();
-          const ex = (ev.clientX - r2.left) / dragZoom;
-          const ey = (ev.clientY - r2.top) / dragZoom;
-          const sx = paintStartRef.current!.x;
-          const sy = paintStartRef.current!.y;
+          const mx2 = clamp((ev.clientX - r2.left) / dragZoom, scene.width);
+          const my2 = clamp((ev.clientY - r2.top) / dragZoom, scene.height);
+          const ex = clamp(snapCorner(mx2), scene.width);
+          const ey = clamp(snapCorner(my2), scene.height);
           const nCols = Math.ceil(scene.width / tileSize);
           const nRows = Math.ceil(scene.height / tileSize);
-          // Fill all tiles on the "base" side of the diagonal line
-          const minTileCol = Math.max(0, Math.floor(Math.min(sx, ex) / tileSize));
-          const maxTileCol = Math.min(nCols - 1, Math.floor(Math.max(sx, ex) / tileSize));
-          const minTileRow = Math.max(0, Math.floor(Math.min(sy, ey) / tileSize));
-          const maxTileRow = Math.min(nRows - 1, Math.floor(Math.max(sy, ey) / tileSize));
           const tiles: [number, number, number][] = [];
-          const rampVal = paintValue;
-          for (let tc = minTileCol; tc <= maxTileCol; tc++) {
-            for (let tr = minTileRow; tr <= maxTileRow; tr++) {
-              const tileCx = tc * tileSize + tileSize / 2;
-              const tileCy = tr * tileSize + tileSize / 2;
-              // Calculate line Y at this tile's X
-              let lineY = sy;
-              if (ex !== sx) {
-                lineY = sy + (ey - sy) * (tileCx - sx) / (ex - sx);
-              }
-              const isBelow = tileCy > lineY;
-              const fill = isBaseDown ? isBelow : !isBelow;
-              if (fill) tiles.push([tc, tr, rampVal]);
+          const isBaseDown = paintValue === COLLISION_SLOPE;
+          const segMinCol = Math.max(0, Math.floor(Math.min(sx, ex) / tileSize));
+          const segMaxCol = Math.min(nCols - 1, Math.floor(Math.max(sx, ex) / tileSize));
+          const segMinRow = Math.max(0, Math.floor(Math.min(sy, ey) / tileSize));
+          const segMaxRow = Math.min(nRows - 1, Math.floor(Math.max(sy, ey) / tileSize));
+          for (let tr = segMinRow; tr <= segMaxRow; tr++) {
+            for (let tc = segMinCol; tc <= segMaxCol; tc++) {
+              const counts = tilePixelCounts(sx, sy, ex, ey, tc, tr, tileSize, isBaseDown);
+              if (counts.length === 0) continue;
+              tiles.push([tc, tr, encodeSlope(counts, isBaseDown)]);
             }
           }
           if (tiles.length) batchCollisionTiles(scene.id, tiles);
@@ -1898,10 +1991,30 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
             {scene.collisionMap?.map((row, ri) =>
               row.map((val, ci) => {
                 if (val === COLLISION_EMPTY) return null;
-                const palette = COLLISION_PALETTE.find((p) => p.value === val);
-                if (!palette) return null;
                 const ts = scene.collisionTileSize || 8;
                 const hs = ts / 2;
+                // Encoded slopes (100+) — render per-row counts
+                const slopeInfo = decodeSlope(val);
+                if (slopeInfo) {
+                  const x = ci * ts, y = ri * ts;
+                  const s = ts / 8;
+                  const { counts, forward } = slopeInfo;
+                  const color = forward ? '#ff66bb' : '#bb66ff';
+                  return (
+                    <g key={`c${ci}_${ri}`}>
+                      {counts.map((cnt, py) => {
+                        if (cnt === 0) return null;
+                        if (forward) {
+                          return <rect key={py} x={x + (8 - cnt) * s} y={y + py * s} width={cnt * s} height={s} fill={color} />;
+                        } else {
+                          return <rect key={py} x={x} y={y + py * s} width={cnt * s} height={s} fill={color} />;
+                        }
+                      })}
+                    </g>
+                  );
+                }
+                const palette = COLLISION_PALETTE.find((p) => p.value === val);
+                if (!palette) return null;
                 if (val === 2) {
                   return <rect key={`c${ci}_${ri}`} x={ci * ts} y={ri * ts} width={ts} height={hs} fill={palette.color} />;
                 }
@@ -1922,13 +2035,27 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                     />
                   );
                 }
-                if (val === 7) {
+                if (val === 7 || val === 8) {
                   const x = ci * ts, y = ri * ts;
-                  return <polygon key={`c${ci}_${ri}`} points={`${x+ts},${y} ${x+ts},${y+ts} ${x},${y+ts}`} fill={palette.color} />;
-                }
-                if (val === 8) {
-                  const x = ci * ts, y = ri * ts;
-                  return <polygon key={`c${ci}_${ri}`} points={`${x},${y} ${x+ts},${y} ${x},${y+ts}`} fill={palette.color} />;
+                  // Also render pre-defined slopes (7, 8) via SLOPE_DEFS
+                  const def = SLOPE_DEFS[val];
+                  if (def) {
+                    const s = ts / 8;
+                    const forward = def[0] < def[7];
+                    const color = forward ? '#ff66bb' : '#bb66ff';
+                    return (
+                      <g key={`c${ci}_${ri}`}>
+                        {def.map((cnt, py) => {
+                          if (cnt === 0) return null;
+                          if (forward) {
+                            return <rect key={py} x={x + (8 - cnt) * s} y={y + py * s} width={cnt * s} height={s} fill={color} />;
+                          } else {
+                            return <rect key={py} x={x} y={y + py * s} width={cnt * s} height={s} fill={color} />;
+                          }
+                        })}
+                      </g>
+                    );
+                  }
                 }
                 return (
                   <rect key={`c${ci}_${ri}`}
@@ -1942,9 +2069,12 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
               })
             )}
             {paintRect && (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) ? (
-              <line x1={paintRect.x1} y1={paintRect.y1} x2={paintRect.x2} y2={paintRect.y2}
-                stroke="#fff" strokeWidth={1} strokeLinecap="square"
-              />
+              (() => {
+                const pts = bresenhamLine(paintRect.x1, paintRect.y1, paintRect.x2, paintRect.y2);
+                return pts.map((p, i) => (
+                  <rect key={i} x={p.x - 0.5} y={p.y - 0.5} width={1} height={1} fill="#fff" opacity={0.9} />
+                ));
+              })()
             ) : paintRect && (() => {
               const x = Math.min(paintRect.x1, paintRect.x2);
               const y = Math.min(paintRect.y1, paintRect.y2);
