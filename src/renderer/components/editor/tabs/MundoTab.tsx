@@ -4,28 +4,32 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, SplashScreen } from '../../../types/editor';
-import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
+import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 
 // ── Slope helpers ──────────────────────────────────────────────────────
 const SLOPE_DEFS: Record<number, number[]> = {
   [COLLISION_SLOPE]:    [1,2,3,4,5,6,7,8],
   [COLLISION_SLOPE_INV]: [8,7,6,5,4,3,2,1],
   [COLLISION_SLOPE_26]: [0,0,0,0,2,4,6,8],
+  [COLLISION_SLOPE_MIRROR]: [1,2,3,4,5,6,7,8],
+  [COLLISION_SLOPE_INV_MIRROR]: [8,7,6,5,4,3,2,1],
 };
 const SLOPE_ENCODE_BASE = 100;
 
-function decodeSlope(value: number): { counts: number[]; forward: boolean } | null {
+function decodeSlope(value: number): { counts: number[]; forward: boolean; mirror: boolean } | null {
   if (value < SLOPE_ENCODE_BASE) return null;
   const code = value - SLOPE_ENCODE_BASE;
-  const forward = Math.floor(code / 1073741824) % 2 === 0;
+  const forward = Math.floor(code / 4294967296) % 2 === 0; // bit 32 = forward flag
+  const mirror = Math.floor(code / 8589934592) % 2 === 1; // bit 33 = mirror flag
   const counts: number[] = [];
   for (let i = 0; i < 8; i++)
     counts.push(Math.floor(code / Math.pow(2, i * 4)) % 16);
-  return { counts, forward };
+  return { counts, forward, mirror };
 }
 
-function encodeSlope(counts: number[], forward: boolean): number {
-  let code = forward ? 0 : 1073741824;
+function encodeSlope(counts: number[], forward: boolean, mirror?: boolean): number {
+  let code = forward ? 0 : 4294967296; // bit 32 = forward flag
+  if (mirror) code += 8589934592; // bit 33 = mirror flag
   for (let i = 0; i < 8; i++)
     code += (counts[i] & 0xF) * Math.pow(2, i * 4);
   return SLOPE_ENCODE_BASE + code;
@@ -34,52 +38,53 @@ function encodeSlope(counts: number[], forward: boolean): number {
 function tilePixelCounts(
   sx: number, sy: number, ex: number, ey: number,
   col: number, row: number, ts: number, isBelow: boolean,
+  forceBackslash?: boolean,
 ): number[] {
-  const sxt = sx / ts, syt = sy / ts;
-  const ext = ex / ts, eyt = ey / ts;
-  const h = Math.abs(ext - sxt);
-  const v = Math.abs(eyt - syt);
-
-  if (h >= v && v > 0 && h % v === 0 && h / v <= 8 && h / v === Math.floor(h / v)) {
-    const N = h / v;
-    const relCol = ex > sx ? col - sxt : sxt - col;
-    const relRow = row - syt;
-    if (relRow === 0 && relCol >= 0 && relCol < N) {
-      const tileX = relCol;
-      if (isBelow) {
-        const t = N - 1 - tileX;
-        const counts: number[] = [];
-        for (let py = 0; py < ts; py++)
-          counts.push(Math.min(ts, Math.max(0, (py + 1) * N - ts * t)));
-        return counts;
-      } else {
-        const counts: number[] = [];
-        for (let py = 0; py < ts; py++)
-          counts.push(Math.min(ts, Math.max(0, (ts - py) * N - ts * tileX)));
-        return counts;
-      }
-    }
-    return [];
-  }
-
+  const isBackslash = forceBackslash !== undefined ? forceBackslash : ((ex > sx && ey < sy) || (ex < sx && ey > sy));
   const tx = col * ts;
   const ty = row * ts;
-  let hasFill = false, hasEmpty = false;
+  const rampRows = 8;
+  const ppRamp = ts / rampRows;
   const counts: number[] = [];
-  for (let py = 0; py < ts; py++) {
+  let hasFill = false;
+  for (let rr = 0; rr < rampRows; rr++) {
+    const gy = ty + rr * ppRamp + ppRamp / 2;
     let n = 0;
-    for (let px = 0; px < ts; px++) {
-      const gx = tx + px + 0.5;
-      const gy = ty + py + 0.5;
-      let ly = sy;
-      if (ex !== sx) ly = sy + (ey - sy) * (gx - sx) / (ex - sx);
-      const below = gy >= ly;
-      if (isBelow ? below : !below) n++;
+    if (isBelow) {
+      if (!isBackslash) { // / below → right-aligned, count from right
+        for (let rc = rampRows - 1; rc >= 0; rc--) {
+          const gx = tx + rc * ppRamp + ppRamp / 2;
+          let ly = sy;
+          if (ex !== sx) ly = sy + (ey - sy) * (gx - sx) / (ex - sx);
+          if (gy >= ly) n++; else break;
+        }
+      } else { // \ below → left-aligned, count from left
+        for (let rc = 0; rc < rampRows; rc++) {
+          const gx = tx + rc * ppRamp + ppRamp / 2;
+          let ly = sy;
+          if (ex !== sx) ly = sy + (ey - sy) * (gx - sx) / (ex - sx);
+          if (gy >= ly) n++; else break;
+        }
+      }
+    } else {
+      if (!isBackslash) { // / above → left-aligned, count from left
+        for (let rc = 0; rc < rampRows; rc++) {
+          const gx = tx + rc * ppRamp + ppRamp / 2;
+          let ly = sy;
+          if (ex !== sx) ly = sy + (ey - sy) * (gx - sx) / (ex - sx);
+          if (gy < ly) n++; else break;
+        }
+      } else { // \ above → right-aligned, count from right
+        for (let rc = rampRows - 1; rc >= 0; rc--) {
+          const gx = tx + rc * ppRamp + ppRamp / 2;
+          let ly = sy;
+          if (ex !== sx) ly = sy + (ey - sy) * (gx - sx) / (ex - sx);
+          if (gy < ly) n++; else break;
+        }
+      }
     }
     counts.push(n);
-    if (n > 0 && n < ts) hasFill = true;
-    if (n === 0) hasEmpty = true;
-    if (n === ts && hasEmpty) hasFill = true;
+    if (n > 0 && n < rampRows) hasFill = true;
   }
   if (!hasFill) return [];
   return counts;
@@ -166,7 +171,7 @@ export function MundoTab() {
 
   // Auto-switch to draw tool when a ramp color is selected
   useEffect(() => {
-    if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) {
+    if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) {
       if (tool !== 'collision') setTool('collision');
       if (collisionBrush !== 'draw') setCollisionBrush('draw');
     }
@@ -1123,7 +1128,7 @@ export function MundoTab() {
               background: 'var(--bg-canvas)', borderRadius: 20,
               padding: '3px 4px',
             }}>
-              {(collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) ? (
+              {(collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) ? (
                 <span style={{ fontSize: 10, color: '#888', padding: '0 8px' }}>🔒 Lápiz (rampa)</span>
               ) : (
                 <>
@@ -1236,17 +1241,17 @@ export function MundoTab() {
                   padding: '3px 4px',
                 }}>
                   <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
-                  <ToolBtn active={false} title="Barita (seleccionar) — pronto">⌾</ToolBtn>
+                    <ToolBtn active={false} title="Barita (seleccionar) — pronto">⌾</ToolBtn>
                   <ToolBtn active={collisionBrush === 'draw'}
                     onClick={() => {
-                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) return;
+                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) return;
                       setCollisionBrush('draw');
                     }}
                     title="Dibujar (arrastra para pintar, clic derecho para borrar)"
                   >✎</ToolBtn>
                   <ToolBtn active={collisionBrush === 'rectangle'}
                     onClick={() => {
-                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) return;
+                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) return;
                       setCollisionBrush('rectangle');
                     }}
                     title="Cuadro (arrastra para dibujar un rectángulo, clic derecho para borrar)"
@@ -1277,15 +1282,13 @@ export function MundoTab() {
                     { value: 5, color: '#44ddff', icon: <><rect x={8} y={0} width={8} height={16} fill="#44ddff" rx={1} /><rect x={0} y={0} width={8} height={16} fill="#44ddff44" rx={1} /></>, title: 'One-way →' },
                     { value: 6, color: '#44cc44', icon: <><rect x={0} y={0} width={16} height={16} fill="#44cc44" rx={1} /><line x1={3} y1={4} x2={13} y2={4} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={8} x2={13} y2={8} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={12} x2={13} y2={12} stroke="#fff" strokeWidth={1.5} /></>, title: 'Escalera' },
                     { value: 7, color: '#ff66bb', icon: <polygon points="0,16 16,16 16,0" fill="#ff66bb" />, title: 'Rampa ↘' },
-                    { value: 8, color: '#bb66ff', icon: <polygon points="0,0 16,0 0,16" fill="#bb66ff" />, title: 'Rampa ↙' },
+                    { value: 10, color: '#66ffbb', icon: <polygon points="0,0 16,16 0,16" fill="#66ffbb" />, title: 'Rampa ↙' },
+                    { value: 11, color: '#ffbb66', icon: <polygon points="0,0 16,16 16,0" fill="#ffbb66" />, title: 'Rampa ↗' },
+                    { value: 8, color: '#bb66ff', icon: <polygon points="0,0 16,0 0,16" fill="#bb66ff" />, title: 'Rampa ↖' },
                   ].map((p) => (
                     <div key={p.value}
                       onClick={() => {
                         setCollisionPaintValue(p.value);
-                        if (p.value === COLLISION_SLOPE || p.value === COLLISION_SLOPE_INV) {
-                          setTool('collision');
-                          setCollisionBrush('draw');
-                        }
                       }}
                       style={{
                         width: 20, height: 20, cursor: 'pointer',
@@ -1665,7 +1668,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     if (tool === 'collision' && setCollisionTile && collisionBrush === 'draw') {
       if (e.button !== 0 && e.button !== 2) return;
       const paintValue = e.button === 2 ? 0 : (collisionPaintValue ?? 0);
-      const isRamp = paintValue === COLLISION_SLOPE || paintValue === COLLISION_SLOPE_INV;
+      const isRamp = paintValue === COLLISION_SLOPE || paintValue === COLLISION_SLOPE_INV || paintValue === COLLISION_SLOPE_MIRROR || paintValue === COLLISION_SLOPE_INV_MIRROR;
       const container = imageContainerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -1680,7 +1683,6 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         const sx = clamp(snapCorner(mx), scene.width);
         const sy = clamp(snapCorner(my), scene.height);
         paintStartRef.current = { x: sx, y: sy };
-        setPaintRect({ x1: sx, y1: sy, x2: sx, y2: sy });
 
         const handleMove = (ev: MouseEvent) => {
           const r2 = container.getBoundingClientRect();
@@ -1688,7 +1690,13 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
           const my2 = clamp((ev.clientY - r2.top) / dragZoom, scene.height);
           const ex = clamp(snapCorner(mx2), scene.width);
           const ey = clamp(snapCorner(my2), scene.height);
-          setPaintRect({ x1: sx, y1: sy, x2: ex, y2: ey });
+          if (!paintStartRef.current) return;
+          // Only show preview on actual drag, not on single click
+          if (!paintRect) {
+            setPaintRect({ x1: sx, y1: sy, x2: ex, y2: ey });
+          } else {
+            setPaintRect({ x1: sx, y1: sy, x2: ex, y2: ey });
+          }
         };
         const handleUp = (ev: MouseEvent) => {
           document.removeEventListener('mousemove', handleMove);
@@ -1701,17 +1709,25 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
           const nCols = Math.ceil(scene.width / tileSize);
           const nRows = Math.ceil(scene.height / tileSize);
           const tiles: [number, number, number][] = [];
-          const isBaseDown = paintValue === COLLISION_SLOPE;
+          const isBelow = paintValue === COLLISION_SLOPE || paintValue === COLLISION_SLOPE_MIRROR;
+          const encodeForward = paintValue === COLLISION_SLOPE || paintValue === COLLISION_SLOPE_INV_MIRROR;
+          const forceBackslash = paintValue === COLLISION_SLOPE_MIRROR || paintValue === COLLISION_SLOPE_INV_MIRROR;
+          const isMirror = paintValue === COLLISION_SLOPE_MIRROR || paintValue === COLLISION_SLOPE_INV_MIRROR;
           const segMinCol = Math.max(0, Math.floor(Math.min(sx, ex) / tileSize));
           const segMaxCol = Math.min(nCols - 1, Math.floor(Math.max(sx, ex) / tileSize));
           const segMinRow = Math.max(0, Math.floor(Math.min(sy, ey) / tileSize));
           const segMaxRow = Math.min(nRows - 1, Math.floor(Math.max(sy, ey) / tileSize));
+          // Single click (no drag): place raw value directly
+          if (sx === ex && sy === ey) {
+            tiles.push([segMinCol, segMinRow, paintValue]);
+          } else {
           for (let tr = segMinRow; tr <= segMaxRow; tr++) {
             for (let tc = segMinCol; tc <= segMaxCol; tc++) {
-              const counts = tilePixelCounts(sx, sy, ex, ey, tc, tr, tileSize, isBaseDown);
+              const counts = tilePixelCounts(sx, sy, ex, ey, tc, tr, tileSize, isBelow, forceBackslash);
               if (counts.length === 0) continue;
-              tiles.push([tc, tr, encodeSlope(counts, isBaseDown)]);
+              tiles.push([tc, tr, encodeSlope(counts, encodeForward, isMirror)]);
             }
+          }
           }
           if (tiles.length) batchCollisionTiles(scene.id, tiles);
           paintStartRef.current = null;
@@ -1922,7 +1938,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         onMouseMove={(e) => {
           if (tool !== 'collision') { setPaintRect(null); return; }
           const pv = collisionPaintValue ?? 0;
-          const isRamp = pv === COLLISION_SLOPE || pv === COLLISION_SLOPE_INV;
+          const isRamp = pv === COLLISION_SLOPE || pv === COLLISION_SLOPE_INV || pv === COLLISION_SLOPE_MIRROR || pv === COLLISION_SLOPE_INV_MIRROR;
           if (collisionBrush === 'draw' && !paintStartRef.current && !isRamp) {
             const rect = e.currentTarget.getBoundingClientRect();
             const mx = (e.clientX - rect.left) / dragZoom;
@@ -1998,8 +2014,8 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                 if (slopeInfo) {
                   const x = ci * ts, y = ri * ts;
                   const s = ts / 8;
-                  const { counts, forward } = slopeInfo;
-                  const color = forward ? '#ff66bb' : '#bb66ff';
+                  const { counts, forward, mirror } = slopeInfo;
+                  const color = mirror ? (forward ? '#ffbb66' : '#66ffbb') : (forward ? '#ff66bb' : '#bb66ff');
                   return (
                     <g key={`c${ci}_${ri}`}>
                       {counts.map((cnt, py) => {
@@ -2035,16 +2051,15 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                     />
                   );
                 }
-                if (val === 7 || val === 8) {
+                if (val === 7 || val === 8 || val === 10 || val === 11) {
                   const x = ci * ts, y = ri * ts;
-                  // Also render pre-defined slopes (7, 8) via SLOPE_DEFS
                   const def = SLOPE_DEFS[val];
                   if (def) {
                     const s = ts / 8;
-                    const forward = def[0] < def[7];
-                    const color = forward ? '#ff66bb' : '#bb66ff';
+                    const forward = val === 7 ? true : val === 8 ? false : val === 10 ? false : true;
+                    const color = val === 7 ? '#ff66bb' : val === 8 ? '#bb66ff' : val === 10 ? '#66ffbb' : '#ffbb66';
                     return (
-                      <g key={`c${ci}_${ri}`}>
+                      <g key={`c${ci}_${ri}_${val}`}>
                         {def.map((cnt, py) => {
                           if (cnt === 0) return null;
                           if (forward) {
@@ -2068,7 +2083,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                 );
               })
             )}
-            {paintRect && (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV) ? (
+            {paintRect && (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) ? (
               (() => {
                 const pts = bresenhamLine(paintRect.x1, paintRect.y1, paintRect.x2, paintRect.y2);
                 return pts.map((p, i) => (
