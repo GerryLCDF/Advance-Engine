@@ -476,6 +476,26 @@ interface AppState {
   addScript: () => void;
 }
 
+// ── Global settings persistence (localStorage) ──────────────────────────────
+const GLOBAL_SETTINGS_KEY = 'advance-engine-settings';
+
+interface GlobalSettings {
+  mundoShowGrid: boolean; mundoGridSize: number; mundoGridOpacity: number;
+  mundoGridStrokeWidth: number; mundoGridColor: string;
+  connColorOut: string; connColorIn: string; connStrokeWidth: number;
+  clickAnimation: boolean; showGrid: boolean; gridLineOpacity: number; imageSmoothing: boolean;
+}
+
+function loadGlobalSettings(): Partial<GlobalSettings> {
+  try {
+    const raw = localStorage.getItem(GLOBAL_SETTINGS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch { return {}; }
+}
+
+const _saved = loadGlobalSettings();
+
 export const useAppStore = create<AppState>((set, get) => ({
   // ── Navegación ─────────────────────────────────────────────────────────
   activeScreen: { type: 'launcher' },
@@ -641,29 +661,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   chunkRows: 6,
   setChunkCols: (val) => set({ chunkCols: val }),
   setChunkRows: (val) => set({ chunkRows: val }),
-  showGrid: true,
+  showGrid: _saved.showGrid ?? true,
   setShowGrid: (val) => set({ showGrid: val }),
-  gridLineOpacity: 0.08,
+  gridLineOpacity: _saved.gridLineOpacity ?? 0.08,
   setGridLineOpacity: (val) => set({ gridLineOpacity: val }),
-  imageSmoothing: false,
+  imageSmoothing: _saved.imageSmoothing ?? false,
   setImageSmoothing: (val) => set({ imageSmoothing: val }),
-  mundoShowGrid: true,
+  mundoShowGrid: _saved.mundoShowGrid ?? true,
   setMundoShowGrid: (val) => set({ mundoShowGrid: val }),
-  mundoGridSize: 16,
+  mundoGridSize: _saved.mundoGridSize ?? 16,
   setMundoGridSize: (val) => set({ mundoGridSize: val }),
-  mundoGridOpacity: 0.15,
+  mundoGridOpacity: _saved.mundoGridOpacity ?? 0.15,
   setMundoGridOpacity: (val) => set({ mundoGridOpacity: val }),
-  mundoGridStrokeWidth: 0.5,
+  mundoGridStrokeWidth: _saved.mundoGridStrokeWidth ?? 0.5,
   setMundoGridStrokeWidth: (val) => set({ mundoGridStrokeWidth: val }),
-  mundoGridColor: '#4488ff',
+  mundoGridColor: _saved.mundoGridColor ?? '#4488ff',
   setMundoGridColor: (val) => set({ mundoGridColor: val }),
-  connColorOut: '#3b82f6',
+  connColorOut: _saved.connColorOut ?? '#3b82f6',
   setConnColorOut: (val) => set({ connColorOut: val }),
-  connColorIn: '#f59e0b',
+  connColorIn: _saved.connColorIn ?? '#f59e0b',
   setConnColorIn: (val) => set({ connColorIn: val }),
-  connStrokeWidth: 2,
+  connStrokeWidth: _saved.connStrokeWidth ?? 2,
   setConnStrokeWidth: (val) => set({ connStrokeWidth: val }),
-  clickAnimation: false,
+  clickAnimation: _saved.clickAnimation ?? false,
   setClickAnimation: (val) => set({ clickAnimation: val }),
 
   // ── Pipeline / Proyecto ─────────────────────────────────────────────────
@@ -1544,5 +1564,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   scripts: [],
   addScript: () => set((s) => ({ scripts: [...s.scripts, { id: Date.now().toString(), name: 'Nuevo script', code: '' }] })),
 }));
+
+// Auto-save global settings to localStorage on every change
+let _prevSettingsJson = '';
+useAppStore.subscribe((state) => {
+  const json = JSON.stringify({
+    mundoShowGrid: state.mundoShowGrid, mundoGridSize: state.mundoGridSize,
+    mundoGridOpacity: state.mundoGridOpacity, mundoGridStrokeWidth: state.mundoGridStrokeWidth,
+    mundoGridColor: state.mundoGridColor,
+    connColorOut: state.connColorOut, connColorIn: state.connColorIn,
+    connStrokeWidth: state.connStrokeWidth, clickAnimation: state.clickAnimation,
+    showGrid: state.showGrid, gridLineOpacity: state.gridLineOpacity, imageSmoothing: state.imageSmoothing,
+  });
+  if (json !== _prevSettingsJson) {
+    _prevSettingsJson = json;
+    try { localStorage.setItem(GLOBAL_SETTINGS_KEY, json); } catch { /* ignore */ }
+  }
+});
 
 export const selectProjects = (state: AppState) => state.projects;

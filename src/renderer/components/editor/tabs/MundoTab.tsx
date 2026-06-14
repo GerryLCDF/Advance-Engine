@@ -169,14 +169,6 @@ export function MundoTab() {
   const [collisionPaintValue, setCollisionPaintValue] = useState(COLLISION_SOLID);
   const [collisionBlockSize, setCollisionBlockSize] = useState(1);
 
-  // Auto-switch to draw tool when a ramp color is selected
-  useEffect(() => {
-    if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) {
-      if (tool !== 'collision') setTool('collision');
-      if (collisionBrush !== 'draw') setCollisionBrush('draw');
-    }
-  }, [collisionPaintValue]);
-
   // Detect splash image dimensions for warning conditions
   useEffect(() => {
     if (!splashScreen.backgroundImage) { setSplashImgSize(null); return; }
@@ -1128,10 +1120,6 @@ export function MundoTab() {
               background: 'var(--bg-canvas)', borderRadius: 20,
               padding: '3px 4px',
             }}>
-              {(collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) ? (
-                <span style={{ fontSize: 10, color: '#888', padding: '0 8px' }}>🔒 Lápiz (rampa)</span>
-              ) : (
-                <>
               <ToolBtn active={tool === 'move'} onClick={() => { setTool('move'); setConnectFrom(null); }} title="Mover">✥</ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'add'} onClick={() => { setTool('add'); setConnectFrom(null); }} title="Agregar escena">+</ToolBtn>
@@ -1143,8 +1131,6 @@ export function MundoTab() {
               </ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'collision'} onClick={() => { setTool('collision'); setConnectFrom(null); }} title="Pintar colisión">▦</ToolBtn>
-                </>
-              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <ToolBtn
@@ -1243,17 +1229,11 @@ export function MundoTab() {
                   <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
                     <ToolBtn active={false} title="Barita (seleccionar) — pronto">⌾</ToolBtn>
                   <ToolBtn active={collisionBrush === 'draw'}
-                    onClick={() => {
-                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) return;
-                      setCollisionBrush('draw');
-                    }}
+                    onClick={() => setCollisionBrush('draw')}
                     title="Dibujar (arrastra para pintar, clic derecho para borrar)"
                   >✎</ToolBtn>
                   <ToolBtn active={collisionBrush === 'rectangle'}
-                    onClick={() => {
-                      if (collisionPaintValue === COLLISION_SLOPE || collisionPaintValue === COLLISION_SLOPE_INV || collisionPaintValue === COLLISION_SLOPE_MIRROR || collisionPaintValue === COLLISION_SLOPE_INV_MIRROR) return;
-                      setCollisionBrush('rectangle');
-                    }}
+                    onClick={() => setCollisionBrush('rectangle')}
                     title="Cuadro (arrastra para dibujar un rectángulo, clic derecho para borrar)"
                   >▢</ToolBtn>
                   {collisionBrush === 'draw' && (
