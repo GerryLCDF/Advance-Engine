@@ -29,6 +29,7 @@ export interface AdvanceAPI {
   dialog: {
     openFolder: () => Promise<string | null>;
     openImage: () => Promise<{ path: string | null; error: string | null }>;
+    openAnyImage: () => Promise<{ path: string | null; error: string | null }>;
     openVideo: () => Promise<{ path: string | null; size?: number }>;
   };
   // Shell
@@ -96,6 +97,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
   dialog: {
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
     openImage: () => ipcRenderer.invoke('dialog:openImage'),
+    openAnyImage: () => ipcRenderer.invoke('dialog:openAnyImage'),
     openVideo: () => ipcRenderer.invoke('dialog:openVideo'),
   },
   shell: {
@@ -132,6 +134,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     readBinary: (filePath: string) => ipcRenderer.invoke('file:readBinary', filePath),
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => ipcRenderer.invoke('file:convertImageToGbaBitmap', imagePath, outputPath),
     convertImageToGbaBase64: (imagePath: string) => ipcRenderer.invoke('file:convertImageToGbaBase64', imagePath),
+    convertImageToGbaBase64Exact: (imagePath: string) => ipcRenderer.invoke('file:convertImageToGbaBase64Exact', imagePath),
     cropImageToGbaBase64: (imagePath: string, cropX: number, cropY: number) => ipcRenderer.invoke('file:cropImageToGbaBase64', imagePath, cropX, cropY),
     delete: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
   },

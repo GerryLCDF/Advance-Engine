@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
-import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
+import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
-import type { Scene, SplashScreen } from '../../../types/editor';
+import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection } from '../../../types/editor';
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
+import { MoveIcon, PlusIcon, MinusIcon, Link2Icon, Grid3x3Icon, Grid2x2Icon, PencilIcon, SquareIcon, WandIcon, HomeIcon, GlobeIcon, MoreVerticalIcon, ArrowRightIcon, PaintBucketIcon } from './icons';
 
 // ── Slope helpers ──────────────────────────────────────────────────────
 const SLOPE_DEFS: Record<number, number[]> = {
@@ -115,6 +116,431 @@ const GBA_H = 160;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 32;
 
+// ── Transition inspector builder ──────────────────────────────────────
+function TilesetSelector({
+  value, fxAssets, onChange, projectDir,
+}: {
+  value: string | undefined;
+  fxAssets: FxAsset[];
+  onChange: (id: string) => void;
+  projectDir: string | null;
+}) {
+  const tilesets = fxAssets.filter((a) => a.type === 'tileset');
+  const [count, setCount] = useState(0);
+
+  const importAsset = async (filePath: string) => {
+    const api = window.advanceAPI;
+    if (!api) return;
+    const fileName = filePath.split(/[\\/]/).pop() ?? 'tileset.png';
+    const destPath = projectDir ? `${projectDir}/fx/${fileName}` : filePath;
+    let cols = 1, rows = 1;
+    const read = await api.file.readImage(filePath);
+    if (read.success && read.dataUrl) {
+      const img = new Image();
+      img.src = read.dataUrl;
+      await img.decode();
+      cols = Math.max(1, Math.floor(img.naturalWidth / 8));
+      rows = Math.max(1, Math.floor(img.naturalHeight / 8));
+    }
+    if (projectDir) {
+      await api.dir.create(`${projectDir}/fx`);
+      await api.file.copy(filePath, destPath);
+    }
+    const asset: FxAsset = {
+      id: `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: fileName, type: 'tileset',
+      filePath: destPath,
+      cols, rows, animSpeed: 5, animDirection: 'forward',
+      startColor: '#000000', endColor: '#ffffff',
+    };
+    useAppStore.getState().addFxAsset(asset);
+    setCount((c) => c + 1);
+  };
+
+  const handleImport = async () => {
+    const api = window.advanceAPI;
+    if (!api) return;
+    const result = await api.dialog.openAnyImage();
+    if (result.path) importAsset(result.path);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const filePath = (file as any).path;
+    if (filePath) importAsset(filePath);
+  };
+
+  const btnStyle: React.CSSProperties = {
+    padding: '4px 8px', fontSize: 10, cursor: 'pointer',
+    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4,
+  };
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600 }}>Tileset</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} ref={ref}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <div onClick={() => setOpen(!open)}
+            style={{ background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px', cursor: 'pointer', userSelect: 'none' }}>
+            {value ? (tilesets.find((t) => t.id === value)?.name ?? 'Seleccionar...') : '-- Ninguno --'}
+          </div>
+          {open && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, marginTop: 2, maxHeight: 160, overflowY: 'auto' }}>
+              <div onClick={() => { onChange(''); setOpen(false); }}
+                style={{ padding: '4px 6px', fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px solid var(--border-color)' }}>
+                -- Ninguno --
+              </div>
+              {tilesets.map((t) => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px', cursor: 'pointer' }}
+                  onClick={() => { onChange(t.id); setOpen(false); }}>
+                  <span style={{ flex: 1, fontSize: 10, color: 'var(--text)' }}>{t.name}</span>
+                  <button onClick={(e) => { e.stopPropagation(); useAppStore.getState().removeFxAsset(t.id); }}
+                    style={{ padding: 0, width: 16, height: 16, background: 'transparent', color: '#ef4444', border: 'none', borderRadius: 2, fontSize: 11, lineHeight: '16px', textAlign: 'center', cursor: 'pointer' }}
+                    title="Eliminar tileset">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={handleImport} style={btnStyle}>+</button>
+      </div>
+      <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}
+        style={{ border: '1px dashed var(--border-color)', borderRadius: 4, padding: '6px', textAlign: 'center', fontSize: 9, color: 'var(--text-muted)', cursor: 'pointer' }}>
+        Arrastra imagen aquí
+      </div>
+    </div>
+  );
+}
+
+function TilesetOptions({
+  tilesetId, fxAssets, tileSize,
+}: {
+  tilesetId: string | undefined;
+  fxAssets: FxAsset[];
+  tileSize: number;
+}) {
+  const sel = tilesetId ? fxAssets.find((a) => a.id === tilesetId) : null;
+  const [tilesetUrl, setTilesetUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sel) { setTilesetUrl(null); return; }
+    const api = window.advanceAPI;
+    if (!api) return;
+    api.file.readImage(sel.filePath).then((r) => { if (r.success && r.dataUrl) setTilesetUrl(r.dataUrl); });
+  }, [sel?.filePath]);
+
+  const upd = (patch: Partial<FxAsset>) => {
+    if (sel) useAppStore.getState().updateFxAsset(sel.id, patch);
+  };
+
+  if (!sel) return null;
+  const STYLE = { fontSize: 10, color: 'var(--text-secondary)' };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {tilesetUrl && <TilesetAnimPreview asset={sel} tilesetUrl={tilesetUrl} />}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 4, background: 'var(--bg-canvas)', borderRadius: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={STYLE}>Velocidad:</span>
+          <input type="number" value={sel.animSpeed} min={1} max={60}
+            onChange={(e) => upd({ animSpeed: parseInt(e.target.value) || 5 })}
+            style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={STYLE}>Dirección:</span>
+          <select value={sel.animDirection}
+            onChange={(e) => upd({ animDirection: e.target.value as TilesetAnimDirection })}
+            style={{ flex: 1, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px' }}>
+            <option value="forward">Adelante</option>
+            <option value="reverse">Atrás</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TilesetAnimPreview({ asset, tilesetUrl }: { asset: FxAsset; tilesetUrl: string }) {
+  const animRef = useRef<HTMLCanvasElement>(null);
+  const sheetRef = useRef<HTMLCanvasElement>(null);
+  const [frame, setFrame] = useState(0);
+  const totalFrames = asset.cols * asset.rows;
+
+  // ── Animation timer (bucle adelante) ──
+  useEffect(() => {
+    const tick = asset.animSpeed > 0 ? Math.max(16, 1000 / asset.animSpeed) : 100;
+    const id = setTimeout(() => {
+      setFrame((prev) => (prev + 1) % totalFrames);
+    }, tick);
+    return () => clearTimeout(id);
+  }, [frame, asset.animSpeed, totalFrames]);
+
+  // ── Draw current frame on canvas ──
+  useEffect(() => {
+    const ac = animRef.current;
+    const sc = sheetRef.current;
+    if (!ac || !sc) return;
+    const aCtx = ac.getContext('2d');
+    const sCtx = sc.getContext('2d');
+    if (!aCtx || !sCtx) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const fw = img.naturalWidth / asset.cols;
+      const fh = img.naturalHeight / asset.rows;
+      const sheetRatio = img.naturalWidth / img.naturalHeight;
+      const frameRatio = fw / fh;
+      const nAw = Math.min(160, Math.round(160));
+      const nAh = Math.min(240, Math.round(nAw / frameRatio));
+      const nSw = Math.min(160, Math.round(160));
+      const nSh = Math.min(240, Math.round(nSw / sheetRatio));
+      ac.width = nAw; ac.height = nAh;
+      sc.width = nSw; sc.height = nSh;
+      ac.style.width = nAw + 'px';
+      ac.style.height = nAh + 'px';
+      sc.style.width = nSw + 'px';
+      sc.style.height = nSh + 'px';
+
+      aCtx.imageSmoothingEnabled = false;
+      sCtx.imageSmoothingEnabled = false;
+
+      // Checker
+      const cs = 6;
+      const drawChecker = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+        for (let y = 0; y < h; y += cs) {
+          for (let x = 0; x < w; x += cs) {
+            ctx.fillStyle = (Math.floor(x / cs) + Math.floor(y / cs)) % 2 === 0 ? '#ffffff' : '#aaaaaa';
+            ctx.fillRect(x, y, cs, cs);
+          }
+        }
+      };
+
+      drawChecker(aCtx, nAw, nAh);
+      const col = frame % asset.cols;
+      const row = Math.floor(frame / asset.cols);
+      aCtx.drawImage(img, col * fw, row * fh, fw, fh, 0, 0, nAw, nAh);
+
+      drawChecker(sCtx, nSw, nSh);
+      sCtx.drawImage(img, 0, 0, nSw, nSh);
+    };
+    img.src = tilesetUrl;
+  }, [frame, asset, tilesetUrl]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <canvas ref={animRef}
+        style={{ borderRadius: 4, border: '1px solid var(--border-color)', display: 'block', imageRendering: 'pixelated' }}
+      />
+      <canvas ref={sheetRef}
+        style={{ borderRadius: 4, border: '1px solid var(--border-color)', display: 'block', imageRendering: 'pixelated' }}
+      />
+    </div>
+  );
+}
+
+function TransitionPreview({
+  entry, fxAssets,
+}: {
+  entry: TransitionConfig;
+  fxAssets: FxAsset[];
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [tilesetUrl, setTilesetUrl] = useState('');
+  const [frame, setFrame] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [frames, setFrames] = useState<HTMLCanvasElement[]>([]);
+  const W = 240, H = 160;
+  const tileSize = entry.tileSize || 8;
+  const asset = entry.tilesetId ? fxAssets.find((a) => a.id === entry.tilesetId) : null;
+  const totalFrames = asset ? asset.cols * asset.rows : 0;
+
+  // ── Load tileset image URL ──
+  useEffect(() => {
+    setTilesetUrl('');
+    setFrame(0);
+    setPaused(false);
+    setFrames([]);
+    if (!asset) return;
+    const api = window.advanceAPI;
+    if (!api) return;
+    api.file.readImage(asset.filePath).then((r) => {
+      if (r.success && r.dataUrl) setTilesetUrl(r.dataUrl);
+    });
+  }, [asset]);
+
+  // ── Pre-render all frames as canvases ──
+  useEffect(() => {
+    if (!asset || !tilesetUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      const fw = img.naturalWidth / asset.cols;
+      const fh = img.naturalHeight / asset.rows;
+      const total = asset.cols * asset.rows;
+      const out: HTMLCanvasElement[] = [];
+      for (let f = 0; f < total; f++) {
+        const col = f % asset.cols;
+        const row = Math.floor(f / asset.cols);
+        const c = document.createElement('canvas');
+        c.width = fw; c.height = fh;
+        const cx = c.getContext('2d')!;
+        cx.imageSmoothingEnabled = false;
+        cx.drawImage(img, col * fw, row * fh, fw, fh, 0, 0, fw, fh);
+        out.push(c);
+      }
+      setFrames(out);
+    };
+    img.src = tilesetUrl;
+  }, [asset, tilesetUrl]);
+
+  // ── Animation timer con pausa al final ──
+  useEffect(() => {
+    if (!asset || totalFrames <= 1 || frames.length === 0) return;
+    if (paused) {
+      const id = setTimeout(() => {
+        setPaused(false);
+        setFrame(0);
+      }, 2000);
+      return () => clearTimeout(id);
+    }
+    const tick = asset.animSpeed > 0 ? Math.max(16, 1000 / asset.animSpeed) : 100;
+    const id = setTimeout(() => {
+      setFrame((prev) => {
+        if (prev >= totalFrames - 1) { setPaused(true); return prev; }
+        return prev + 1;
+      });
+    }, tick);
+    return () => clearTimeout(id);
+  }, [frame, asset, totalFrames, frames.length, paused]);
+
+  // ── Draw blue background + frame at tile (1,1) ──
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.width = W;
+    canvas.height = H;
+    ctx.imageSmoothingEnabled = false;
+
+    // Blue background
+    ctx.fillStyle = '#4488cc';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 40px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('A', W / 2, H / 2);
+
+    // Black layer on top, cut holes where frame pixel is NOT black
+    const tilesX = Math.ceil(W / tileSize);
+    const tilesY = Math.ceil(H / tileSize);
+
+    if (paused) {
+      // Pause: full black over everything
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, W, H);
+    } else if (frames.length > 0 && frame < frames.length) {
+      const fc = frames[frame];
+      const fw = fc.width;
+      const fh = fc.height;
+      // Get pixel data of current frame
+      const fctx = fc.getContext('2d')!;
+      const fd = fctx.getImageData(0, 0, fw, fh).data;
+
+      // Draw full black
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, W, H);
+
+      // Cut holes where frame pixel is not black → reveal blue + "A"
+      ctx.globalCompositeOperation = 'destination-out';
+      for (let ty = 0; ty < tilesY; ty++) {
+        for (let tx = 0; tx < tilesX; tx++) {
+          const mx = tx % fw;
+          const my = ty % fh;
+          const mi = (my * fw + mx) * 4;
+          if (fd[mi] !== 0 || fd[mi + 1] !== 0 || fd[mi + 2] !== 0) {
+            ctx.fillRect(tx * tileSize, ty * tileSize, tileSize, tileSize);
+          }
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
+    for (let x = tileSize; x < W; x += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    for (let y = tileSize; y < H; y += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+
+    // "A" label
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 40px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('A', W / 2, H / 2);
+  }, [frame, frames, tileSize, paused]);
+
+  return (
+    <canvas ref={canvasRef}
+      style={{
+        width: '100%', aspectRatio: '3 / 2', maxWidth: 360,
+        background: '#000', borderRadius: 0,
+        border: '1px solid var(--border-color)',
+        imageRendering: 'pixelated',
+      }}
+    />
+  );
+}
+
+function buildTransitionSections(
+  entry: TransitionConfig,
+  fxAssets: FxAsset[],
+  onChangeEntry: (patch: Partial<TransitionConfig>) => void,
+  projectDir: string | null,
+): InspectorSection[] {
+  return [
+    {
+      title: 'Transición (entrada)',
+      content: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <TransitionPreview entry={entry} fxAssets={fxAssets} />
+          <TilesetSelector
+            value={entry.tilesetId}
+            fxAssets={fxAssets}
+            onChange={(id) => onChangeEntry({ tilesetId: id })}
+            projectDir={projectDir}
+          />
+          <TilesetOptions
+            tilesetId={entry.tilesetId}
+            fxAssets={fxAssets}
+            tileSize={entry.tileSize}
+          />
+        </div>
+      ),
+    },
+  ];
+}
+
 export function MundoTab() {
   const scenes = useAppStore((s) => s.scenes);
   const connections = useAppStore((s) => s.sceneConnections);
@@ -134,8 +560,11 @@ export function MundoTab() {
   const updateScene = useAppStore((s) => s.updateScene);
   const addConnection = useAppStore((s) => s.addConnection);
   const removeConnection = useAppStore((s) => s.removeConnection);
+  const updateConnection = useAppStore((s) => s.updateConnection);
   const backgrounds = useAppStore((s) => s.backgrounds);
   const exportLog = useAppStore((s) => s.exportLog);
+  const fxAssets = useAppStore((s) => s.fxAssets);
+  const projectDir = useAppStore((s) => s.projectDir);
   const terminalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -150,7 +579,7 @@ export function MundoTab() {
   const [sceneAnimPaused, setSceneAnimPaused] = useState<Record<string, boolean>>({});
 
   // ── Context menu ──
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sceneId: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sceneId?: string; connectionId?: string } | null>(null);
 
   // ── Grid ──
   const mundoShowGrid = useAppStore((s) => s.mundoShowGrid);
@@ -275,8 +704,14 @@ export function MundoTab() {
 
   const splashConnection = useMemo(() => {
     if (!splashScreen.nextSceneId) return null;
-    return { id: '__splash_conn__', fromSceneId: splashScreen.id, toSceneId: splashScreen.nextSceneId, label: '' };
-  }, [splashScreen.nextSceneId, splashScreen.id]);
+    return {
+      id: '__splash_conn__', fromSceneId: splashScreen.id, toSceneId: splashScreen.nextSceneId, label: '',
+      usePauseScreen: splashScreen.usePauseScreen,
+      pauseColor: splashScreen.pauseColor,
+      entryTransition: splashScreen.entryTransition,
+      exitTransition: splashScreen.exitTransition,
+    };
+  }, [splashScreen.nextSceneId, splashScreen.id, splashScreen.usePauseScreen, splashScreen.pauseColor, splashScreen.entryTransition, splashScreen.exitTransition]);
 
   const visibleConnections = useMemo(() => {
     if (!selectedNodeId) return [];
@@ -456,6 +891,7 @@ export function MundoTab() {
 
   const selectedScene = scenes.find((sc) => sc.id === selectedNodeId);
   const selectedSplash = selectedNodeId === splashScreen.id ? splashScreen : null;
+  const selectedConnection = selectedNodeId === '__splash_conn__' ? splashConnection : connections.find((c) => c.id === selectedNodeId) ?? null;
   const [songSearch, setSongSearch] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -1027,6 +1463,115 @@ export function MundoTab() {
         </div>
       ),
     });
+    inspectorSections.push({
+      title: 'Pantalla de pausa',
+      fields: [
+        {
+          label: 'Usar pausa', type: 'toggle', value: selectedSplash.usePauseScreen,
+          onChange: (v) => updateSplashScreen({ usePauseScreen: v as boolean }),
+        },
+        ...(selectedSplash.usePauseScreen ? [{
+          label: 'Color', type: 'color' as const, value: selectedSplash.pauseColor,
+          onChange: (v: string | number | boolean) => updateSplashScreen({ pauseColor: v as string }),
+        }] : []),
+        {
+          label: 'Tile', type: 'select', value: selectedSplash.entryTransition.tileSize,
+          options: [{ value: '8', label: '8×8' }, { value: '10', label: '10×10' }, { value: '16', label: '16×16' }],
+          onChange: (v) => updateSplashScreen({
+            entryTransition: { ...selectedSplash.entryTransition, tileSize: Number(v) },
+            exitTransition: { ...selectedSplash.exitTransition, tileSize: Number(v) },
+          }),
+        },
+      ],
+    });
+    inspectorSections.push(...buildTransitionSections(
+      selectedSplash.entryTransition, fxAssets,
+      (patch) => updateSplashScreen({ entryTransition: { ...selectedSplash.entryTransition, ...patch } }),
+      projectDir,
+    ));
+  }
+
+  // ── Connection inspector ────────────────────────────────────────────
+  if (selectedConnection) {
+    const isSplashConn = selectedNodeId === '__splash_conn__';
+    const fromScene = scenes.find((s) => s.id === selectedConnection.fromSceneId);
+    const toScene = scenes.find((s) => s.id === selectedConnection.toSceneId);
+    inspectorSections.push({
+      title: 'Conexión',
+      content: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 64, flexShrink: 0 }}>Origen</span>
+            <span style={{ color: 'var(--text)', fontSize: 11 }}>{fromScene?.name ?? '?'}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 64, flexShrink: 0 }}>Destino</span>
+            <span style={{ color: 'var(--text)', fontSize: 11 }}>{toScene?.name ?? '?'}</span>
+          </div>
+          {!isSplashConn && (
+            <button onClick={() => { removeConnection(selectedConnection.id); setSelectedNodeId(''); }}
+              style={{ padding: '4px 8px', fontSize: 10, cursor: 'pointer', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 4, alignSelf: 'flex-start' }}>
+              Eliminar conexión
+            </button>
+          )}
+        </div>
+      ),
+    });
+    if (isSplashConn) {
+      inspectorSections.push({
+        title: 'Pantalla de pausa',
+        fields: [
+          {
+            label: 'Usar pausa', type: 'toggle', value: splashScreen.usePauseScreen,
+            onChange: (v) => updateSplashScreen({ usePauseScreen: v as boolean }),
+          },
+          ...(splashScreen.usePauseScreen ? [{
+            label: 'Color', type: 'color' as const, value: splashScreen.pauseColor,
+            onChange: (v: string | number | boolean) => updateSplashScreen({ pauseColor: v as string }),
+          }] : []),
+          {
+            label: 'Tile', type: 'select', value: splashScreen.entryTransition.tileSize,
+            options: [{ value: '8', label: '8×8' }, { value: '10', label: '10×10' }, { value: '16', label: '16×16' }],
+            onChange: (v) => updateSplashScreen({
+              entryTransition: { ...splashScreen.entryTransition, tileSize: Number(v) },
+              exitTransition: { ...splashScreen.exitTransition, tileSize: Number(v) },
+            }),
+          },
+        ],
+      });
+      inspectorSections.push(...buildTransitionSections(
+        splashScreen.entryTransition, fxAssets,
+        (patch) => updateSplashScreen({ entryTransition: { ...splashScreen.entryTransition, ...patch } }),
+        projectDir,
+      ));
+    } else {
+      inspectorSections.push({
+        title: 'Pantalla de pausa',
+        fields: [
+          {
+            label: 'Usar pausa', type: 'toggle', value: selectedConnection.usePauseScreen,
+            onChange: (v) => updateConnection(selectedConnection.id, { usePauseScreen: v as boolean }),
+          },
+          ...(selectedConnection.usePauseScreen ? [{
+            label: 'Color', type: 'color' as const, value: selectedConnection.pauseColor,
+            onChange: (v: string | number | boolean) => updateConnection(selectedConnection.id, { pauseColor: v as string }),
+          }] : []),
+          {
+            label: 'Tile', type: 'select', value: selectedConnection.entryTransition.tileSize,
+            options: [{ value: '8', label: '8×8' }, { value: '10', label: '10×10' }, { value: '16', label: '16×16' }],
+            onChange: (v) => updateConnection(selectedConnection.id, {
+              entryTransition: { ...selectedConnection.entryTransition, tileSize: Number(v) },
+              exitTransition: { ...selectedConnection.exitTransition, tileSize: Number(v) },
+            }),
+          },
+        ],
+      });
+      inspectorSections.push(...buildTransitionSections(
+        selectedConnection.entryTransition, fxAssets,
+        (patch) => updateConnection(selectedConnection.id, { entryTransition: { ...selectedConnection.entryTransition, ...patch } }),
+        projectDir,
+      ));
+    }
   }
 
   const handleCanvasClick = (e: React.MouseEvent) => {
@@ -1096,6 +1641,7 @@ export function MundoTab() {
           onSelect={(id) => {
             const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
             if (isConn) {
+              setSelectedNodeId(id);
               setHighlightedConnId((prev) => prev === id ? null : id);
             } else {
               setSelectedNodeId(id);
@@ -1103,7 +1649,12 @@ export function MundoTab() {
           }}
           onContextMenu={(id, x, y) => {
             if (id === splashScreen.id) return;
-            setCtxMenu({ x, y, sceneId: id });
+            const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
+            if (isConn) {
+              if (id !== '__splash_conn__') setCtxMenu({ x, y, connectionId: id });
+            } else {
+              setCtxMenu({ x, y, sceneId: id });
+            }
           }}
         />
       }
@@ -1354,6 +1905,20 @@ export function MundoTab() {
                         opacity={isHighlighted ? 1 : 0.6}
                         style={isHighlighted ? { animation: 'flow 0.8s linear infinite' } : undefined}
                       />
+                      {/* hit area for click + context menu */}
+                      <path
+                        d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                        fill="none" stroke="transparent" strokeWidth={24}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => {
+                          setSelectedNodeId(c.id);
+                          setHighlightedConnId((prev) => prev === c.id ? null : c.id);
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setCtxMenu({ x: e.clientX, y: e.clientY, connectionId: c.id });
+                        }}
+                      />
                     </g>
                   );
                 })}
@@ -1449,32 +2014,50 @@ export function MundoTab() {
                   display: 'flex', flexDirection: 'column', gap: 2,
                   minWidth: 120, boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                 }}>
-                  <div
-                    onClick={() => {
-                      const sc = scenes.find((s) => s.id === ctxMenu.sceneId);
-                      if (sc) {
-                        const name = prompt('Renombrar escena:', sc.name);
-                        if (name && name.trim()) updateScene(ctxMenu.sceneId, { name: name.trim() });
-                      }
-                      setCtxMenu(null);
-                    }}
-                    style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    Renombrar
-                  </div>
-                  <div
-                    onClick={() => {
-                      handleRemove(ctxMenu.sceneId);
-                      setCtxMenu(null);
-                    }}
-                    style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: '#ef4444' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    Eliminar
-                  </div>
+                  {ctxMenu.sceneId && (
+                    <>
+                      <div
+                        onClick={() => {
+                          const sc = scenes.find((s) => s.id === ctxMenu.sceneId);
+                          if (sc) {
+                            const name = prompt('Renombrar escena:', sc.name);
+                            if (name && name.trim()) updateScene(ctxMenu.sceneId!, { name: name.trim() });
+                          }
+                          setCtxMenu(null);
+                        }}
+                        style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        Renombrar
+                      </div>
+                      <div
+                        onClick={() => {
+                          handleRemove(ctxMenu.sceneId!);
+                          setCtxMenu(null);
+                        }}
+                        style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: '#ef4444' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        Eliminar escena
+                      </div>
+                    </>
+                  )}
+                  {ctxMenu.connectionId && (
+                    <div
+                      onClick={() => {
+                        removeConnection(ctxMenu.connectionId!);
+                        if (selectedNodeId === ctxMenu.connectionId) setSelectedNodeId('');
+                        setCtxMenu(null);
+                      }}
+                      style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: '#ef4444' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      Eliminar conexión
+                    </div>
+                  )}
                 </div>
               </>
             )}

@@ -51,12 +51,78 @@ export interface Actor {
   properties: Record<string, string>;
 }
 
+export type TransitionType = 'instant' | 'fade' | 'curtain' | 'scroll' | 'custom';
+export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
+export type FxAssetType = 'gradient' | 'tileset';
+export type TilesetAnimDirection = 'forward' | 'reverse';
+
+export interface FxAsset {
+  id: string;
+  name: string;
+  type: FxAssetType;
+  filePath: string;
+  // tileset config
+  cols: number;
+  rows: number;
+  animSpeed: number;
+  animDirection: TilesetAnimDirection;
+  // gradient config
+  startColor: string;
+  endColor: string;
+}
+
+export interface TransitionConfig {
+  type: TransitionType;
+  direction: TransitionDirection;
+  duration: number; // seconds
+  gradientId: string; // FxAsset id of type 'gradient'
+  tilesetId: string; // FxAsset id of type 'tileset'
+  tileSize: number; // 8, 10, or 16
+}
+
+const defaultTransition = (): TransitionConfig => ({
+  type: 'instant',
+  direction: 'right',
+  duration: 0.5,
+  gradientId: '',
+  tilesetId: '',
+  tileSize: 8,
+});
+
+const defaultFxAsset = (): FxAsset => ({
+  id: '',
+  name: '',
+  type: 'gradient',
+  filePath: '',
+  cols: 1,
+  rows: 1,
+  animSpeed: 5,
+  animDirection: 'forward',
+  startColor: '#000000',
+  endColor: '#ffffff',
+});
+
 export interface SceneConnection {
   id: string;
   fromSceneId: string;
   toSceneId: string;
   label: string;
+  usePauseScreen: boolean;
+  pauseColor: string;
+  entryTransition: TransitionConfig;
+  exitTransition: TransitionConfig;
 }
+
+export const makeDefaultConnection = (fromSceneId: string, toSceneId: string): SceneConnection => ({
+  id: '',
+  fromSceneId,
+  toSceneId,
+  label: '',
+  usePauseScreen: false,
+  pauseColor: '#000000',
+  entryTransition: defaultTransition(),
+  exitTransition: defaultTransition(),
+});
 
 export interface Scene {
   id: string;
@@ -88,6 +154,10 @@ export interface SplashScreen {
   videoPath?: string;
   videoFps?: number; // frames per second for video export (default 15)
   nextSceneId?: string; // scene to transition to after splash
+  usePauseScreen: boolean;
+  pauseColor: string;
+  entryTransition: TransitionConfig;
+  exitTransition: TransitionConfig;
 }
 
 // ── Sprite ────────────────────────────────────────────────────────────────

@@ -51,22 +51,24 @@ export function InspectorPanel({ title, sections, emptyMessage }: InspectorPanel
         {title}
       </div>
 
-      {sections.length === 0 && emptyMessage && (
-        <div style={{ color: '#555', fontSize: 11, textAlign: 'center', padding: 24 }}>
-          {emptyMessage}
-        </div>
-      )}
-
-      {sections.map((sec) => (
-        <div key={sec.title} style={{ borderBottom: '1px solid #22223a', padding: '8px 10px' }}>
-          <div style={{ color: 'var(--accent-light)', fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
-            {sec.title}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {sections.length === 0 && emptyMessage && (
+          <div style={{ color: '#555', fontSize: 11, textAlign: 'center', padding: 24 }}>
+            {emptyMessage}
           </div>
-          {sec.content ?? (sec.fields ?? []).map((f) => (
-            <FieldRow key={f.label} field={f} />
-          ))}
-        </div>
-      ))}
+        )}
+
+        {sections.map((sec) => (
+          <div key={sec.title} style={{ borderBottom: '1px solid #22223a', padding: '8px 10px' }}>
+            <div style={{ color: 'var(--accent-light)', fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
+              {sec.title}
+            </div>
+            {sec.content ?? (sec.fields ?? []).map((f) => (
+              <FieldRow key={f.label} field={f} />
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

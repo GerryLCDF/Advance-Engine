@@ -182,4 +182,12 @@ Advance Engine puede generar una ROM `.gba` directamente desde el editor:
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.37.0**
+Definida en `src/version.ts` — semver. Actual: **0.40.0**
+
+### v0.40.0 — Transiciones entre escenas
+- Modelo de datos `TransitionConfig` + `FxAsset` (gradientes y tilesets)
+- UI de inspector para configurar entrada/salida por conexión y splash
+- Preview animada en vivo (A → entrada → pausa → salida → B)
+- Transición personalizada con máscara de umbral por gradiente/tileset
+- Previsualización de tilesets con animación ping-pong y fondo ajedrez
+- Eliminación de conexiones desde menú contextual e inspector

@@ -240,6 +240,101 @@ export function createLog(): ExportLog {
   };
 }
 
+function generateTransitionData(
+  tilesetCArray: string,
+  tileSize: number,
+  tilesetCols: number,
+  tilesetRows: number,
+  animSpeed: number,
+  tilesetWidth: number,
+  tilesetHeight: number,
+): string {
+  const totalFrames = tilesetCols * tilesetRows;
+  const fw = tilesetWidth / tilesetCols;
+  const fh = tilesetHeight / tilesetRows;
+  const tilesX = Math.ceil(240 / tileSize);
+  const tilesY = Math.ceil(160 / tileSize);
+
+  return `
+// ── Transition: tileset binary mask ───────────────────────────────────
+#define TILE_SIZE ${tileSize}
+#define TILESET_W ${tilesetWidth}
+#define TILESET_H ${tilesetHeight}
+#define TILESET_COLS ${tilesetCols}
+#define TILESET_ROWS ${tilesetRows}
+#define TILESET_FRAMES ${totalFrames}
+#define TILESET_FRAME_W ${fw}
+#define TILESET_FRAME_H ${fh}
+#define TILESET_TILES_X ${tilesX}
+#define TILESET_TILES_Y ${tilesY}
+#define FRAME_DELAY ${Math.max(1, animSpeed)}
+
+const u16 tilesetData[TILESET_W * TILESET_H] = ${tilesetCArray};
+
+static void runTransition(const u16* scene) {
+  u16* screen = (u16*)VRAM;
+  int f;
+
+  // Clear screen to black
+  {
+    int i;
+    for (i = 0; i < PIXEL_COUNT; i++) screen[i] = 0;
+  }
+
+  // Track which tiles have been revealed
+  u8 tileRevealed[TILESET_TILES_Y][TILESET_TILES_X];
+  {
+    int i;
+    for (i = 0; i < TILESET_TILES_X * TILESET_TILES_Y; i++)
+      ((u8*)tileRevealed)[i] = 0;
+  }
+
+  for (f = 0; f < TILESET_FRAMES; f++) {
+    int fCol = f % TILESET_COLS;
+    int fRow = f / TILESET_COLS;
+    int fOx = fCol * TILESET_FRAME_W;
+    int fOy = fRow * TILESET_FRAME_H;
+
+    {
+      int ty, tx;
+      for (ty = 0; ty < TILESET_TILES_Y; ty++) {
+        for (tx = 0; tx < TILESET_TILES_X; tx++) {
+          if (tileRevealed[ty][tx]) continue;
+
+          int mx = tx % TILESET_FRAME_W;
+          int my = ty % TILESET_FRAME_H;
+          u16 mask = tilesetData[(fOy + my) * TILESET_W + (fOx + mx)];
+
+          // If mask pixel is non-black, reveal this tile from scene
+          if (mask != 0) {
+            tileRevealed[ty][tx] = 1;
+            int sx = tx * TILE_SIZE;
+            int sy = ty * TILE_SIZE;
+            int tileY;
+            for (tileY = 0; tileY < TILE_SIZE; tileY++) {
+              int tileX;
+              for (tileX = 0; tileX < TILE_SIZE; tileX++) {
+                int px = sx + tileX;
+                int py = sy + tileY;
+                if (px < 240 && py < 160)
+                  screen[py * 240 + px] = scene[py * 240 + px];
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Hold this frame for FRAME_DELAY vsyncs
+    {
+      int v;
+      for (v = 0; v < FRAME_DELAY; v++) waitVSync();
+    }
+  }
+}
+`;
+}
+
 export function generateGBAProject(
   state: EditorState,
   name: string,
@@ -250,6 +345,13 @@ export function generateGBAProject(
   splashSong?: Song,
   sceneImageCArray?: string,
   sceneBackgroundColor?: string,
+  entryTilesetCArray?: string,
+  entryTileSize?: number,
+  entryTilesetCols?: number,
+  entryTilesetRows?: number,
+  entryTilesetSpeed?: number,
+  entryTilesetWidth?: number,
+  entryTilesetHeight?: number,
 ): string {
   log.add(`Generando proyecto GBA: ${name}`);
   log.add(`Autor: ${author}`);
@@ -257,6 +359,7 @@ export function generateGBAProject(
   const hasSplash = splashImageCArray && splashDuration && splashDuration > 0;
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
   const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
+  const hasTransition = !!(entryTilesetCArray && entryTilesetCols && entryTilesetRows && entryTileSize);
 
   function hexColor(cssColor: string): number {
     let hex = cssColor.replace('#', '');
@@ -344,6 +447,16 @@ const u16 splashScreenData[PIXEL_COUNT] = ${splashImageCArray};
     log.add('Sin cancion de fondo para la ROM');
   }
 
+  if (hasTransition) {
+    cCode += generateTransitionData(
+      entryTilesetCArray!, entryTileSize!,
+      entryTilesetCols!, entryTilesetRows!,
+      entryTilesetSpeed ?? 5,
+      entryTilesetWidth ?? 0, entryTilesetHeight ?? 0,
+    );
+    log.add(`Transicion de entrada incluida (${entryTilesetCols}x${entryTilesetRows} frames, tile ${entryTileSize}px)`);
+  }
+
   cCode += `
 // ── Entry Point ─────────────────────────────────────────────────────────
 int main() {
@@ -379,7 +492,8 @@ int main() {
       }
     }
   }
-` + renderScene();
+` + (hasTransition ? `  runTransition(sceneData);
+` : '') + renderScene();
     } else {
       cCode += `
   {
@@ -387,7 +501,8 @@ int main() {
     int i;
     for (i = 0; i < frames; i++) waitVSync();
   }
-` + renderScene();
+` + (hasTransition ? `  runTransition(sceneData);
+` : '') + renderScene();
     }
   } else {
     cCode += `

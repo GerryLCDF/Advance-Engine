@@ -131,7 +131,7 @@ function createWindow(): void {
 // ── Helpers de sistema de archivos ──────────────────────────────────────────
 
 const GBA_PROJECTS_DIR = path.join(app.getPath('documents'), 'AdvanceEngineProjects');
-const PROJECT_FOLDERS = ['backgrounds', 'fonts', 'music', 'sounds', 'sprites', 'tilesets', 'ui', 'avatars', 'script', 'dialog'];
+const PROJECT_FOLDERS = ['backgrounds', 'fonts', 'music', 'sounds', 'sprites', 'tilesets', 'ui', 'avatars', 'script', 'dialog', 'fx'];
 
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -415,6 +415,37 @@ ipcMain.handle('file:convertImageToGbaBase64', async (_e, imagePath: string) => 
   }
 });
 
+function convertToGbaBitmapBufferExact(imagePath: string): { buffer: Buffer; width: number; height: number } | null {
+  const resolvedPath = path.resolve(imagePath);
+  if (!fs.existsSync(resolvedPath)) return null;
+  const img = nativeImage.createFromPath(resolvedPath);
+  if (img.isEmpty()) return null;
+  const size = img.getSize();
+  const bitmap = img.toBitmap();
+  const gbaBuf = Buffer.alloc(size.width * size.height * 2);
+  for (let y = 0; y < size.height; y++) {
+    for (let x = 0; x < size.width; x++) {
+      const off = (y * size.width + x) * 4;
+      const b = bitmap[off];
+      const g = bitmap[off + 1];
+      const r = bitmap[off + 2];
+      const gbaColor = ((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10)) & 0x7FFF;
+      gbaBuf.writeUInt16LE(gbaColor, (y * size.width + x) * 2);
+    }
+  }
+  return { buffer: gbaBuf, width: size.width, height: size.height };
+}
+
+ipcMain.handle('file:convertImageToGbaBase64Exact', async (_e, imagePath: string) => {
+  try {
+    const result = convertToGbaBitmapBufferExact(imagePath);
+    if (!result) return { success: false, reason: 'No se pudo cargar la imagen' };
+    return { success: true, base64: result.buffer.toString('base64'), width: result.width, height: result.height };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+});
+
 ipcMain.handle('file:cropImageToGbaBase64', async (_e, imagePath: string, cropX: number, cropY: number) => {
   try {
     const result = cropToGbaBitmapBuffer(imagePath, cropX, cropY);
@@ -616,6 +647,19 @@ ipcMain.handle('dialog:openImage', async () => {
     };
   }
 
+  return { path: filePath, error: null };
+});
+
+ipcMain.handle('dialog:openAnyImage', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Seleccionar imagen',
+    filters: [{ name: 'Imágenes', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp'] }],
+    properties: ['openFile'],
+  });
+  if (canceled || filePaths.length === 0) return { path: null, error: null };
+  const filePath = filePaths[0];
+  const img = nativeImage.createFromPath(filePath);
+  if (img.isEmpty()) return { path: null, error: 'No se pudo leer la imagen.' };
   return { path: filePath, error: null };
 });
 

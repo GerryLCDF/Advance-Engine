@@ -159,10 +159,62 @@ Terminó con un patrón de dos ventanas transparentes de 4×2 (columnas 2-5, fil
 - Bresenham pixel line preview
 - Renderizado de slopes via decodeSlope (slot-based) junto con half-tile blocks y paleta original
 
-## Pendientes
+## 14 Junio 2026 — Rampas fijas: cuatro herramientas, sin auto-deteccion
 
-- Wrapper .exe con mGBA incrustado para distribuir proyectos
-- Licencia MLP2.0
-- Sistema de scripting por bloques
-- Emulador interno para el botón Play
-- Soporte multilenguaje (ES/EN/JP/RU)
+**v0.39.0**. Volvi a trabajar en las rampas de colision, pero esta vez con un enfoque completamente distinto. En vez de detectar automaticamente la direccion de la pendiente segun el arrastre, cada boton de rampa produce exactamente el mismo triangulo sin importar como arrastres.
+
+### Los cuatro tipos de rampa:
+- **Rosa (7)**: `/` abajo → triangulo (0,8)→(8,0)→(8,8), alineado derecha, cuenta derecha→izquierda
+- **Verde (10)**: `\` abajo → triangulo (0,0)→(8,8)→(0,8), alineado izquierda, cuenta izquierda→derecha
+- **Naranja (11)**: `\` arriba → triangulo (0,0)→(8,8)→(8,0), alineado derecha, cuenta derecha→izquierda
+- **Morado (8)**: `/` arriba → triangulo (0,8)→(8,0)→(0,0), alineado izquierda, cuenta izquierda→derecha
+
+### Cambios clave:
+- Elimine la auto-deteccion de pendiente (slope direction). Cada boton tiene flags explicitas: `forceBackslash`, `isBelow`, `encodeForward`, `isMirror`
+- `tilePixelCounts` reescrito: itera 8 ramp-rows en vez de 16 pixel-rows, muestrea centros de celda (`ppRamp/2`), devuelve counts 0-8 en vez de 0-16
+- Elimine la rama diagonal limpia (analytic branch). Siempre usa el fallback de ramp-rows — 64 checks por tile es suficientemente rapido y evita bugs de precision en direccion `\`
+- Logica de direccion de conteo corregida: rosa/naranja cuentan derecha→izquierda, verde/morado izquierda→derecha
+- `encodeForward` corregido: `COLLISION_SLOPE || COLLISION_SLOPE_INV_MIRROR` (rosa/naranja → true/right-aligned; verde/morado → false/left-aligned)
+- Los botones de rampa ya no hacen auto-switch a `tool='collision'` ni `brush='draw'` al hacer clic. Son solo selectores de valor de pintura; el usuario debe activar explicitamente la herramienta de colision
+- SVG de iconos en la paleta corregidos para cada triangulo
+- Orden de botones en la paleta: 7→10→11→8 (rosa→verde→naranja→morado)
+- Renderizado de tiles codificados: corregido el swap de color mirror (`forward ? '#ffbb66' : '#66ffbb'`)
+- `isRamp` en `onMouseMove` actualizado para incluir los 4 valores (7, 8, 10, 11) para que verde/naranja no muestren rectangulo de preview
+
+### Problema conocido:
+Verde (y posiblemente naranja) puede dibujar tiles extras mas alla de la linea. Queda pendiente para futuro, no bloquea.
+
+## 16 Junio 2026 — Transiciones entre escenas: preview, custom FX y conexiones borrables
+
+**v0.40.0**. Arranque con el sistema de transiciones. Ya tenia el modelo de datos (`TransitionConfig`, `FxAsset`) pero faltaba casi toda la UI.
+
+### Lo nuevo:
+
+**TransitionContent** — componente que renderiza todos los controles de configuracion de transicion: selector de tipo (instant, fade, scroll, curtain, custom), direccion, duracion, y para el tipo custom: selector de gradiente/tileset, botones de importacion, drop zones, pickers de color de gradiente, config de grilla/animacion de tileset.
+
+**TransitionPreview** — canvas animado en vivo que muestra escena A → transicion de entrada → pantalla de pausa → transicion de salida → escena B, en un loop continuo. Usa `requestAnimationFrame` con refs para evitar re-renders.
+
+**drawTransition** — funcion que dibuja cada tipo de transicion en un canvas. Para el tipo `custom`, reescribi la logica varias veces. Primero intente con una sola fila del gradiente estirada (se veia como un fade generico, no seguia la forma del gradiente). Despues lo reescribi con `ImageData` por pixel: compara el brillo de cada pixel de la imagen de mascara contra un umbral (`1-t`). Si el brillo es menor al umbral, muestra el pixel de la escena A; si no, muestra el de la pantalla de pausa. Esto hace que la transicion siga exactamente la forma del gradiente/tileset.
+
+Tambien separe refs de imagenes por entrada/salida (`entryGradRef`, `exitGradRef`, etc.) y deje de limpiar las refs viejas al recargar, para evitar flickers mientras la imagen nueva se carga.
+
+**TilesetAnimPreview** — preview de tileset con animacion ping-pong, fondo ajedrez, `imageSmoothingEnabled = false` y `imageRendering: pixelated` para que los pixeles se vean nitidos.
+
+**Conexiones borrables**:
+- Menu contextual en jerarquia y en canvas (flechas SVG cliqueables con hit area transparente mas ancho)
+- Boton de eliminar en el inspector (solo conexiones, no splash)
+
+**InspectorPanel** ahora hace scroll con `overflow-y: auto` cuando el contenido es largo.
+
+**Canvas de preview** con `imageRendering: pixelated` y `aspectRatio: 3/2` para que se vea como en el emulador.
+
+### Fixes:
+- Tileset preview borroso → `imageRendering: pixelated` en CSS + `imageSmoothingEnabled = false` en contexto
+- Transicion personalizada no seguia el gradiente → reescrita con ImageData threshold
+- Flicker en preview cuando cambiaba config → refs separadas por entrada/salida, no limpiar refs viejas
+- Preview alargada → `maxWidth: 360` + `aspectRatio: 3/2`
+
+### Pendiente:
+- Exportacion GBA de transiciones (generar codigo segun config)
+- Centralizar textos visibles en diccionario multidioma (RULES.md lo exige)
+- Reemplazar iconos Unicode/emoji que todavia aparecen en preview (pause, flechas)

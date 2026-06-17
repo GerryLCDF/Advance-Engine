@@ -3,9 +3,9 @@ import type { Project, ActiveScreen, LauncherTab, CreditEntry, TemplateId } from
 import type {
   EditorTab, Scene, SceneConnection, SpriteSheet, Background,
   Song, DialogueEntry, Actor, Animation, AnimationFrame,
-  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen,
+  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset,
 } from '../types/editor';
-import { createCollisionMap } from '../types/editor';
+import { createCollisionMap, makeDefaultConnection } from '../types/editor';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
   { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
@@ -36,6 +36,10 @@ const defaultScene = (): Scene => ({
 const defaultSplashScreen = (): SplashScreen => ({
   id: '__splash__', name: 'SplashScreen', x: 60, y: -120,
   duration: 3,
+  usePauseScreen: false,
+  pauseColor: '#000000',
+  entryTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8 },
+  exitTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8 },
 });
 
 const defaultActor = (): Actor => ({
@@ -376,6 +380,7 @@ interface AppState {
   sceneConnections: SceneConnection[];
   addConnection: (fromSceneId: string, toSceneId: string) => void;
   removeConnection: (id: string) => void;
+  updateConnection: (id: string, patch: Partial<SceneConnection>) => void;
 
   // ── SplashScreen ────────────────────────────────────────────────────────
   splashScreen: SplashScreen;
@@ -469,11 +474,15 @@ interface AppState {
   updatePage: (dialogueId: string, pageId: string, patch: Partial<DialogueEntry['pages'][0]>) => void;
   removePage: (dialogueId: string, pageId: string) => void;
 
-  // ── Sound / Script ──────────────────────────────────────────────────────
+  // ── Sound / Script / FX ─────────────────────────────────────────────────
   sounds: any[];
   addSound: () => void;
   scripts: any[];
   addScript: () => void;
+  fxAssets: FxAsset[];
+  addFxAsset: (asset: FxAsset) => void;
+  removeFxAsset: (id: string) => void;
+  updateFxAsset: (id: string, patch: Partial<FxAsset>) => void;
 }
 
 // ── Global settings persistence (localStorage) ──────────────────────────────
@@ -580,6 +589,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       dialogues: [],
       sounds: [],
       scripts: [],
+      fxAssets: [],
       dirty: false,
       exportLog: [],
       selectedNodeId: '',
@@ -699,6 +709,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     dialogues: [],
     sounds: [],
     scripts: [],
+    fxAssets: [],
     dirty: false,
     exportLog: [],
     selectedNodeId: '',
@@ -815,6 +826,56 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
 
+      // ── Entry transition tileset ──────────────────────────────────────
+      let entryTilesetCArray: string | undefined;
+      let entryTileSize: number | undefined;
+      let entryTilesetCols: number | undefined;
+      let entryTilesetRows: number | undefined;
+      let entryTilesetSpeed: number | undefined;
+      let entryTilesetWidth: number | undefined;
+      let entryTilesetHeight: number | undefined;
+      const entryTransition = state.splashScreen?.entryTransition;
+      if (entryTransition?.tilesetId && entryTransition?.tileSize) {
+        const tilesetAsset = state.fxAssets.find((a) => a.id === entryTransition.tilesetId);
+        if (tilesetAsset) {
+          try {
+            const api = window.advanceAPI;
+            log.add(`Transicion: convirtiendo tileset "${tilesetAsset.name}"...`);
+            const gbaResult = await api.file.convertImageToGbaBase64Exact(tilesetAsset.filePath);
+            if (gbaResult.success && gbaResult.base64) {
+              const binaryStr = atob(gbaResult.base64);
+              const values: string[] = [];
+              for (let i = 0; i < binaryStr.length; i += 2) {
+                const lo = binaryStr.charCodeAt(i);
+                const hi = binaryStr.charCodeAt(i + 1);
+                const val = (hi << 8) | lo;
+                values.push(`0x${val.toString(16).padStart(4, '0')}`);
+              }
+              const lines: string[] = [];
+              for (let i = 0; i < values.length; i += 16) {
+                lines.push('  ' + values.slice(i, i + 16).join(', '));
+              }
+              entryTilesetCArray = '{\n' + lines.join(',\n') + '\n}';
+              entryTileSize = entryTransition.tileSize;
+              entryTilesetCols = tilesetAsset.cols;
+              entryTilesetRows = tilesetAsset.rows;
+              entryTilesetSpeed = tilesetAsset.animSpeed;
+              entryTilesetWidth = gbaResult.width!;
+              entryTilesetHeight = gbaResult.height!;
+              log.add(`Transicion: tileset convertido (${gbaResult.width}x${gbaResult.height}, ${entryTilesetCols}x${entryTilesetRows} frames)`);
+            } else {
+              log.add(`[WARN] Transicion: falló conversión del tileset — ${gbaResult.reason || 'desconocido'}`);
+            }
+          } catch (err: any) {
+            log.add(`[WARN] Transicion: error — ${String(err)}`);
+          }
+        } else {
+          log.add(`[WARN] Transicion: tileset ID "${entryTransition.tilesetId}" no encontrado en assets`);
+        }
+      } else {
+        log.add('Transicion de entrada: sin tileset o tileSize, saltando');
+      }
+
       const cCode = generateGBAProject({
         scenes: state.scenes,
         sceneConnections: state.sceneConnections,
@@ -824,7 +885,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         sounds: state.sounds ?? [],
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
-      }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneCArray, sceneColor);
+      }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneCArray, sceneColor,
+        entryTilesetCArray, entryTileSize, entryTilesetCols, entryTilesetRows, entryTilesetSpeed, entryTilesetWidth, entryTilesetHeight);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
@@ -852,6 +914,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           sprites: state.spriteSheets ?? [],
           songs: state.songs,
           sounds: state.sounds ?? [],
+          fxAssets: state.fxAssets ?? [],
           dialogues: state.dialogues ?? [],
           scripts: state.scripts ?? [],
           splashScreen: state.splashScreen,
@@ -886,12 +949,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           collisionTileSize: sc.collisionTileSize ?? 8,
           collisionMap: sc.collisionMap ?? createCollisionMap(sc.width, sc.height, sc.collisionTileSize ?? 8),
         })),
-        sceneConnections: result.state.sceneConnections ?? [],
-        splashScreen: result.state.splashScreen ?? defaultSplashScreen(),
+        sceneConnections: (result.state.sceneConnections ?? []).map((c: any) => ({ ...makeDefaultConnection(c.fromSceneId, c.toSceneId), ...c, id: c.id, usePauseScreen: c.usePauseScreen ?? false, pauseColor: c.pauseColor ?? '#000000', entryTransition: { tileSize: 8, ...(c.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, ...(c.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } })),
+        splashScreen: { ...defaultSplashScreen(), ...result.state.splashScreen, usePauseScreen: result.state.splashScreen?.usePauseScreen ?? false, pauseColor: result.state.splashScreen?.pauseColor ?? '#000000', entryTransition: { tileSize: 8, ...(result.state.splashScreen?.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, ...(result.state.splashScreen?.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } },
         backgrounds: result.state.backgrounds ?? [],
         spriteSheets: result.state.sprites ?? [],
         songs: result.state.songs ?? [],
         sounds: result.state.sounds ?? [],
+        fxAssets: result.state.fxAssets ?? [],
         dialogues: result.state.dialogues ?? [],
         scripts: result.state.scripts ?? [],
         dirty: false,
@@ -1094,13 +1158,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (toSceneId === splashId) return; // splash only outgoing
     set((s) => ({
-      sceneConnections: [...s.sceneConnections, { id: uid(), fromSceneId, toSceneId, label: '' }],
+      sceneConnections: [...s.sceneConnections, { ...makeDefaultConnection(fromSceneId, toSceneId), id: uid() }],
     }));
   },
   removeConnection: (id) => {
     get()._snapshotMundo();
     set((s) => ({
       sceneConnections: s.sceneConnections.filter((c) => c.id !== id),
+    }));
+  },
+  updateConnection: (id, patch) => {
+    get()._snapshotMundo();
+    set((s) => ({
+      sceneConnections: s.sceneConnections.map((c) => c.id === id ? { ...c, ...patch } : c),
     }));
   },
 
@@ -1563,6 +1633,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   addSound: () => set((s) => ({ sounds: [...s.sounds, { id: Date.now().toString(), name: 'Nuevo sonido' }] })),
   scripts: [],
   addScript: () => set((s) => ({ scripts: [...s.scripts, { id: Date.now().toString(), name: 'Nuevo script', code: '' }] })),
+  fxAssets: [],
+  addFxAsset: (asset) => set((s) => ({ fxAssets: [...s.fxAssets, asset] })),
+  removeFxAsset: (id) => set((s) => ({ fxAssets: s.fxAssets.filter((a) => a.id !== id) })),
+  updateFxAsset: (id, patch) => set((s) => ({
+    fxAssets: s.fxAssets.map((a) => a.id === id ? { ...a, ...patch } : a),
+  })),
 }));
 
 // Auto-save global settings to localStorage on every change

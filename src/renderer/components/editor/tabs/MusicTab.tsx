@@ -3,6 +3,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import { SaveIcon, PlayIcon, StopIcon, Pencil2Icon, MousePointerIcon, EraserIcon, MusicIcon, ActivityIcon, WaveIcon, NoiseIcon, EyeIcon } from './icons';
 import type { InstrumentType, NoteRow } from '../../../types/editor';
 import { playGBASound } from '../../../utils/gba_audio';
 
@@ -93,10 +94,10 @@ const SURDO_PRESETS: InstrumentPreset[] = [
 const ALL_PRESETS = [...DUTY_PRESETS, ...WAVE_PRESETS, ...NOISE_PRESETS, ...SURDO_PRESETS];
 
 const CHANNELS = [
-  { id: 'ch-pulse1', name: 'Pulse 1', type: 'duty', icon: '◻' },
-  { id: 'ch-pulse2', name: 'Pulse 2', type: 'duty', icon: '◻' },
-  { id: 'ch-wave', name: 'Wave', type: 'wave', icon: '〰' },
-  { id: 'ch-noise', name: 'Noise', type: 'noise', icon: '📢' },
+  { id: 'ch-pulse1', name: 'Pulse 1', type: 'duty', icon: <ActivityIcon /> },
+  { id: 'ch-pulse2', name: 'Pulse 2', type: 'duty', icon: <ActivityIcon /> },
+  { id: 'ch-wave', name: 'Wave', type: 'wave', icon: <WaveIcon /> },
+  { id: 'ch-noise', name: 'Noise', type: 'noise', icon: <NoiseIcon /> },
 ];
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -256,7 +257,7 @@ export function MusicTab() {
       id: 'songs',
       title: 'SONGS',
       items: songs.map((so) => ({
-        id: so.id, label: so.name, icon: '🎵',
+        id: so.id, label: so.name, icon: <MusicIcon />,
         subtitle: `${so.bpm} BPM`,
       })),
       onAdd: addSong,
@@ -275,12 +276,11 @@ export function MusicTab() {
               <span
                 onClick={() => toggleChannel(ch.id, 'visible')}
                 style={{
-                  cursor: 'pointer', fontSize: 10, opacity: cs.visible ? 1 : 0.3,
-                  filter: cs.visible ? 'none' : 'grayscale(1)',
+                  cursor: 'pointer', display: 'flex', opacity: cs.visible ? 1 : 0.3,
                 }}
                 title={cs.visible ? 'Ocultar' : 'Mostrar'}
               >
-                👁
+                <EyeIcon />
               </span>
               <span
                 onClick={() => toggleChannel(ch.id, 'solo')}
@@ -810,8 +810,8 @@ export function MusicTab() {
 <ToolBtn onClick={isPlaying ? stopPlayback : startPlayback}><PlayIcon size={14} /></ToolBtn>
 <ToolBtn onClick={stopPlayback}><StopIcon size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
-              <ToolBtn active={toolMode === 'pencil'} onClick={() => setToolMode('pencil')}><PencilIcon size={14} /></ToolBtn>
-              <ToolBtn active={toolMode === 'select'} onClick={() => setToolMode('select')}><SelectIcon size={14} /></ToolBtn>
+              <ToolBtn active={toolMode === 'pencil'} onClick={() => setToolMode('pencil')}><Pencil2Icon /></ToolBtn>
+              <ToolBtn active={toolMode === 'select'} onClick={() => setToolMode('select')}><MousePointerIcon /></ToolBtn>
               <ToolBtn active={toolMode === 'eraser'} onClick={() => setToolMode('eraser')}><EraserIcon size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginLeft: 4 }}>
@@ -1574,50 +1574,4 @@ const zoomBtnStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
 };
 
-// ── Iconos SVG ─────────────────────────────────────────────────────────
-function SaveIcon({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-      <polyline points="17 21 17 13 7 13 7 21" />
-      <polyline points="7 3 7 8 15 8" />
-    </svg>
-  );
-}
-function PlayIcon({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
-      <polygon points="5 3 19 12 5 21 5 3" />
-    </svg>
-  );
-}
-function StopIcon({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-    </svg>
-  );
-}
-function PencilIcon({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-    </svg>
-  );
-}
-function SelectIcon({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
-      <path d="M13 13l6 6" />
-    </svg>
-  );
-}
-function EraserIcon({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.6 1.6c.8-.8 2-.8 2.8 0L21 5.4c.8.8.8 2 0 2.8L12 17" />
-      <path d="M6 11l7 7" />
-    </svg>
-  );
-}
+

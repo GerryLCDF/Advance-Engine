@@ -3,6 +3,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import { EyeIcon, EyeOffIcon } from './icons';
 import type { AnimationLoop } from '../../../types/editor';
 
 const PREVIEW_W = 320;
@@ -266,7 +267,7 @@ export function ImagenTab() {
       items: allLayers.map((l) => ({
         id: l.id,
         label: l.imagePath ? imgBasename(l.imagePath) : '(sin imagen)',
-        icon: l.visible ? '👁' : '👁‍🗨',
+        icon: l.visible ? <EyeIcon /> : <EyeOffIcon />,
         subtitle: l.imagePath ? '' : 'vacío',
       })),
     },

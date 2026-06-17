@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 export interface HierarchyItem {
   id: string;
   label: string;
-  icon?: string;
+  icon?: string | React.ReactNode;
   subtitle?: string;
   color?: string;
   isHeader?: boolean;
@@ -107,7 +107,7 @@ export function HierarchyPanel({
             if (selectedId !== node.id) e.currentTarget.style.background = 'transparent';
           }}
         >
-          {node.icon && <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{node.icon}</span>}
+          {node.icon && (typeof node.icon === 'string' ? <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{node.icon}</span> : <span style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{node.icon}</span>)}
           {node.color && !node.icon && (
             <span style={{
               width: 8, height: 8, borderRadius: '50%',
