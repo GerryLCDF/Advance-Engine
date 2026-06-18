@@ -628,7 +628,7 @@ function TransitionPreview({
             ctx.fillRect(tx * tileSize, ty * tileSize, tileSize, tileSize);
           } else {
             const fc = frames[age % totalFrames];
-            ctx.drawImage(fc, tx * tileSize, ty * tileSize, tileSize, tileSize);
+            if (fc) ctx.drawImage(fc, tx * tileSize, ty * tileSize, tileSize, tileSize);
           }
         }
       }
