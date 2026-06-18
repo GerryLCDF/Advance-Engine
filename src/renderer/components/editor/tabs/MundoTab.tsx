@@ -402,7 +402,7 @@ function TransitionPreview({
     img.src = tilesetUrl;
   }, [asset, tilesetUrl]);
 
-  // ── Animation timer con pausa al final ──
+  // ── Animation timer con pausa 2s al final ──
   useEffect(() => {
     if (!asset || totalFrames <= 1 || frames.length === 0) return;
     if (paused) {
@@ -422,7 +422,7 @@ function TransitionPreview({
     return () => clearTimeout(id);
   }, [frame, asset, totalFrames, frames.length, paused]);
 
-  // ── Draw blue background + frame at tile (1,1) ──
+  // ── Draw scene A (blue bg + A label + grid) + sprite en (1,1) ──
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -441,41 +441,6 @@ function TransitionPreview({
     ctx.textBaseline = 'middle';
     ctx.fillText('A', W / 2, H / 2);
 
-    // Black layer on top, cut holes where frame pixel is NOT black
-    const tilesX = Math.ceil(W / tileSize);
-    const tilesY = Math.ceil(H / tileSize);
-
-    if (paused) {
-      // Pause: full black over everything
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, W, H);
-    } else if (frames.length > 0 && frame < frames.length) {
-      const fc = frames[frame];
-      const fw = fc.width;
-      const fh = fc.height;
-      // Get pixel data of current frame
-      const fctx = fc.getContext('2d')!;
-      const fd = fctx.getImageData(0, 0, fw, fh).data;
-
-      // Draw full black
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, W, H);
-
-      // Cut holes where frame pixel is not black → reveal blue + "A"
-      ctx.globalCompositeOperation = 'destination-out';
-      for (let ty = 0; ty < tilesY; ty++) {
-        for (let tx = 0; tx < tilesX; tx++) {
-          const mx = tx % fw;
-          const my = ty % fh;
-          const mi = (my * fw + mx) * 4;
-          if (fd[mi] !== 0 || fd[mi + 1] !== 0 || fd[mi + 2] !== 0) {
-            ctx.fillRect(tx * tileSize, ty * tileSize, tileSize, tileSize);
-          }
-        }
-      }
-      ctx.globalCompositeOperation = 'source-over';
-    }
-
     // Grid lines
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 1;
@@ -492,13 +457,27 @@ function TransitionPreview({
       ctx.stroke();
     }
 
-    // "A" label
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 40px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('A', W / 2, H / 2);
-  }, [frame, frames, tileSize, paused]);
+    // Sprite animado en toda la cuadrícula (30×20 con tileSize=8)
+    const tilesX = Math.ceil(W / tileSize);
+    const tilesY = Math.ceil(H / tileSize);
+    const neighbors: [number, number][] = [];
+    for (let ny = 0; ny < tilesY; ny++) {
+      for (let nx = 0; nx < tilesX; nx++) {
+        neighbors.push([nx, ny]);
+      }
+    }
+    if (paused) {
+      ctx.fillStyle = '#000000';
+      for (const [nx, ny] of neighbors) {
+        ctx.fillRect(nx * tileSize, ny * tileSize, tileSize, tileSize);
+      }
+    } else if (frames.length > 0 && frame < frames.length) {
+      const fc = frames[frame];
+      for (const [nx, ny] of neighbors) {
+        ctx.drawImage(fc, nx * tileSize, ny * tileSize, tileSize, tileSize);
+      }
+    }
+  }, [tileSize, frames, frame, paused]);
 
   return (
     <canvas ref={canvasRef}
