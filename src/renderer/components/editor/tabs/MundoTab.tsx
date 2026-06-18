@@ -348,27 +348,132 @@ function TilesetAnimPreview({ asset, tilesetUrl }: { asset: FxAsset; tilesetUrl:
   );
 }
 
+function GradientSelector({
+  value, fxAssets, onChange, projectDir,
+}: {
+  value: string | undefined;
+  fxAssets: FxAsset[];
+  onChange: (id: string) => void;
+  projectDir: string | null;
+}) {
+  const gradients = fxAssets.filter((a) => a.type === 'gradient');
+  const [, setCount] = useState(0);
+
+  const importAsset = async (filePath: string) => {
+    const api = window.advanceAPI;
+    if (!api) return;
+    const fileName = filePath.split(/[\\/]/).pop() ?? 'gradient.png';
+    const destPath = projectDir ? `${projectDir}/fx/${fileName}` : filePath;
+    if (projectDir) {
+      await api.dir.create(`${projectDir}/fx`);
+      await api.file.copy(filePath, destPath);
+    }
+    const asset: FxAsset = {
+      id: `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: fileName, type: 'gradient',
+      filePath: destPath,
+      cols: 1, rows: 1, animSpeed: 5, animDirection: 'forward',
+      startColor: '#000000', endColor: '#ffffff',
+    };
+    useAppStore.getState().addFxAsset(asset);
+    setCount((c) => c + 1);
+  };
+
+  const handleImport = async () => {
+    const api = window.advanceAPI;
+    if (!api) return;
+    const result = await api.dialog.openAnyImage();
+    if (result.path) importAsset(result.path);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const filePath = (file as any).path;
+    if (filePath) importAsset(filePath);
+  };
+
+  const btnStyle: React.CSSProperties = {
+    padding: '4px 8px', fontSize: 10, cursor: 'pointer',
+    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4,
+  };
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600 }}>Degradado</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} ref={ref}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <div onClick={() => setOpen(!open)}
+            style={{ background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px', cursor: 'pointer', userSelect: 'none' }}>
+            {value ? (gradients.find((g) => g.id === value)?.name ?? 'Seleccionar...') : '-- Ninguno --'}
+          </div>
+          {open && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, marginTop: 2, maxHeight: 160, overflowY: 'auto' }}>
+              <div onClick={() => { onChange(''); setOpen(false); }}
+                style={{ padding: '4px 6px', fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px solid var(--border-color)' }}>
+                -- Ninguno --
+              </div>
+              {gradients.map((g) => (
+                <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px', cursor: 'pointer' }}
+                  onClick={() => { onChange(g.id); setOpen(false); }}>
+                  <span style={{ flex: 1, fontSize: 10, color: 'var(--text)' }}>{g.name}</span>
+                  <button onClick={(e) => { e.stopPropagation(); useAppStore.getState().removeFxAsset(g.id); }}
+                    style={{ padding: 0, width: 16, height: 16, background: 'transparent', color: '#ef4444', border: 'none', borderRadius: 2, fontSize: 11, lineHeight: '16px', textAlign: 'center', cursor: 'pointer' }}
+                    title="Eliminar degradado">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={handleImport} style={btnStyle}>+</button>
+      </div>
+      <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}
+        style={{ border: '1px dashed var(--border-color)', borderRadius: 4, padding: '6px', textAlign: 'center', fontSize: 9, color: 'var(--text-muted)', cursor: 'pointer' }}>
+        Arrastra imagen aquí
+      </div>
+    </div>
+  );
+}
+
 function TransitionPreview({
-  entry, fxAssets,
+  entry, fxAssets, mode = 'entry', bgColor = '#4488cc', bgLabel = 'A',
 }: {
   entry: TransitionConfig;
   fxAssets: FxAsset[];
+  mode?: 'entry' | 'exit';
+  bgColor?: string;
+  bgLabel?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tilesetUrl, setTilesetUrl] = useState('');
   const [frame, setFrame] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(mode === 'exit');
   const [frames, setFrames] = useState<HTMLCanvasElement[]>([]);
+  const [gradientData, setGradientData] = useState<Uint8ClampedArray | null>(null);
+  const [gradientW, setGradientW] = useState(1);
+  const [gradientH, setGradientH] = useState(1);
+  const [numGradientLevels, setNumGradientLevels] = useState(0);
   const W = 240, H = 160;
   const tileSize = entry.tileSize || 8;
   const asset = entry.tilesetId ? fxAssets.find((a) => a.id === entry.tilesetId) : null;
+  const gradientAsset = entry.gradientId ? fxAssets.find((a) => a.id === entry.gradientId) : null;
   const totalFrames = asset ? asset.cols * asset.rows : 0;
 
   // ── Load tileset image URL ──
   useEffect(() => {
     setTilesetUrl('');
     setFrame(0);
-    setPaused(false);
+    setPaused(mode === 'exit');
     setFrames([]);
     if (!asset) return;
     const api = window.advanceAPI;
@@ -376,7 +481,7 @@ function TransitionPreview({
     api.file.readImage(asset.filePath).then((r) => {
       if (r.success && r.dataUrl) setTilesetUrl(r.dataUrl);
     });
-  }, [asset]);
+  }, [asset, mode]);
 
   // ── Pre-render all frames as canvases ──
   useEffect(() => {
@@ -398,31 +503,76 @@ function TransitionPreview({
         out.push(c);
       }
       setFrames(out);
+      if (mode === 'exit') {
+        setFrame(Math.max(maxFrameSafe - 1, 0));
+        setPaused(true);
+      }
     };
     img.src = tilesetUrl;
-  }, [asset, tilesetUrl]);
+  }, [asset, tilesetUrl, mode]);
 
-  // ── Animation timer con pausa 2s al final ──
+  // ── Load gradient image data ──
+  useEffect(() => {
+    setGradientData(null);
+    if (!gradientAsset) return;
+    const api = window.advanceAPI;
+    if (!api) return;
+    api.file.readImage(gradientAsset.filePath).then((r) => {
+      if (!r.success || !r.dataUrl) return;
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const cx = c.getContext('2d')!;
+        cx.drawImage(img, 0, 0);
+        const d = cx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data;
+        setGradientData(d);
+        setGradientW(img.naturalWidth);
+        setGradientH(img.naturalHeight);
+        // Contar niveles únicos de brillo
+        const seen = new Set<number>();
+        for (let i = 0; i < d.length; i += 4) {
+          const b = Math.round((d[i] + d[i + 1] + d[i + 2]) / 3);
+          seen.add(b);
+        }
+        setNumGradientLevels(seen.size);
+      };
+      img.src = r.dataUrl;
+    });
+  }, [gradientAsset]);
+
+  // ── Cada nivel de brillo del degradado = un paso de animaci├│n ──
+  const hasGradient = gradientData && gradientW > 0 && gradientH > 0 && numGradientLevels > 1;
+  const extraFrames = hasGradient ? totalFrames : 0; // frames extra para que los ├║ltimos tiles terminen y se pongan negros
+  const maxFrame = hasGradient ? numGradientLevels + extraFrames : (totalFrames > 1 ? totalFrames : 1);
+  const maxFrameSafe = maxFrame > 1 ? maxFrame : 1;
+
   useEffect(() => {
     if (!asset || totalFrames <= 1 || frames.length === 0) return;
+    const tick = Math.max(16, ((entry.duration || 1) * 1000) / maxFrameSafe);
+
     if (paused) {
       const id = setTimeout(() => {
         setPaused(false);
-        setFrame(0);
+        setFrame(mode === 'exit' ? maxFrameSafe - 1 : 0);
       }, 2000);
       return () => clearTimeout(id);
     }
-    const tick = asset.animSpeed > 0 ? Math.max(16, 1000 / asset.animSpeed) : 100;
     const id = setTimeout(() => {
       setFrame((prev) => {
-        if (prev >= totalFrames - 1) { setPaused(true); return prev; }
+        if (mode === 'exit') {
+          if (prev <= 0) { setPaused(true); return 0; }
+          return prev - 1;
+        }
+        if (prev >= maxFrameSafe - 1) { setPaused(true); return prev; }
         return prev + 1;
       });
     }, tick);
     return () => clearTimeout(id);
-  }, [frame, asset, totalFrames, frames.length, paused]);
+  }, [frame, asset, totalFrames, frames.length, paused, mode, maxFrameSafe, entry]);
 
-  // ── Draw scene A (blue bg + A label + grid) + sprite en (1,1) ──
+  // ── Draw ──
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -432,14 +582,14 @@ function TransitionPreview({
     canvas.height = H;
     ctx.imageSmoothingEnabled = false;
 
-    // Blue background
-    ctx.fillStyle = '#4488cc';
+    // Scene background
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 40px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('A', W / 2, H / 2);
+    ctx.fillText(bgLabel, W / 2, H / 2);
 
     // Grid lines
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
@@ -457,27 +607,33 @@ function TransitionPreview({
       ctx.stroke();
     }
 
-    // Sprite animado en toda la cuadrícula (30×20 con tileSize=8)
+    // Cada tile: aparece seg├║n su brillo, anima totalFrames pasos, luego se queda negro
     const tilesX = Math.ceil(W / tileSize);
     const tilesY = Math.ceil(H / tileSize);
-    const neighbors: [number, number][] = [];
-    for (let ny = 0; ny < tilesY; ny++) {
-      for (let nx = 0; nx < tilesX; nx++) {
-        neighbors.push([nx, ny]);
+    if (frames.length > 0 && totalFrames > 1 && frame >= 0 && frame < maxFrameSafe) {
+      for (let ty = 0; ty < tilesY; ty++) {
+        for (let tx = 0; tx < tilesX; tx++) {
+          let age = totalFrames; // sin gradiente: siempre visible
+          if (hasGradient) {
+            const gx = tx % gradientW;
+            const gy = ty % gradientH;
+            const gi = (gy * gradientW + gx) * 4;
+            const brightness = (gradientData![gi] + gradientData![gi + 1] + gradientData![gi + 2]) / (255 * 3);
+            const firstPhase = Math.round((1 - brightness) * (numGradientLevels - 1));
+            age = frame - firstPhase;
+          }
+          if (age < 0) continue; // a├║n no visible → fondo de escena
+          if (age >= totalFrames) {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(tx * tileSize, ty * tileSize, tileSize, tileSize);
+          } else {
+            const fc = frames[age % totalFrames];
+            ctx.drawImage(fc, tx * tileSize, ty * tileSize, tileSize, tileSize);
+          }
+        }
       }
     }
-    if (paused) {
-      ctx.fillStyle = '#000000';
-      for (const [nx, ny] of neighbors) {
-        ctx.fillRect(nx * tileSize, ny * tileSize, tileSize, tileSize);
-      }
-    } else if (frames.length > 0 && frame < frames.length) {
-      const fc = frames[frame];
-      for (const [nx, ny] of neighbors) {
-        ctx.drawImage(fc, nx * tileSize, ny * tileSize, tileSize, tileSize);
-      }
-    }
-  }, [tileSize, frames, frame, paused]);
+  }, [tileSize, frames, frame, paused, bgColor, bgLabel, gradientData, gradientW, gradientH, totalFrames, maxFrameSafe, hasGradient, numGradientLevels]);
 
   return (
     <canvas ref={canvasRef}
@@ -496,13 +652,15 @@ function buildTransitionSections(
   fxAssets: FxAsset[],
   onChangeEntry: (patch: Partial<TransitionConfig>) => void,
   projectDir: string | null,
+  exit?: TransitionConfig,
+  onChangeExit?: (patch: Partial<TransitionConfig>) => void,
 ): InspectorSection[] {
   return [
     {
       title: 'Transición (entrada)',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <TransitionPreview entry={entry} fxAssets={fxAssets} />
+          <TransitionPreview entry={entry} fxAssets={fxAssets} mode="entry" bgColor="#4488cc" bgLabel="A" />
           <TilesetSelector
             value={entry.tilesetId}
             fxAssets={fxAssets}
@@ -514,6 +672,57 @@ function buildTransitionSections(
             fxAssets={fxAssets}
             tileSize={entry.tileSize}
           />
+          <GradientSelector
+            value={entry.gradientId}
+            fxAssets={fxAssets}
+            onChange={(id) => onChangeEntry({ gradientId: id })}
+            projectDir={projectDir}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
+            <input type="number" value={entry.duration} min={0.1} max={30} step={0.1}
+              onChange={(e) => onChangeEntry({ duration: Math.max(0.1, parseFloat(e.target.value) || 1) })}
+              style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
+            />
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Transición (salida)',
+      content: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <TransitionPreview entry={exit ?? entry} fxAssets={fxAssets} mode="exit" bgColor="#88cc66" bgLabel="B" />
+          {exit && onChangeExit && (
+            <>
+              <TilesetSelector
+                value={exit.tilesetId}
+                fxAssets={fxAssets}
+                onChange={(id) => onChangeExit({ tilesetId: id })}
+                projectDir={projectDir}
+              />
+              <TilesetOptions
+                tilesetId={exit.tilesetId}
+                fxAssets={fxAssets}
+                tileSize={exit.tileSize}
+              />
+              <GradientSelector
+                value={exit.gradientId}
+                fxAssets={fxAssets}
+                onChange={(id) => onChangeExit({ gradientId: id })}
+                projectDir={projectDir}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
+              <input type="number" value={exit.duration} min={0.1} max={30} step={0.1}
+                onChange={(e) => onChangeExit({ duration: Math.max(0.1, parseFloat(e.target.value) || 1) })}
+                style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
+              />
+              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
+              </div>
+            </>
+          )}
         </div>
       ),
     },
@@ -1467,6 +1676,8 @@ export function MundoTab() {
       selectedSplash.entryTransition, fxAssets,
       (patch) => updateSplashScreen({ entryTransition: { ...selectedSplash.entryTransition, ...patch } }),
       projectDir,
+      selectedSplash.exitTransition,
+      (patch) => updateSplashScreen({ exitTransition: { ...selectedSplash.exitTransition, ...patch } }),
     ));
   }
 
@@ -1522,6 +1733,8 @@ export function MundoTab() {
         splashScreen.entryTransition, fxAssets,
         (patch) => updateSplashScreen({ entryTransition: { ...splashScreen.entryTransition, ...patch } }),
         projectDir,
+        splashScreen.exitTransition,
+        (patch) => updateSplashScreen({ exitTransition: { ...splashScreen.exitTransition, ...patch } }),
       ));
     } else {
       inspectorSections.push({
@@ -1549,6 +1762,8 @@ export function MundoTab() {
         selectedConnection.entryTransition, fxAssets,
         (patch) => updateConnection(selectedConnection.id, { entryTransition: { ...selectedConnection.entryTransition, ...patch } }),
         projectDir,
+        selectedConnection.exitTransition,
+        (patch) => updateConnection(selectedConnection.id, { exitTransition: { ...selectedConnection.exitTransition, ...patch } }),
       ));
     }
   }

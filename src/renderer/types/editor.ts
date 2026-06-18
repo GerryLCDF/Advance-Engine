@@ -74,7 +74,7 @@ export interface FxAsset {
 export interface TransitionConfig {
   type: TransitionType;
   direction: TransitionDirection;
-  duration: number; // seconds
+  duration: number; // total transition duration in seconds
   gradientId: string; // FxAsset id of type 'gradient'
   tilesetId: string; // FxAsset id of type 'tileset'
   tileSize: number; // 8, 10, or 16
