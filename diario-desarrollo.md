@@ -218,3 +218,58 @@ Tambien separe refs de imagenes por entrada/salida (`entryGradRef`, `exitGradRef
 - Exportacion GBA de transiciones (generar codigo segun config)
 - Centralizar textos visibles en diccionario multidioma (RULES.md lo exige)
 - Reemplazar iconos Unicode/emoji que todavia aparecen en preview (pause, flechas)
+
+## 24 Junio 2026 — Cambio radical: máscara píxel a píxel + secuencial por tile
+
+**v0.40.1 → v0.41.0 (sin tag aún)**. Todo el día iterando sobre la transición custom con el usuario hasta dar con el comportamiento exacto que quería.
+
+### El problema original
+La transición usaba `gTileset[f][ty * TILESET_TILES_X + tx]` — un solo valor por tile por frame. Si el valor era `0x7FFF`, el tile COMPLETO se revelaba; si era `0x0000`, el tile COMPLETO se ocultaba. No había animación DENTRO del tile. El tileset de 8×8 por frame se remuestreaba a 30×20 tiles, perdiendo toda la información de píxel.
+
+El usuario reportó: "no reproduce la animacion del tileset, espera un poco el bloque limpio y pasa al siguiente".
+
+### La solución: gTilesetPixel[f][fh][fw]
+En lugar de remuestrear a la grilla de tiles, cada frame se mantiene como su resolución original (fw×fh = 8×8) y se usa directamente como máscara PIXEL A PÍXEL dentro de cada tile:
+
+```c
+gTilesetPixel[f][tileY][tileX] != 0 → scene pixel
+gTilesetPixel[f][tileY][tileX] == 0 → black pixel
+```
+
+Cada tile ahora muestra los 8 frames completos del tileset como animación de píxeles.
+
+### Orden de frames
+Después de varias correcciones, quedó:
+
+| Transición | Orden de frames | Lógica | Final |
+|------------|----------------|--------|-------|
+| **Entry** (negro → escena) | 7→0 (reverso) | mask≠0 → escena | force escena completa |
+| **Exit** (escena → negro) | 0→7 (directo) | mask=0 → negro | force negro (cortinilla) |
+
+Entry: tile empieza negro → frame 7 muestra escena completa → frames 6→0 ocultan progresivamente → force escena al final.
+Exit: tile empieza con escena → frames 0→6 cubren con negro → frame 7 restaura escena → force negro (cortínilla cerrada).
+
+### Threshold corregido
+El `.h` guardaba `0x7FFF` para píxeles oscuros y `0x0000` para brillantes, al revés de lo que el usuario quería. Se invirtió:
+
+- **Blanco** (brightness ≥ 384) → `0x7FFF` → **revela** escena
+- **Negro** (brightness < 384) → `0x0000` → **oculta** (pone negro)
+
+### Auto-generación de .h
+Al importar un tileset en MundoTab, se genera automáticamente un `.h` con `tilesetData[W*H]` y defines de dimensiones, guardado junto a la imagen. El campo `FxAsset.hFilePath` almacena la ruta.
+
+### Preview mejorado
+El preview de tileset ahora renderiza el blanco como transparente sobre un fondo checkered oscuro (`#666/#444`), para que se vea qué partes del tile revelarán la escena.
+
+### Archivos modificados
+- `src/renderer/utils/gba_export.ts`: transiciones con `gTilesetPixel[f][tileY][tileX]`, entry reverso, exit directo + force
+- `src/renderer/store/useAppStore.ts`: extrae frames como `fw×fh` sin remuestrear, nueva `valToMask`
+- `src/renderer/utils/transitionHeader.ts`: **nuevo** — genera `.h` desde imagen
+- `src/renderer/components/editor/tabs/MundoTab.tsx`: auto-genera `.h` al importar, preview con blanco transparente
+- `src/renderer/types/editor.ts`: `FxAsset.hFilePath`
+- `AGENTS.md`: **nuevo** — diario de sesión técnica para el agente
+
+### Tiempo estimado de transición
+Con 30×20 tiles × 8 frames × `FRAME_DELAY`:
+- `animSpeed=1` → 80s
+- `animSpeed=5` → 400s (6.7 min)

@@ -1,55 +1,61 @@
 ## Goal
-Generate a transition where each tile (8×8 block) plays the full tileset animation (all frames) sequentially — tile (0,0) plays frames 0→1→...→7, then tile (0,1) plays frames 0→1→...→7, etc. — instead of applying each frame as a full‑screen mask.
+Generate a transition where each tile (8×8 block) plays the full tileset animation (all frames) sequentially as a **pixel‑level mask** — each pixel of the 8×8 tile is controlled individually by the corresponding pixel of the tileset frame.
 
 ## Constraints & Preferences
-- Black pixels in source image → `0x7FFF` in `.h` → `0x7FFF` in `gTileset` → **reveals** tile pixel in ROM
-- White/bright pixels in source image → `0x0000` in `.h` → `0x0000` in `gTileset` → **hides** tile pixel in ROM
-- The `.h` file stores a flat `tilesetData[W*H]` with `TILESET_W/H/COLS/ROWS/FRAMES/FRAME_DELAY` defines (import‑time format)
-- At export time, each frame is resampled from source fw×fh → `TILESET_TILES_X × TILESET_TILES_Y` (depends on tileSize)
-- The C code uses `gTileset[f][ty * TILESET_TILES_X + tx]` — every screen tile gets a unique mask pixel per frame
-- **Entry**: screen starts black → each tile plays frames 0→F-1 sequentially → tile ends fully revealed → next tile starts
-- **Exit**: screen starts with scene → each tile plays frames F-1→0 in reverse sequentially → tiles progressively set to black → tile fully hidden at end → next tile starts
+- White/bright pixels in source image → `0x7FFF` in `.h` / `gTilesetPixel` → **reveals** scene pixel in ROM
+- Black/dark pixels in source image → `0x0000` in `.h` / `gTilesetPixel` → **hides** (black) pixel in ROM
+- `.h` file stores flat `tilesetData[W*H]` with `TILESET_W/H/COLS/ROWS/FRAMES/FRAME_DELAY` defines (import‑time format)
+- At export time, each frame is extracted as `fw×fh` pixel array WITHOUT resampling → `gTilesetPixel[FRAMES][FH][FW]`
+- The C code uses `gTilesetPixel[f][tileY][tileX]` — each of the 8×8 pixels within the tile is controlled by the tileset frame pixel
+- **Entry** (negro → escena): frames **7→0** (reversed). Tile starts black → full scene (frame 7) → progressively hides (frames 6→0) → **force full scene** at end
+- **Exit** (escena → negro): frames **0→7** (forward). `mask==0 → black`, `mask!=0 → scene`. Tile starts full scene → progressively covers → frame 7 restores scene → **force black** at end (cortinilla)
 - Scene background should NOT be `#000000` or transition is invisible
 - The splash connection (`__splash_conn__`) is virtual and NOT stored in `sceneConnections` — its entryTransition IS `splashScreen.entryTransition`
 
 ## Progress
 ### Done
-- `transitionHeader.ts`: outputs flat `tilesetData[W*H]` array with `TILESET_W/H/COLS/ROWS/FRAMES/FRAME_DELAY` defines
+- `transitionHeader.ts`: generates flat `tilesetData[W*H]` + dimension defines; threshold `brightness >= 384` → `0x7FFF` (reveal)
+- `MundoTab.tsx`: auto-generates `.h` when importing a tileset; preview renders white pixels as transparent over checkerboard
 - `gba_export.ts`:
-  - `generateTransitionData` generates **sequential tile animation**: outer loop is tile (ty, tx), inner loop is frames (f)
-  - Entry: tiles animate forward (f=0→F-1), Exit: tiles animate in reverse (f=F-1→0) with final force‑hide
-  - Both entry and exit receive `sceneData` pointer to restore scene pixels where mask reveals
-  - `generateGBAProject` accepts `entryTilesetFrames`, `entryTilesetTilesX`, `entryTilesetTilesY`
+  - `generateTransitionData` generates **sequential tile animation** with **pixel‑level mask** (`gTilesetPixel[f][tileY][tileX]`)
+  - Entry: frames 7→0 (reverse) + force reveal at end of each tile
+  - Exit: frames 0→7 (forward), mask=0 → black, + force black at end (curtain)
+  - `generateGBAProject` accepts `entryTilesetFrames`, `entryTilesetFw`, `entryTilesetFh`
 - `useAppStore.ts` export:
-  - Reads `.h` flat `tilesetData[W*H]` + dimension defines, parses hex values, resamples each frame to `tilesX × tilesY`
-  - Fallback conversion: builds source pixel array from GBA base64, then same resampling to tile grid
-  - Entry transition reads from `splashScreen.entryTransition` directly (no virtual connection lookup)
-  - Fixed brightness threshold: uses `r+g+b` from RGB555 channels, threshold `< 30`
+  - Reads `.h` flat `tilesetData[W*H]` + dimension defines, extracts per-pixel frame data (`fw×fh` per frame, NOT resampled to tile grid)
+  - Fallback conversion from GBA base64 with same per-pixel extraction
+  - Entry transition reads from `splashScreen.entryTransition` directly
+  - `valToMask`: `r+g+b >= 30` → reveal, `< 30` → hide
+- `FxAsset` type: added `hFilePath?: string` for auto-generated `.h`
 - Build passes with no errors
+- Commit `6e590e6` on `feature/transition-system`
 
 ### In Progress
-- User needs to re‑export the project to get the new sequential tile animation C code
+- (none — waiting for user test)
 
 ## Key Decisions
-- **Sequential tile animation**: Instead of progressive frame‑by‑frame reveal (frame 0 reveals some tiles, frame 1 adds more, etc.), each tile individually plays the full animation cycle before the next tile starts
-- `.h` intermediate file uses simple flat `tilesetData[W*H]` format (import‑time), final resizing happens at export time where tileSize is known
-- The splash connection is virtual (`__splash_conn__`), not a real `SceneConnection` — its inspector modifies `splashScreen.entryTransition` directly
-- Exit transition uses **reverse frame order** so tiles progressively hide from scene → black
+- **Pixel‑level mask** (`gTilesetPixel[f][tileY][tileX]`) instead of per‑tile binary (`gTileset[f][ty * tilesX + tx]`) — each pixel of the 8×8 tile is independently controlled
+- **White reveals, black hides** — threshold inverted from original so bright source pixels become `0x7FFF` (reveal scene)
+- **Entry reversed (7→0)**: tile flashes full scene then progressively hides, ends fully revealed
+- **Exit forward (0→7)**: tile progressively shows more black, force black at end ensures curtain fully closed
+- `.h` auto‑generated on import (`MundoTab.tsx`) and saved alongside the source image
 
 ## Time Estimate
-- Total transition time = `TILESET_TILES_X × TILESET_TILES_Y × TILESET_FRAMES × FRAME_DELAY` vsyncs
-- For 30×20 tiles × 8 frames × FRAME_DELAY=5 → 24000 vsyncs ≈ **400 seconds** (6.7 min)
-- Adjust `animSpeed` in the inspector (lower = faster per tile) to control total duration
+- Total transition time = `tilesX × tilesY × TILESET_FRAMES × FRAME_DELAY` vsyncs
+  - tilesX = ceil(240 / tileSize), tilesY = ceil(160 / tileSize)
+  - For 30×20 tiles × 8 frames × FRAME_DELAY=5 → 24000 vsyncs ≈ **400 seconds** (6.7 min)
+- Adjust `animSpeed` in inspector to control total duration
 
 ## Next Steps
-1. User re‑exports the project
-2. Build and test the ROM — verify tiles animate one by one, each playing the full tile's animation cycle
-3. Adjust `animSpeed` in the inspector if transition is too slow/fast
+1. User re‑exports project to get new C code
+2. Build ROM and test — each tile shows full 8‑frame pixel animation sequentially
+3. Adjust `animSpeed` if transition is too slow/fast
 
 ## Relevant Files
-- `src/renderer/utils/transitionHeader.ts`: generates flat `tilesetData[W*H]` + `TILESET_W/H/COLS/ROWS/FRAMES/FRAME_DELAY` defines
-- `src/renderer/store/useAppStore.ts`: export reads splash `entryTransition`, regex matches `tilesetData`, resamples frames to tile grid; lines 829‑982
+- `src/renderer/utils/transitionHeader.ts`: .h generation, brightness threshold
+- `src/renderer/store/useAppStore.ts`: export reads splash `entryTransition`, parses `.h`, extracts per-pixel frames; lines 829‑982
 - `src/renderer/utils/gba_export.ts`:
-  - `generateTransitionData()` lines 243‑366: generates sequential tile animation C code
-  - `generateGBAProject()` lines 368‑499: accepts `entryTilesetFrames`, `entryTilesetTilesX`, `entryTilesetTilesY`; calls `runExitTransition(sceneData)`
-- Old `.h` files with `gTileset[N][64]` format (e.g. `triangular.h`) will NOT match the new regex — user MUST re‑import
+  - `generateTransitionData()` lines 243‑337: generates sequential tile C code with `gTilesetPixel[f][tileY][tileX]`
+  - `generateGBAProject()` lines 340‑686: accepts `entryTilesetFrames`, `entryTilesetFw`, `entryTilesetFh`
+- `src/renderer/components/editor/tabs/MundoTab.tsx`: auto-generates `.h` on import; preview with white→transparent
+- `src/renderer/types/editor.ts`: `FxAsset.hFilePath` field
