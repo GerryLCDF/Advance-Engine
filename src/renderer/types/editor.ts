@@ -61,6 +61,7 @@ export interface FxAsset {
   name: string;
   type: FxAssetType;
   filePath: string;
+  hFilePath?: string; // auto-generated .h file for binary mask data
   // tileset config
   cols: number;
   rows: number;

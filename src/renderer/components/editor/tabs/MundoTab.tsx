@@ -5,6 +5,7 @@ import { InspectorPanel, type InspectorSection, type InspectorField } from '../I
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection } from '../../../types/editor';
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
+import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
 import { MoveIcon, PlusIcon, MinusIcon, Link2Icon, Grid3x3Icon, Grid2x2Icon, PencilIcon, SquareIcon, WandIcon, HomeIcon, GlobeIcon, MoreVerticalIcon, ArrowRightIcon, PaintBucketIcon } from './icons';
 
 // ── Slope helpers ──────────────────────────────────────────────────────
@@ -134,8 +135,10 @@ function TilesetSelector({
     const fileName = filePath.split(/[\\/]/).pop() ?? 'tileset.png';
     const destPath = projectDir ? `${projectDir}/fx/${fileName}` : filePath;
     let cols = 1, rows = 1;
+    let dataUrl: string | undefined;
     const read = await api.file.readImage(filePath);
     if (read.success && read.dataUrl) {
+      dataUrl = read.dataUrl;
       const img = new Image();
       img.src = read.dataUrl;
       await img.decode();
@@ -146,10 +149,19 @@ function TilesetSelector({
       await api.dir.create(`${projectDir}/fx`);
       await api.file.copy(filePath, destPath);
     }
+    let hFilePath: string | undefined;
+    if (projectDir && dataUrl) {
+      try {
+        const hName = (fileName.replace(/\.[^.]+$/, '') + '.h');
+        hFilePath = `${projectDir}/fx/${hName}`;
+        const { header } = await imageDataUrlToTransitionHeader(dataUrl, cols, rows, 5);
+        await api.file.writeText(hFilePath, header);
+      } catch { /* .h file generation failed silently */ }
+    }
     const asset: FxAsset = {
       id: `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: fileName, type: 'tileset',
-      filePath: destPath,
+      filePath: destPath, hFilePath,
       cols, rows, animSpeed: 5, animDirection: 'forward',
       startColor: '#000000', endColor: '#ffffff',
     };
@@ -270,6 +282,19 @@ function TilesetOptions({
   );
 }
 
+/** Make white pixels transparent in place on a canvas context */
+function makeWhiteTransparent(ctx: CanvasRenderingContext2D) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const bright = d[i] + d[i + 1] + d[i + 2];
+    if (bright >= 384) d[i + 3] = 0;
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
 function TilesetAnimPreview({ asset, tilesetUrl }: { asset: FxAsset; tilesetUrl: string }) {
   const animRef = useRef<HTMLCanvasElement>(null);
   const sheetRef = useRef<HTMLCanvasElement>(null);
@@ -314,24 +339,36 @@ function TilesetAnimPreview({ asset, tilesetUrl }: { asset: FxAsset; tilesetUrl:
       aCtx.imageSmoothingEnabled = false;
       sCtx.imageSmoothingEnabled = false;
 
-      // Checker
+      // ── Render animation canvas (white → transparent) ──
+      const tmpA = document.createElement('canvas');
+      tmpA.width = fw; tmpA.height = fh;
+      const tmpACtx = tmpA.getContext('2d')!;
+      const col = frame % asset.cols;
+      const row = Math.floor(frame / asset.cols);
+      tmpACtx.drawImage(img, col * fw, row * fh, fw, fh, 0, 0, fw, fh);
+      makeWhiteTransparent(tmpACtx);
+
       const cs = 6;
       const drawChecker = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
         for (let y = 0; y < h; y += cs) {
           for (let x = 0; x < w; x += cs) {
-            ctx.fillStyle = (Math.floor(x / cs) + Math.floor(y / cs)) % 2 === 0 ? '#ffffff' : '#aaaaaa';
+            ctx.fillStyle = (Math.floor(x / cs) + Math.floor(y / cs)) % 2 === 0 ? '#666' : '#444';
             ctx.fillRect(x, y, cs, cs);
           }
         }
       };
-
       drawChecker(aCtx, nAw, nAh);
-      const col = frame % asset.cols;
-      const row = Math.floor(frame / asset.cols);
-      aCtx.drawImage(img, col * fw, row * fh, fw, fh, 0, 0, nAw, nAh);
+      aCtx.drawImage(tmpA, 0, 0, nAw, nAh);
+
+      // ── Render sheet preview (white → transparent) ──
+      const tmpS = document.createElement('canvas');
+      tmpS.width = img.naturalWidth; tmpS.height = img.naturalHeight;
+      const tmpSCtx = tmpS.getContext('2d')!;
+      tmpSCtx.drawImage(img, 0, 0);
+      makeWhiteTransparent(tmpSCtx);
 
       drawChecker(sCtx, nSw, nSh);
-      sCtx.drawImage(img, 0, 0, nSw, nSh);
+      sCtx.drawImage(tmpS, 0, 0, nSw, nSh);
     };
     img.src = tilesetUrl;
   }, [frame, asset, tilesetUrl]);
@@ -483,7 +520,7 @@ function TransitionPreview({
     });
   }, [asset, mode]);
 
-  // ── Pre-render all frames as canvases ──
+  // ── Pre-render all frames as canvases (white → transparent) ──
   useEffect(() => {
     if (!asset || !tilesetUrl) return;
     const img = new Image();
@@ -500,6 +537,7 @@ function TransitionPreview({
         const cx = c.getContext('2d')!;
         cx.imageSmoothingEnabled = false;
         cx.drawImage(img, col * fw, row * fh, fw, fh, 0, 0, fw, fh);
+        makeWhiteTransparent(cx);
         out.push(c);
       }
       setFrames(out);

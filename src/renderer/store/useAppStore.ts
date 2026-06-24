@@ -829,42 +829,147 @@ export const useAppStore = create<AppState>((set, get) => ({
       // ── Entry transition tileset ──────────────────────────────────────
       let entryTilesetCArray: string | undefined;
       let entryTileSize: number | undefined;
-      let entryTilesetCols: number | undefined;
-      let entryTilesetRows: number | undefined;
+      let entryTilesetFrames: number | undefined;
       let entryTilesetSpeed: number | undefined;
-      let entryTilesetWidth: number | undefined;
-      let entryTilesetHeight: number | undefined;
+      let entryTilesetFw: number | undefined;
+      let entryTilesetFh: number | undefined;
       const entryTransition = state.splashScreen?.entryTransition;
       if (entryTransition?.tilesetId && entryTransition?.tileSize) {
         const tilesetAsset = state.fxAssets.find((a) => a.id === entryTransition.tilesetId);
         if (tilesetAsset) {
           try {
             const api = window.advanceAPI;
-            log.add(`Transicion: convirtiendo tileset "${tilesetAsset.name}"...`);
-            const gbaResult = await api.file.convertImageToGbaBase64Exact(tilesetAsset.filePath);
-            if (gbaResult.success && gbaResult.base64) {
-              const binaryStr = atob(gbaResult.base64);
-              const values: string[] = [];
-              for (let i = 0; i < binaryStr.length; i += 2) {
-                const lo = binaryStr.charCodeAt(i);
-                const hi = binaryStr.charCodeAt(i + 1);
-                const val = (hi << 8) | lo;
-                values.push(`0x${val.toString(16).padStart(4, '0')}`);
-              }
+            const tileSize = entryTransition.tileSize;
+
+            // Helper: parse a source pixel value to reveal (1) or hide (0)
+            function valToMask(n: number): number {
+              const r = n & 0x1F;
+              const g = (n >> 5) & 0x1F;
+              const b = (n >> 10) & 0x1F;
+              return (r + g + b) >= 30 ? 1 : 0;
+            }
+
+            // Helper: build a 2D frame array string
+            function buildPixelFrameArray(frameData: number[][]): string {
               const lines: string[] = [];
-              for (let i = 0; i < values.length; i += 16) {
-                lines.push('  ' + values.slice(i, i + 16).join(', '));
+              for (let y = 0; y < frameData.length; y++) {
+                const rowHex = frameData[y].map((v) => v ? '0x7FFF' : '0x0000');
+                lines.push('    {' + rowHex.join(',') + '}');
               }
-              entryTilesetCArray = '{\n' + lines.join(',\n') + '\n}';
-              entryTileSize = entryTransition.tileSize;
-              entryTilesetCols = tilesetAsset.cols;
-              entryTilesetRows = tilesetAsset.rows;
-              entryTilesetSpeed = tilesetAsset.animSpeed;
-              entryTilesetWidth = gbaResult.width!;
-              entryTilesetHeight = gbaResult.height!;
-              log.add(`Transicion: tileset convertido (${gbaResult.width}x${gbaResult.height}, ${entryTilesetCols}x${entryTilesetRows} frames)`);
-            } else {
-              log.add(`[WARN] Transicion: falló conversión del tileset — ${gbaResult.reason || 'desconocido'}`);
+              return '{\n' + lines.join(',\n') + '\n  }';
+            }
+
+            // Try reading pre-generated .h file first
+            if (tilesetAsset.hFilePath) {
+              const hRead = await api.file.readText(tilesetAsset.hFilePath);
+              if (hRead.success && hRead.data) {
+                const hd = hRead.data;
+                const wMatch = hd.match(/#define\s+TILESET_W\s+(\d+)/);
+                const hMatch = hd.match(/#define\s+TILESET_H\s+(\d+)/);
+                const cMatch = hd.match(/#define\s+TILESET_COLS\s+(\d+)/);
+                const rMatch = hd.match(/#define\s+TILESET_ROWS\s+(\d+)/);
+                const dMatch = hd.match(/tilesetData\[\d+\]\s*=\s*\{([\s\S]*?)\};/);
+                if (wMatch && hMatch && cMatch && rMatch && dMatch) {
+                  const sw = parseInt(wMatch[1]);
+                  const sh = parseInt(hMatch[1]);
+                  const cols = parseInt(cMatch[1]);
+                  const rows = parseInt(rMatch[1]);
+                  const totalFrames = cols * rows;
+                  const fw = sw / cols;
+                  const fh = sh / rows;
+
+                  // Parse hex values from the C array
+                  const hexStr = dMatch[1].replace(/\s+/g, '');
+                  const hexVals = hexStr.split(',').filter(Boolean);
+                  const srcVals: number[] = hexVals.map((s) => {
+                    const n = parseInt(s.trim(), 16);
+                    return isNaN(n) ? 0 : valToMask(n);
+                  });
+
+                  // Extract per-pixel frame data (fw × fh per frame)
+                  const frameArrays: string[] = [];
+                  for (let f = 0; f < totalFrames; f++) {
+                    const fCol = f % cols;
+                    const fRow = Math.floor(f / cols);
+                    const frameData: number[][] = [];
+                    for (let py = 0; py < fh; py++) {
+                      const row: number[] = [];
+                      for (let px = 0; px < fw; px++) {
+                        const srcIdx = (fRow * fh + py) * sw + (fCol * fw + px);
+                        row.push(srcVals[srcIdx] || 0);
+                      }
+                      frameData.push(row);
+                    }
+                    frameArrays.push(`  // Frame ${f}\n  ${buildPixelFrameArray(frameData)}`);
+                  }
+
+                  entryTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
+                  entryTileSize = tileSize;
+                  entryTilesetFrames = totalFrames;
+                  entryTilesetSpeed = tilesetAsset.animSpeed;
+                  entryTilesetFw = fw;
+                  entryTilesetFh = fh;
+                  log.add(`Transicion: usado .h pre-generado "${tilesetAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
+                } else {
+                  log.add(`[WARN] Transicion: .h no contiene tilesetData valido, fallback a conversion`);
+                }
+              } else {
+                log.add(`[WARN] Transicion: no se pudo leer .h, fallback a conversion`);
+              }
+            }
+
+            if (!entryTilesetCArray) {
+              log.add(`Transicion: convirtiendo tileset "${tilesetAsset.name}"...`);
+              const gbaResult = await api.file.convertImageToGbaBase64Exact(tilesetAsset.filePath);
+              if (gbaResult.success && gbaResult.base64) {
+                const binaryStr = atob(gbaResult.base64);
+                const sw = gbaResult.width!;
+                const sh = gbaResult.height!;
+                const cols = tilesetAsset.cols;
+                const rows = tilesetAsset.rows;
+                const totalFrames = cols * rows;
+                const fw = sw / cols;
+                const fh = sh / rows;
+
+                // Parse source pixels from GBA base64
+                const srcVals: number[] = [];
+                for (let y = 0; y < sh; y++) {
+                  for (let x = 0; x < sw; x++) {
+                    const idx = (y * sw + x) * 2;
+                    const lo = binaryStr.charCodeAt(idx);
+                    const hi = binaryStr.charCodeAt(idx + 1);
+                    const val = (hi << 8) | lo;
+                    srcVals.push(valToMask(val));
+                  }
+                }
+
+                // Extract per-pixel frame data (fw × fh per frame)
+                const frameArrays: string[] = [];
+                for (let f = 0; f < totalFrames; f++) {
+                  const fCol = f % cols;
+                  const fRow = Math.floor(f / cols);
+                  const frameData: number[][] = [];
+                  for (let py = 0; py < fh; py++) {
+                    const row: number[] = [];
+                    for (let px = 0; px < fw; px++) {
+                      const srcIdx = (fRow * fh + py) * sw + (fCol * fw + px);
+                      row.push(srcVals[srcIdx] || 0);
+                    }
+                    frameData.push(row);
+                  }
+                  frameArrays.push(`  // Frame ${f}\n  ${buildPixelFrameArray(frameData)}`);
+                }
+
+                entryTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
+                entryTileSize = tileSize;
+                entryTilesetFrames = totalFrames;
+                entryTilesetSpeed = tilesetAsset.animSpeed;
+                entryTilesetFw = fw;
+                entryTilesetFh = fh;
+                log.add(`Transicion: tileset convertido (${sw}x${sh}, ${cols}x${rows} frames)`);
+              } else {
+                log.add(`[WARN] Transicion: falló conversión del tileset — ${gbaResult.reason || 'desconocido'}`);
+              }
             }
           } catch (err: any) {
             log.add(`[WARN] Transicion: error — ${String(err)}`);
@@ -886,7 +991,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
       }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneCArray, sceneColor,
-        entryTilesetCArray, entryTileSize, entryTilesetCols, entryTilesetRows, entryTilesetSpeed, entryTilesetWidth, entryTilesetHeight);
+        entryTilesetCArray, entryTileSize, entryTilesetFrames, entryTilesetSpeed, entryTilesetFw, entryTilesetFh);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
