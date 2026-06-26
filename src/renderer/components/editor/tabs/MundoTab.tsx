@@ -6,6 +6,7 @@ import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection } from '../../../types/editor';
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
+import { imageDataUrlToGradientHeader } from '../../../utils/transitionGradientHeader';
 import { MoveIcon, PlusIcon, MinusIcon, Link2Icon, Grid3x3Icon, Grid2x2Icon, PencilIcon, SquareIcon, WandIcon, HomeIcon, GlobeIcon, MoreVerticalIcon, ArrowRightIcon, PaintBucketIcon } from './icons';
 
 // ── Slope helpers ──────────────────────────────────────────────────────
@@ -401,14 +402,28 @@ function GradientSelector({
     if (!api) return;
     const fileName = filePath.split(/[\\/]/).pop() ?? 'gradient.png';
     const destPath = projectDir ? `${projectDir}/fx/${fileName}` : filePath;
+    let dataUrl: string | undefined;
+    const read = await api.file.readImage(filePath);
+    if (read.success && read.dataUrl) {
+      dataUrl = read.dataUrl;
+    }
     if (projectDir) {
       await api.dir.create(`${projectDir}/fx`);
       await api.file.copy(filePath, destPath);
     }
+    let hFilePath: string | undefined;
+    if (projectDir && dataUrl) {
+      try {
+        const hName = (fileName.replace(/\.[^.]+$/, '') + '.h');
+        hFilePath = `${projectDir}/fx/${hName}`;
+        const { header } = await imageDataUrlToGradientHeader(dataUrl);
+        await api.file.writeText(hFilePath, header);
+      } catch { /* .h file generation failed silently */ }
+    }
     const asset: FxAsset = {
       id: `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: fileName, type: 'gradient',
-      filePath: destPath,
+      filePath: destPath, hFilePath,
       cols: 1, rows: 1, animSpeed: 5, animDirection: 'forward',
       startColor: '#000000', endColor: '#ffffff',
     };

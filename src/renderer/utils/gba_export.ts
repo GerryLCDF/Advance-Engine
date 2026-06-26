@@ -243,109 +243,157 @@ export function createLog(): ExportLog {
 function generateTransitionData(
   framesCArray: string,
   tileSize: number,
-  totalFrames: number,
+  tilesetFrames: number,
   animSpeed: number,
   fw: number,
   fh: number,
+  tag: string,
+  gradientCArray: string | null,
+  gradientW: number,
+  gradientH: number,
 ): string {
 
   const tilesX = Math.ceil(240 / tileSize);
   const tilesY = Math.ceil(160 / tileSize);
+  const arrName = `gTilesetPixel_${tag}`;
+  const renamedArray = framesCArray.replace(/gTilesetPixel/g, arrName);
+  const gW = gradientCArray ? gradientW : tilesX;
+  const gH = gradientCArray ? gradientH : tilesY;
+  const gData = gradientCArray || (() => {
+    const rows: string[] = [];
+    for (let y = 0; y < gH; y++) {
+      const cols: string[] = [];
+      for (let x = 0; x < gW; x++) cols.push('255');
+      rows.push('    {' + cols.join(',') + '}');
+    }
+    return '{\n' + rows.join(',\n') + '\n  }';
+  })();
+
+  // Parse brightness values from gradient data to compute tile order
+  function parseGradientValues(gradientCStr: string): number[] {
+    const cleaned = gradientCStr.replace(/[{};\s\n\r]/g, '');
+    const nums = cleaned.split(',').filter(Boolean).map(s => parseInt(s, 10));
+    return nums.filter(n => !isNaN(n));
+  }
+
+  // Group tiles by exact brightness: same brightness → animate simultaneously
+  const tileCount = gW * gH;
+  const brightnessVals = parseGradientValues(gData);
+  const groupsMap = new Map<number, number[]>();
+  const effectiveVals = brightnessVals.length >= tileCount ? brightnessVals.slice(0, tileCount) : [];
+  if (effectiveVals.length >= tileCount) {
+    for (let i = 0; i < tileCount; i++) {
+      const b = effectiveVals[i];
+      if (!groupsMap.has(b)) groupsMap.set(b, []);
+      groupsMap.get(b)!.push(i);
+    }
+  } else {
+    const all: number[] = [];
+    for (let i = 0; i < tileCount; i++) all.push(i);
+    groupsMap.set(255, all);
+  }
+
+  // Sort groups by brightness descending (white first)
+  const sortedBrightness = Array.from(groupsMap.keys()).sort((a, b) => b - a);
+  const numGroups = sortedBrightness.length;
+
+  // Build group offsets and flat tile order
+  const groupOffsets: number[] = [0];
+  const flatOrder: number[] = [];
+  for (const b of sortedBrightness) {
+    const indices = groupsMap.get(b)!;
+    for (const idx of indices) flatOrder.push(idx);
+    groupOffsets.push(flatOrder.length);
+  }
+  const groupOffsetsStr = '{' + groupOffsets.join(',') + '}';
+  const flatOrderStr = '{' + flatOrder.join(',') + '}';
+
+  const frameDelay = Math.max(1, animSpeed);
+  const forceTile = (color: string, txVar: string, tyVar: string) => `        int iy;
+        for (iy = 0; iy < ${tileSize} && (${tyVar} * ${tileSize} + iy) < 160; iy++) {
+          int ix;
+          for (ix = 0; ix < ${tileSize} && (${txVar} * ${tileSize} + ix) < 240; ix++) {
+            int px = ${txVar} * ${tileSize} + ix;
+            int py = ${tyVar} * ${tileSize} + iy;
+            screen[py * 240 + px] = ${color};
+          }
+        }`;
+  const maskTile = (arr: string, cmp: string, val: string, txVar: string, tyVar: string, frameVar: string) => `        int iy;
+        for (iy = 0; iy < ${tileSize} && (${tyVar} * ${tileSize} + iy) < 160; iy++) {
+          int ix;
+          for (ix = 0; ix < ${tileSize} && (${txVar} * ${tileSize} + ix) < 240; ix++) {
+            int px = ${txVar} * ${tileSize} + ix;
+            int py = ${tyVar} * ${tileSize} + iy;
+            if (${arr}[${frameVar}][iy][ix] ${cmp})
+              screen[py * 240 + px] = ${val};
+          }
+        }`;
+
+  // ── Group-by-brightness sequential (both entry and exit) ──────
+  const seqBlackCmp = '== 0';
+  const seqBlackForce = '0';
+  const seqSceneCmp = '!= 0';
+  const seqSceneVal = 'scene[py * 240 + px]';
+  const seqSceneForce = 'scene[py * 240 + px]';
+  const exitTag = tag === 'Exit';
+
+  const seqFn = (fnName: string, cmp: string, val: string, forceVal: string, clearBeforeFrame: boolean, reverseFrames: boolean) => `
+static void ${fnName}(const u16* scene, int totalFrames) {
+  u16* screen = (u16*)VRAM;
+  const int gGroupOffsets_${tag}[${numGroups + 1}] = ${groupOffsetsStr};
+  const int gTileOrder_${tag}[${tileCount}] = ${flatOrderStr};
+  int g;
+  for (g = 0; g < ${numGroups}; g++) {
+    ${reverseFrames ? `int f = ${tilesetFrames};
+    while (f-- > 0) {` : `int f;
+    for (f = 0; f < ${tilesetFrames}; f++) {`}
+      int ti;
+      for (ti = gGroupOffsets_${tag}[g]; ti < gGroupOffsets_${tag}[g + 1]; ti++) {
+        int idx = gTileOrder_${tag}[ti];
+        int tx2 = idx % ${gW};
+        int ty2 = idx / ${gW};
+${clearBeforeFrame ? `        {
+          int iy;
+          for (iy = 0; iy < ${tileSize} && (ty2 * ${tileSize} + iy) < 160; iy++) {
+            int ix;
+            for (ix = 0; ix < ${tileSize} && (tx2 * ${tileSize} + ix) < 240; ix++) {
+              int px = tx2 * ${tileSize} + ix;
+              int py = ty2 * ${tileSize} + iy;
+              screen[py * 240 + px] = 0;
+            }
+          }
+        }
+` : ''}${maskTile(arrName, cmp, val, 'tx2', 'ty2', 'f')}
+      }
+      int w;
+      for (w = 0; w < ${frameDelay}; w++) waitVSync();
+    }
+    {
+      int ti;
+      for (ti = gGroupOffsets_${tag}[g]; ti < gGroupOffsets_${tag}[g + 1]; ti++) {
+        int idx = gTileOrder_${tag}[ti];
+        int tx2 = idx % ${gW};
+        int ty2 = idx / ${gW};
+${forceTile(forceVal, 'tx2', 'ty2')}
+      }
+    }
+  }
+}
+`;
+
+  const runToBlackCode = seqFn(`runToBlack_${tag}`, seqBlackCmp, '0', seqBlackForce, false, false);
+  const runToSceneCode = seqFn(`runToScene_${tag}`, seqSceneCmp, seqSceneVal, seqSceneForce, exitTag, exitTag);
 
   return `
-// ── Transition: per-pixel tileset mask ──────────────────────────────
-#define TILE_SIZE ${tileSize}
-#define TILESET_FRAMES ${totalFrames}
-#define TILESET_FW ${fw}
-#define TILESET_FH ${fh}
-#define FRAME_DELAY ${Math.max(1, animSpeed)}
+// ── Gradient (${tag}) ──────────────────────────────────────────────
+#define GRADIENT_W_${tag} ${gW}
+#define GRADIENT_H_${tag} ${gH}
+const u8 gGradientData_${tag}[GRADIENT_H_${tag}][GRADIENT_W_${tag}] = ${gData};
 
-${framesCArray}
-
-static void runEntryTransition(const u16* scene) {
-  u16* screen = (u16*)VRAM;
-  int tx, ty, f;
-
-  {
-    int i;
-    for (i = 0; i < PIXEL_COUNT; i++) screen[i] = 0;
-  }
-
-  for (ty = 0; ty < ${tilesY}; ty++) {
-    for (tx = 0; tx < ${tilesX}; tx++) {
-      for (f = TILESET_FRAMES - 1; f >= 0; f--) {
-        int sx = tx * TILE_SIZE;
-        int sy = ty * TILE_SIZE;
-        int tileY;
-        for (tileY = 0; tileY < TILE_SIZE && (sy + tileY) < 160; tileY++) {
-          int tileX;
-          for (tileX = 0; tileX < TILE_SIZE && (sx + tileX) < 240; tileX++) {
-            int px = sx + tileX;
-            int py = sy + tileY;
-            if (gTilesetPixel[f][tileY][tileX] != 0)
-              screen[py * 240 + px] = scene[py * 240 + px];
-            else
-              screen[py * 240 + px] = 0;
-          }
-        }
-        { int v; for (v = 0; v < FRAME_DELAY; v++) waitVSync(); }
-      }
-      {
-        int sx = tx * TILE_SIZE;
-        int sy = ty * TILE_SIZE;
-        int tileY;
-        for (tileY = 0; tileY < TILE_SIZE && (sy + tileY) < 160; tileY++) {
-          int tileX;
-          for (tileX = 0; tileX < TILE_SIZE && (sx + tileX) < 240; tileX++) {
-            int px = sx + tileX;
-            int py = sy + tileY;
-            screen[py * 240 + px] = scene[py * 240 + px];
-          }
-        }
-      }
-    }
-  }
-}
-
-static void runExitTransition(const u16* scene) {
-  u16* screen = (u16*)VRAM;
-  int tx, ty, f;
-
-  for (ty = 0; ty < ${tilesY}; ty++) {
-    for (tx = 0; tx < ${tilesX}; tx++) {
-      for (f = 0; f < TILESET_FRAMES; f++) {
-        int sx = tx * TILE_SIZE;
-        int sy = ty * TILE_SIZE;
-        int tileY;
-        for (tileY = 0; tileY < TILE_SIZE && (sy + tileY) < 160; tileY++) {
-          int tileX;
-          for (tileX = 0; tileX < TILE_SIZE && (sx + tileX) < 240; tileX++) {
-            int px = sx + tileX;
-            int py = sy + tileY;
-            if (gTilesetPixel[f][tileY][tileX] == 0)
-              screen[py * 240 + px] = 0;
-            else
-              screen[py * 240 + px] = scene[py * 240 + px];
-          }
-        }
-        { int v; for (v = 0; v < FRAME_DELAY; v++) waitVSync(); }
-      }
-      {
-        int sx = tx * TILE_SIZE;
-        int sy = ty * TILE_SIZE;
-        int tileY;
-        for (tileY = 0; tileY < TILE_SIZE && (sy + tileY) < 160; tileY++) {
-          int tileX;
-          for (tileX = 0; tileX < TILE_SIZE && (sx + tileX) < 240; tileX++) {
-            int px = sx + tileX;
-            int py = sy + tileY;
-            screen[py * 240 + px] = 0;
-          }
-        }
-      }
-    }
-  }
-}
+// ── Tileset (${tag}) ────────────────────────────────────────────────
+${renamedArray}
+${runToBlackCode}
+${runToSceneCode}
 `;
 }
 
@@ -365,6 +413,19 @@ export function generateGBAProject(
   entryTilesetSpeed?: number,
   entryTilesetFw?: number,
   entryTilesetFh?: number,
+  exitTilesetCArray?: string,
+  exitTileSize?: number,
+  exitTilesetFrames?: number,
+  exitTilesetSpeed?: number,
+  exitTilesetFw?: number,
+  exitTilesetFh?: number,
+  exitTransitionDuration?: number,
+  exitGradientCArray?: string | null,
+  exitGradientW?: number,
+  exitGradientH?: number,
+  entryGradientCArray?: string | null,
+  entryGradientW?: number,
+  entryGradientH?: number,
 ): string {
   log.add(`Generando proyecto GBA: ${name}`);
   log.add(`Autor: ${author}`);
@@ -372,7 +433,17 @@ export function generateGBAProject(
   const hasSplash = splashImageCArray && splashDuration && splashDuration > 0;
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
   const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
-  const hasTransition = !!(entryTilesetCArray && entryTilesetFrames && entryTilesetFw && entryTilesetFh && entryTileSize);
+  const hasEntry = !!(entryTilesetCArray && entryTilesetFrames && entryTilesetFw && entryTilesetFh && entryTileSize);
+  const hasExit = !!(exitTilesetCArray && exitTilesetFrames && exitTilesetFw && exitTilesetFh && exitTileSize);
+  const hasTransition = hasEntry || hasExit;
+  const coverFn = hasEntry ? 'runToBlack_Entry' : hasExit ? 'runToBlack_Exit' : '';
+  const revealFn = hasExit ? 'runToScene_Exit' : hasEntry ? 'runToScene_Entry' : '';
+  const entryFrameLen = (entryTilesetFrames ?? 8) * Math.max(1, entryTilesetSpeed ?? 5);
+  const exitFrameLen = (exitTilesetFrames ?? 8) * Math.max(1, exitTilesetSpeed ?? 5);
+  const minAnimFrames = Math.max(entryFrameLen, exitFrameLen);
+  const totalFrames = Math.max(minAnimFrames, Math.round((exitTransitionDuration ?? 2) * 60));
+  const tilesForGradW = Math.ceil(240 / (exitTileSize ?? 8));
+  const tilesForGradH = Math.ceil(160 / (exitTileSize ?? 8));
 
   function hexColor(cssColor: string): number {
     let hex = cssColor.replace('#', '');
@@ -471,16 +542,26 @@ const u16 sceneData[PIXEL_COUNT] = { [0 ... PIXEL_COUNT-1] = ${fallbackHex} };
     log.add('Sin cancion de fondo para la ROM');
   }
 
-  if (hasTransition) {
+  if (hasEntry) {
     cCode += generateTransitionData(
       entryTilesetCArray!, entryTileSize!,
       entryTilesetFrames!, entryTilesetSpeed ?? 5,
       entryTilesetFw!, entryTilesetFh!,
+      'Entry',
+      entryGradientCArray ?? null, entryGradientW ?? 0, entryGradientH ?? 0,
     );
-    log.add(`Transicion de entrada incluida (${entryTilesetFrames} frames, tile ${entryTileSize}px)`);
+    log.add(`Transicion de entrada (cover): ${entryTilesetFrames} frames, tile ${entryTileSize}px`);
   }
-
-  const exitWaitFrames = 60 * 5; // 5 seconds before exit transition
+  if (hasExit) {
+    cCode += generateTransitionData(
+      exitTilesetCArray!, exitTileSize!,
+      exitTilesetFrames!, exitTilesetSpeed ?? 5,
+      exitTilesetFw!, exitTilesetFh!,
+      'Exit',
+      exitGradientCArray ?? null, exitGradientW ?? tilesForGradW, exitGradientH ?? tilesForGradH,
+    );
+    log.add(`Transicion de salida (reveal): ${exitTilesetFrames} frames, tile ${exitTileSize}px`);
+  }
 
   cCode += `
 // ── Entry Point ─────────────────────────────────────────────────────────
@@ -518,15 +599,11 @@ int main() {
     }
   }
 `;
-      cCode += hasTransition ? `  runEntryTransition(sceneData);
+      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+
+  ${revealFn}(sceneData, ${totalFrames});
 
 ` + fillScene() + `
-
-  {
-    int i;
-    for (i = 0; i < ${exitWaitFrames}; i++) waitVSync();
-  }
-  runExitTransition(sceneData);
 
   while (1) waitVSync();
 ` : renderScene();
@@ -538,15 +615,11 @@ int main() {
     for (i = 0; i < frames; i++) waitVSync();
   }
 `;
-      cCode += hasTransition ? `  runEntryTransition(sceneData);
+      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+
+  ${revealFn}(sceneData, ${totalFrames});
 
 ` + fillScene() + `
-
-  {
-    int i;
-    for (i = 0; i < ${exitWaitFrames}; i++) waitVSync();
-  }
-  runExitTransition(sceneData);
 
   while (1) waitVSync();
 ` : renderScene();
@@ -563,15 +636,11 @@ int main() {
   initSound();
 
 `;
-      cCode += hasTransition ? `  runEntryTransition(sceneData);
+      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+
+  ${revealFn}(sceneData, ${totalFrames});
 
 ` + fillScene() + `
-
-  {
-    int i;
-    for (i = 0; i < ${exitWaitFrames}; i++) waitVSync();
-  }
-  runExitTransition(sceneData);
 
   while (1) {
     waitVSync();
@@ -592,15 +661,11 @@ int main() {
   }
 `;
     } else {
-      cCode += hasTransition ? `  runEntryTransition(sceneData);
+      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+
+  ${revealFn}(sceneData, ${totalFrames});
 
 ` + fillScene() + `
-
-  {
-    int i;
-    for (i = 0; i < ${exitWaitFrames}; i++) waitVSync();
-  }
-  runExitTransition(sceneData);
 
   while (1) waitVSync();
 ` : `  while (1) waitVSync();

@@ -981,6 +981,326 @@ export const useAppStore = create<AppState>((set, get) => ({
         log.add('Transicion de entrada: sin tileset o tileSize, saltando');
       }
 
+      // ── Entry gradient ────────────────────────────────────────────────
+      let entryGradientCArray: string | null = null;
+      let entryGradientW = 0;
+      let entryGradientH = 0;
+      const entryGradId = state.splashScreen?.entryTransition?.gradientId;
+      if (entryGradId) {
+        const gradAsset = state.fxAssets.find((a) => a.id === entryGradId);
+        if (gradAsset) {
+          try {
+            const api = window.advanceAPI;
+            if (gradAsset.hFilePath) {
+              const hRead = await api.file.readText(gradAsset.hFilePath);
+              if (hRead.success && hRead.data) {
+                const hd = hRead.data;
+                const wMatch = hd.match(/#define\s+GRADIENT_W\s+(\d+)/);
+                const hMatch = hd.match(/#define\s+GRADIENT_H\s+(\d+)/);
+                const dMatch = hd.match(/gradientData\[\d+\]\s*=\s*\{([\s\S]*?)\};/);
+                if (wMatch && hMatch && dMatch) {
+                  const sw = parseInt(wMatch[1]);
+                  const sh = parseInt(hMatch[1]);
+                  entryGradientW = sw;
+                  entryGradientH = sh;
+                  const numStr = dMatch[1].replace(/\s+/g, '');
+                  const vals = numStr.split(',').filter(Boolean).map((s) => parseInt(s.trim(), 10));
+                  const rows: string[] = [];
+                  for (let y = 0; y < sh; y++) {
+                    const rowVals: string[] = [];
+                    for (let x = 0; x < sw; x++) {
+                      const v = vals[y * sw + x];
+                      rowVals.push(String(v ?? 0));
+                    }
+                    rows.push('    {' + rowVals.join(',') + '}');
+                  }
+                  entryGradientCArray = '{\n' + rows.join(',\n') + '\n  }';
+                  log.add(`Degradado entrada: usado .h "${gradAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
+                } else {
+                  log.add(`[WARN] Degradado entrada: .h incompleto, fallback a conversion`);
+                }
+              } else {
+                log.add(`[WARN] Degradado entrada: no se pudo leer .h, fallback a conversion`);
+              }
+            }
+
+            if (!entryGradientCArray) {
+              log.add(`Degradado entrada: convirtiendo imagen "${gradAsset.name}"...`);
+              const gbaResult = await api.file.convertImageToGbaBase64Exact(gradAsset.filePath);
+              if (gbaResult.success && gbaResult.base64) {
+                const binaryStr = atob(gbaResult.base64);
+                const sw = gbaResult.width!;
+                const sh = gbaResult.height!;
+                entryGradientW = sw;
+                entryGradientH = sh;
+                const rows: string[] = [];
+                for (let y = 0; y < sh; y++) {
+                  const vals: string[] = [];
+                  for (let x = 0; x < sw; x++) {
+                    const idx = (y * sw + x) * 2;
+                    const lo = binaryStr.charCodeAt(idx);
+                    const hi = binaryStr.charCodeAt(idx + 1);
+                    const val = (hi << 8) | lo;
+                    const r = val & 0x1F;
+                    const g = (val >> 5) & 0x1F;
+                    const b = (val >> 10) & 0x1F;
+                    const brightness = Math.round(((r + g + b) * 255) / 93);
+                    vals.push(String(brightness));
+                  }
+                  rows.push('    {' + vals.join(',') + '}');
+                }
+                entryGradientCArray = '{\n' + rows.join(',\n') + '\n  }';
+                log.add(`Degradado entrada: convertido ${sw}x${sh}`);
+              } else {
+                log.add(`[WARN] Degradado entrada: falló conversión — ${gbaResult.reason || 'desconocido'}`);
+              }
+            }
+          } catch (err: any) {
+            log.add(`[WARN] Degradado entrada: error — ${String(err)}`);
+          }
+        } else {
+          log.add(`[WARN] Degradado entrada: asset "${entryGradId}" no encontrado`);
+        }
+      } else {
+        log.add('Degradado de entrada: no configurado');
+      }
+
+      // ── Exit transition tileset ──────────────────────────────────────
+      let exitTilesetCArray: string | undefined;
+      let exitTileSize: number | undefined;
+      let exitTilesetFrames: number | undefined;
+      let exitTilesetSpeed: number | undefined;
+      let exitTilesetFw: number | undefined;
+      let exitTilesetFh: number | undefined;
+      const exitTransition = state.splashScreen?.exitTransition;
+      if (exitTransition?.tilesetId && exitTransition?.tileSize) {
+        const tilesetAsset = state.fxAssets.find((a) => a.id === exitTransition.tilesetId);
+        if (tilesetAsset) {
+          try {
+            const api = window.advanceAPI;
+            const tileSize = exitTransition.tileSize;
+
+            function valToMask(n: number): number {
+              const r = n & 0x1F;
+              const g = (n >> 5) & 0x1F;
+              const b = (n >> 10) & 0x1F;
+              return (r + g + b) >= 30 ? 1 : 0;
+            }
+
+            function buildPixelFrameArray(frameData: number[][]): string {
+              const lines: string[] = [];
+              for (let y = 0; y < frameData.length; y++) {
+                const rowHex = frameData[y].map((v) => v ? '0x7FFF' : '0x0000');
+                lines.push('    {' + rowHex.join(',') + '}');
+              }
+              return '{\n' + lines.join(',\n') + '\n  }';
+            }
+
+            if (tilesetAsset.hFilePath) {
+              const hRead = await api.file.readText(tilesetAsset.hFilePath);
+              if (hRead.success && hRead.data) {
+                const hd = hRead.data;
+                const wMatch = hd.match(/#define\s+TILESET_W\s+(\d+)/);
+                const hMatch = hd.match(/#define\s+TILESET_H\s+(\d+)/);
+                const cMatch = hd.match(/#define\s+TILESET_COLS\s+(\d+)/);
+                const rMatch = hd.match(/#define\s+TILESET_ROWS\s+(\d+)/);
+                const dMatch = hd.match(/tilesetData\[\d+\]\s*=\s*\{([\s\S]*?)\};/);
+                if (wMatch && hMatch && cMatch && rMatch && dMatch) {
+                  const sw = parseInt(wMatch[1]);
+                  const sh = parseInt(hMatch[1]);
+                  const cols = parseInt(cMatch[1]);
+                  const rows = parseInt(rMatch[1]);
+                  const totalFrames = cols * rows;
+                  const fw = sw / cols;
+                  const fh = sh / rows;
+
+                  const hexStr = dMatch[1].replace(/\s+/g, '');
+                  const hexVals = hexStr.split(',').filter(Boolean);
+                  const srcVals: number[] = hexVals.map((s) => {
+                    const n = parseInt(s.trim(), 16);
+                    return isNaN(n) ? 0 : valToMask(n);
+                  });
+
+                  const frameArrays: string[] = [];
+                  for (let f = 0; f < totalFrames; f++) {
+                    const fCol = f % cols;
+                    const fRow = Math.floor(f / cols);
+                    const frameData: number[][] = [];
+                    for (let py = 0; py < fh; py++) {
+                      const row: number[] = [];
+                      for (let px = 0; px < fw; px++) {
+                        const srcIdx = (fRow * fh + py) * sw + (fCol * fw + px);
+                        row.push(srcVals[srcIdx] || 0);
+                      }
+                      frameData.push(row);
+                    }
+                    frameArrays.push(`  // Frame ${f}\n  ${buildPixelFrameArray(frameData)}`);
+                  }
+
+                  exitTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
+                  exitTileSize = tileSize;
+                  exitTilesetFrames = totalFrames;
+                  exitTilesetSpeed = tilesetAsset.animSpeed;
+                  exitTilesetFw = fw;
+                  exitTilesetFh = fh;
+                  log.add(`Transicion salida: usado .h pre-generado "${tilesetAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
+                } else {
+                  log.add(`[WARN] Transicion salida: .h no contiene tilesetData valido, fallback a conversion`);
+                }
+              } else {
+                log.add(`[WARN] Transicion salida: no se pudo leer .h, fallback a conversion`);
+              }
+            }
+
+            if (!exitTilesetCArray) {
+              log.add(`Transicion salida: convirtiendo tileset "${tilesetAsset.name}"...`);
+              const gbaResult = await api.file.convertImageToGbaBase64Exact(tilesetAsset.filePath);
+              if (gbaResult.success && gbaResult.base64) {
+                const binaryStr = atob(gbaResult.base64);
+                const sw = gbaResult.width!;
+                const sh = gbaResult.height!;
+                const cols = tilesetAsset.cols;
+                const rows = tilesetAsset.rows;
+                const totalFrames = cols * rows;
+                const fw = sw / cols;
+                const fh = sh / rows;
+
+                const srcVals: number[] = [];
+                for (let y = 0; y < sh; y++) {
+                  for (let x = 0; x < sw; x++) {
+                    const idx = (y * sw + x) * 2;
+                    const lo = binaryStr.charCodeAt(idx);
+                    const hi = binaryStr.charCodeAt(idx + 1);
+                    const val = (hi << 8) | lo;
+                    srcVals.push(valToMask(val));
+                  }
+                }
+
+                const frameArrays: string[] = [];
+                for (let f = 0; f < totalFrames; f++) {
+                  const fCol = f % cols;
+                  const fRow = Math.floor(f / cols);
+                  const frameData: number[][] = [];
+                  for (let py = 0; py < fh; py++) {
+                    const row: number[] = [];
+                    for (let px = 0; px < fw; px++) {
+                      const srcIdx = (fRow * fh + py) * sw + (fCol * fw + px);
+                      row.push(srcVals[srcIdx] || 0);
+                    }
+                    frameData.push(row);
+                  }
+                  frameArrays.push(`  // Frame ${f}\n  ${buildPixelFrameArray(frameData)}`);
+                }
+
+                exitTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
+                exitTileSize = tileSize;
+                exitTilesetFrames = totalFrames;
+                exitTilesetSpeed = tilesetAsset.animSpeed;
+                exitTilesetFw = fw;
+                exitTilesetFh = fh;
+                log.add(`Transicion salida: tileset convertido (${sw}x${sh}, ${cols}x${rows} frames)`);
+              } else {
+                log.add(`[WARN] Transicion salida: falló conversión del tileset — ${gbaResult.reason || 'desconocido'}`);
+              }
+            }
+          } catch (err: any) {
+            log.add(`[WARN] Transicion salida: error — ${String(err)}`);
+          }
+        } else {
+          log.add(`[WARN] Transicion salida: tileset ID "${exitTransition.tilesetId}" no encontrado en assets`);
+        }
+      } else {
+        log.add('Transicion de salida: sin tileset o tileSize, saltando');
+      }
+
+      // ── Exit gradient ────────────────────────────────────────────────
+      let exitGradientCArray: string | null = null;
+      let exitGradientW = 0;
+      let exitGradientH = 0;
+      let exitTransitionDuration = exitTransition?.duration ?? 2;
+      const exitGradId = state.splashScreen?.exitTransition?.gradientId;
+      if (exitGradId) {
+        const gradAsset = state.fxAssets.find((a) => a.id === exitGradId);
+        if (gradAsset) {
+          try {
+            const api = window.advanceAPI;
+
+            // Try reading pre-generated .h file first
+            if (gradAsset.hFilePath) {
+              const hRead = await api.file.readText(gradAsset.hFilePath);
+              if (hRead.success && hRead.data) {
+                const hd = hRead.data;
+                const wMatch = hd.match(/#define\s+GRADIENT_W\s+(\d+)/);
+                const hMatch = hd.match(/#define\s+GRADIENT_H\s+(\d+)/);
+                const dMatch = hd.match(/gradientData\[\d+\]\s*=\s*\{([\s\S]*?)\};/);
+                if (wMatch && hMatch && dMatch) {
+                  const sw = parseInt(wMatch[1]);
+                  const sh = parseInt(hMatch[1]);
+                  exitGradientW = sw;
+                  exitGradientH = sh;
+
+                  const numStr = dMatch[1].replace(/\s+/g, '');
+                  const vals = numStr.split(',').filter(Boolean).map((s) => parseInt(s.trim(), 10));
+                  const rows: string[] = [];
+                  for (let y = 0; y < sh; y++) {
+                    const rowVals: string[] = [];
+                    for (let x = 0; x < sw; x++) {
+                      const v = vals[y * sw + x];
+                      rowVals.push(String(v ?? 0));
+                    }
+                    rows.push('    {' + rowVals.join(',') + '}');
+                  }
+                  exitGradientCArray = '{\n' + rows.join(',\n') + '\n  }';
+                  log.add(`Degradado salida: usado .h "${gradAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
+                } else {
+                  log.add(`[WARN] Degradado salida: .h incompleto, fallback a conversion`);
+                }
+              } else {
+                log.add(`[WARN] Degradado salida: no se pudo leer .h, fallback a conversion`);
+              }
+            }
+
+            if (!exitGradientCArray) {
+              log.add(`Degradado salida: convirtiendo imagen "${gradAsset.name}"...`);
+              const gbaResult = await api.file.convertImageToGbaBase64Exact(gradAsset.filePath);
+              if (gbaResult.success && gbaResult.base64) {
+                const binaryStr = atob(gbaResult.base64);
+                const sw = gbaResult.width!;
+                const sh = gbaResult.height!;
+                exitGradientW = sw;
+                exitGradientH = sh;
+                const rows: string[] = [];
+                for (let y = 0; y < sh; y++) {
+                  const vals: string[] = [];
+                  for (let x = 0; x < sw; x++) {
+                    const idx = (y * sw + x) * 2;
+                    const lo = binaryStr.charCodeAt(idx);
+                    const hi = binaryStr.charCodeAt(idx + 1);
+                    const val = (hi << 8) | lo;
+                    const r = val & 0x1F;
+                    const g = (val >> 5) & 0x1F;
+                    const b = (val >> 10) & 0x1F;
+                    const brightness = Math.round(((r + g + b) * 255) / 93);
+                    vals.push(String(brightness));
+                  }
+                  rows.push('    {' + vals.join(',') + '}');
+                }
+                exitGradientCArray = '{\n' + rows.join(',\n') + '\n  }';
+                log.add(`Degradado salida: convertido ${sw}x${sh}`);
+              } else {
+                log.add(`[WARN] Degradado salida: falló conversión — ${gbaResult.reason || 'desconocido'}`);
+              }
+            }
+          } catch (err: any) {
+            log.add(`[WARN] Degradado salida: error — ${String(err)}`);
+          }
+        } else {
+          log.add(`[WARN] Degradado salida: asset "${exitGradId}" no encontrado`);
+        }
+      } else {
+        log.add('Degradado de salida: no configurado');
+      }
+
       const cCode = generateGBAProject({
         scenes: state.scenes,
         sceneConnections: state.sceneConnections,
@@ -991,7 +1311,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
       }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneCArray, sceneColor,
-        entryTilesetCArray, entryTileSize, entryTilesetFrames, entryTilesetSpeed, entryTilesetFw, entryTilesetFh);
+        entryTilesetCArray, entryTileSize, entryTilesetFrames, entryTilesetSpeed, entryTilesetFw, entryTilesetFh,
+        exitTilesetCArray, exitTileSize, exitTilesetFrames, exitTilesetSpeed, exitTilesetFw, exitTilesetFh,
+        exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
+        entryGradientCArray, entryGradientW, entryGradientH);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
