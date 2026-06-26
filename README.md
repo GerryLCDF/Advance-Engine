@@ -182,7 +182,7 @@ Advance Engine puede generar una ROM `.gba` directamente desde el editor:
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.40.0**
+Definida en `src/version.ts` — semver. Actual: **0.42.0**
 
 ### v0.40.0 — Transiciones entre escenas
 - Modelo de datos `TransitionConfig` + `FxAsset` (gradientes y tilesets)
@@ -191,3 +191,10 @@ Definida en `src/version.ts` — semver. Actual: **0.40.0**
 - Transición personalizada con máscara de umbral por gradiente/tileset
 - Previsualización de tilesets con animación ping-pong y fondo ajedrez
 - Eliminación de conexiones desde menú contextual e inspector
+
+### v0.42.0 — Transición secuencial por grupos de brillo + gradiente .h
+- **Grupos de brillo**: tiles con el mismo valor de brillo animan simultáneamente (grupos ordenados de más brillante a más oscuro), reemplazando el modelo wave anterior
+- **Gradiente exportable a .h**: auto-generación al importar en MundoTab, con `#define GRADIENT_W/H` y `gradientData[W*H]`
+- **Salida mejorada**: cada frame limpia el tile a negro antes de escribir, asegurando que todos los frames de tileset se vean completos; frames iteran en reversa (7→0)
+- **Entrada mejorada**: frames iteran en orden 0→7 con force black al final
+- Correcciones críticas: bug de gW=0/gH=0 en entry, parsing de gradiente con llaves anidadas, lectura correcta de exit tileset desde .h

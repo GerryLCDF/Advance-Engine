@@ -273,3 +273,31 @@ El preview de tileset ahora renderiza el blanco como transparente sobre un fondo
 Con 30×20 tiles × 8 frames × `FRAME_DELAY`:
 - `animSpeed=1` → 80s
 - `animSpeed=5` → 400s (6.7 min)
+
+## 26 Junio 2026 — Gradientes + grupos de brillo + salida limpia en reversa
+
+**v0.42.0**. Volví a trabajar en las transiciones después de que el usuario reportara dos bugs: la entrada no aparecía (gW=0, gH=0 cuando no se asignaba gradiente) y la salida solo mostraba el frame 0.
+
+### Lo nuevo:
+
+**Gradiente como .h** — `transitionGradientHeader.ts` genera `#define GRADIENT_W/H` y `const u8 gradientData[W*H]` a partir de la imagen de gradiente. MundoTab auto-genera el .h al importar, igual que con tilesets.
+
+**Grupos de brillo** — En lugar del modelo wave anterior (que calculaba `startFrame` y `maxDelay` por tile), ahora se agrupan tiles por su valor exacto de brillo y los grupos se ordenan de más brillante a más oscuro. Todos los tiles del mismo grupo animan simultáneamente. Se generan `gGroupOffsets_tag[N+1]` y `gTileOrder_tag[count]` en C.
+
+**Salida reescrita** — Ahora cada frame limpia el tile a negro ANTES de escribir la máscara. Esto asegura que todos los frames del tileset se vean completos (antes los frames se acumulaban aditivamente). Los frames se iteran en reversa (7→0) para que el tile empiece mostrando el frame más brillante (casi toda la escena) y termine en negro.
+
+**Entrada reescrita** — Frames en orden 0→7 (forward), sin limpieza previa, force black al final.
+
+### Bugs corregidos:
+1. **gW=0, gH=0 en Entry** — Cuando no se asignaba gradiente, `gW=gH=0` hacía que el loop de tiles nunca se ejecutara. Solución: default a `tilesX/tilesY` cuando no hay gradiente.
+2. **Parsing de gradiente con llaves anidadas** — El regex anterior no manejaba arrays 2D con `{...}` anidados. Solución: `replace(/[{};\s\n\r]/g, '')` — simple y funciona con cualquier formato.
+3. **Lectura de exit tileset** — `hFilePath` no se asignaba correctamente al leer exit tileset. Solución: buscar el .h en `auxPaths` para el exit.
+
+### Archivos modificados:
+- `src/renderer/utils/transitionGradientHeader.ts`: **nuevo** — genera .h desde imagen de gradiente
+- `src/renderer/utils/gba_export.ts`: `generateTransitionData()` reescrita con grupos de brillo, `seqFn` template con flags `clearBeforeFrame` y `reverseFrames`, `runToBlack_Entry` y `runToScene_Exit`
+- `src/renderer/store/useAppStore.ts`: lectura de gradiente con .h primero, fallback a imagen; parsing de arrays C anidados; lectura correcta de exit tileset
+- `src/renderer/components/editor/tabs/MundoTab.tsx`: auto-genera .h para gradiente al importar
+- `AGENTS.md`, `diario-desarrollo.md`, `README.md`, `src/version.ts`: documentación y versión
+
+El usuario confirmó que ambas transiciones (entrada y salida) funcionan correctamente ahora. El ajuste de velocidad queda pendiente.
