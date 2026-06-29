@@ -728,7 +728,7 @@ function buildTransitionSections(
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
-            <input type="number" value={entry.animSpeed} min={0} max={60}
+            <input type="number" value={entry.animSpeed} min={0} max={999}
               onChange={(e) => {
                 const speed = Math.max(0, parseInt(e.target.value) || 0);
                 const effective = speed || 5;
@@ -767,7 +767,7 @@ function buildTransitionSections(
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
-              <input type="number" value={exit.animSpeed} min={0} max={60}
+              <input type="number" value={exit.animSpeed} min={0} max={999}
                 onChange={(e) => {
                   const speed = Math.max(0, parseInt(e.target.value) || 0);
                   const effective = speed || 5;
