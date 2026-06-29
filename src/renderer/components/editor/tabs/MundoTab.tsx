@@ -727,11 +727,15 @@ function buildTransitionSections(
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
-            <input type="number" value={entry.animSpeed || 5} min={1} max={60}
-              onChange={(e) => onChangeEntry({ animSpeed: Math.max(1, parseInt(e.target.value) || 5) })}
+            <input type="number" value={entry.animSpeed} min={0} max={60}
+              onChange={(e) => {
+                const speed = Math.max(0, parseInt(e.target.value) || 0);
+                const effective = speed || 5;
+                onChangeEntry({ animSpeed: speed, duration: effective * 0.5 });
+              }}
               style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
             />
-            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>vsyncs/frame</span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{entry.animSpeed ? 'vsyncs/frame' : '(0 = usar tileset)'}</span>
           </div>
         </div>
       ),
@@ -762,11 +766,15 @@ function buildTransitionSections(
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
-              <input type="number" value={exit.animSpeed || 5} min={1} max={60}
-                onChange={(e) => onChangeExit({ animSpeed: Math.max(1, parseInt(e.target.value) || 5) })}
+              <input type="number" value={exit.animSpeed} min={0} max={60}
+                onChange={(e) => {
+                  const speed = Math.max(0, parseInt(e.target.value) || 0);
+                  const effective = speed || 5;
+                  onChangeExit({ animSpeed: speed, duration: effective * 0.5 });
+                }}
                 style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
               />
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>vsyncs/frame</span>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{exit.animSpeed ? 'vsyncs/frame' : '(0 = usar tileset)'}</span>
               </div>
             </>
           )}
