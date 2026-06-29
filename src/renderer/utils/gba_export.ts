@@ -309,10 +309,10 @@ function generateTransitionData(
   const flatOrderStr = '{' + flatOrder.join(',') + '}';
 
   // totalDurationSec = desired total transition time in seconds
-  // Each group processes tilesetFrames frames; each frame waits frameDelay VSyncs
+  // Each group animates through all tilesetFrames at full speed,
+  // then waits `frameDelay` VSyncs before forcing the tile.
   const totalVSyncs = totalDurationSec * 60;
-  const totalAnimationSteps = numGroups * tilesetFrames;
-  const frameDelay = Math.max(1, Math.round(totalVSyncs / totalAnimationSteps));
+  const frameDelay = Math.max(1, Math.round(totalVSyncs / numGroups));
   const forceTile = (color: string, txVar: string, tyVar: string) => `        int iy;
         for (iy = 0; iy < ${tileSize} && (${tyVar} * ${tileSize} + iy) < 160; iy++) {
           int ix;
@@ -369,6 +369,8 @@ ${clearBeforeFrame ? `        {
         }
 ` : ''}${maskTile(arrName, cmp, val, 'tx2', 'ty2', 'f')}
       }
+    }
+    {
       int w;
       for (w = 0; w < ${frameDelay}; w++) waitVSync();
     }
