@@ -244,7 +244,7 @@ function generateTransitionData(
   framesCArray: string,
   tileSize: number,
   tilesetFrames: number,
-  animSpeed: number,
+  totalDurationSec: number, // total transition time in seconds (1-60)
   fw: number,
   fh: number,
   tag: string,
@@ -308,7 +308,11 @@ function generateTransitionData(
   const groupOffsetsStr = '{' + groupOffsets.join(',') + '}';
   const flatOrderStr = '{' + flatOrder.join(',') + '}';
 
-  const frameDelay = Math.max(1, animSpeed);
+  // totalDurationSec = desired total transition time in seconds
+  // Each group processes tilesetFrames frames; each frame waits frameDelay VSyncs
+  const totalVSyncs = totalDurationSec * 60;
+  const totalAnimationSteps = numGroups * tilesetFrames;
+  const frameDelay = Math.max(1, Math.round(totalVSyncs / totalAnimationSteps));
   const forceTile = (color: string, txVar: string, tyVar: string) => `        int iy;
         for (iy = 0; iy < ${tileSize} && (${tyVar} * ${tileSize} + iy) < 160; iy++) {
           int ix;
@@ -438,10 +442,10 @@ export function generateGBAProject(
   const hasTransition = hasEntry || hasExit;
   const coverFn = hasEntry ? 'runToBlack_Entry' : hasExit ? 'runToBlack_Exit' : '';
   const revealFn = hasExit ? 'runToScene_Exit' : hasEntry ? 'runToScene_Entry' : '';
-  const entryFrameLen = (entryTilesetFrames ?? 8) * Math.max(1, entryTilesetSpeed ?? 5);
-  const exitFrameLen = (exitTilesetFrames ?? 8) * Math.max(1, exitTilesetSpeed ?? 5);
+  const entryFrameLen = (entryTilesetSpeed ?? 5) * 60;
+  const exitFrameLen = (exitTilesetSpeed ?? 5) * 60;
   const minAnimFrames = Math.max(entryFrameLen, exitFrameLen);
-  const totalFrames = Math.max(minAnimFrames, Math.round((exitTransitionDuration ?? 2) * 60));
+  const totalFrames = minAnimFrames;
   const tilesForGradW = Math.ceil(240 / (exitTileSize ?? 8));
   const tilesForGradH = Math.ceil(160 / (exitTileSize ?? 8));
 

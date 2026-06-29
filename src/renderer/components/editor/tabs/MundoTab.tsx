@@ -597,8 +597,8 @@ function TransitionPreview({
 
   useEffect(() => {
     if (!asset || totalFrames <= 1 || frames.length === 0) return;
-    const effectiveSpeed = entry.animSpeed || 5;
-    const tick = Math.max(16, 1800 / effectiveSpeed);
+    const totalMs = (entry.animSpeed || 5) * 1000;
+    const tick = Math.max(16, totalMs / maxFrameSafe);
 
     if (paused) {
       const id = setTimeout(() => {
@@ -727,16 +727,15 @@ function buildTransitionSections(
             projectDir={projectDir}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
-            <input type="number" value={entry.animSpeed} min={0} max={999}
+            <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
+            <input type="number" value={entry.animSpeed || 5} min={1} max={60}
               onChange={(e) => {
-                const speed = Math.max(0, parseInt(e.target.value) || 0);
-                const effective = speed || 5;
-                onChangeEntry({ animSpeed: speed, duration: effective * 0.5 });
+                const sec = Math.max(1, Math.min(60, parseInt(e.target.value) || 5));
+                onChangeEntry({ animSpeed: sec, duration: sec });
               }}
               style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
             />
-            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{entry.animSpeed ? '(más rápido)' : '(0 = usar tileset)'}</span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
           </div>
         </div>
       ),
@@ -766,16 +765,15 @@ function buildTransitionSections(
                 projectDir={projectDir}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
-              <input type="number" value={exit.animSpeed} min={0} max={999}
+              <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
+              <input type="number" value={exit.animSpeed || 5} min={1} max={60}
                 onChange={(e) => {
-                  const speed = Math.max(0, parseInt(e.target.value) || 0);
-                  const effective = speed || 5;
-                  onChangeExit({ animSpeed: speed, duration: effective * 0.5 });
+                  const sec = Math.max(1, Math.min(60, parseInt(e.target.value) || 5));
+                  onChangeExit({ animSpeed: sec, duration: sec });
                 }}
                 style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
               />
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{exit.animSpeed ? '(más rápido)' : '(0 = usar tileset)'}</span>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
               </div>
             </>
           )}

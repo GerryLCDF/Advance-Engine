@@ -89,7 +89,7 @@ const defaultTransition = (): TransitionConfig => ({
   gradientId: '',
   tilesetId: '',
   tileSize: 8,
-  animSpeed: 0,
+  animSpeed: 5,
 });
 
 const defaultFxAsset = (): FxAsset => ({
