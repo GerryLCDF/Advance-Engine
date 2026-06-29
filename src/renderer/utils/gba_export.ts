@@ -468,6 +468,8 @@ export function generateGBAProject(
   entryGradientCArray?: string | null,
   entryGradientW?: number,
   entryGradientH?: number,
+  entryTransitionType?: string,
+  exitTransitionType?: string,
 ): string {
   log.add(`Generando proyecto GBA: ${name}`);
   log.add(`Autor: ${author}`);
@@ -475,18 +477,31 @@ export function generateGBAProject(
   const hasSplash = splashImageCArray && splashDuration && splashDuration > 0;
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
   const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
-  const hasEntry = !!(entryTilesetCArray && entryTilesetFrames && entryTilesetFw && entryTilesetFh && entryTileSize);
-  const hasExit = !!(exitTilesetCArray && exitTilesetFrames && exitTilesetFw && exitTilesetFh && exitTileSize);
+  const entryType = entryTransitionType || 'fade';
+  const exitType = exitTransitionType || 'fade';
+  const hasCustomEntry = !!(entryTilesetCArray && entryTilesetFrames && entryTilesetFw && entryTilesetFh && entryTileSize);
+  const hasCustomExit = !!(exitTilesetCArray && exitTilesetFrames && exitTilesetFw && exitTilesetFh && exitTileSize);
+  const hasEntry = entryType !== 'instant' && (entryType === 'fade' || hasCustomEntry);
+  const hasExit = exitType !== 'instant' && (exitType === 'fade' || hasCustomExit);
   const hasTransition = hasEntry || hasExit;
-  const coverFn = hasEntry ? 'runToBlack_Entry' : hasExit ? 'runToBlack_Exit' : '';
-  const revealFn = hasExit ? 'runToScene_Exit' : hasEntry ? 'runToScene_Entry' : '';
-  const entryFrameLen = (entryTilesetSpeed ?? 5) * 60;
-  const exitFrameLen = (exitTilesetSpeed ?? 5) * 60;
-  const minAnimFrames = Math.max(entryFrameLen, exitFrameLen);
-  const totalFrames = minAnimFrames;
+  const entryTotalFrames = Math.round((entryTilesetSpeed ?? 5) * 60);
+  const exitTotalFrames = Math.round((exitTilesetSpeed ?? 5) * 60);
+  const totalFrames = Math.max(entryTotalFrames, exitTotalFrames);
   const tilesForGradW = Math.ceil(240 / (exitTileSize ?? 8));
   const tilesForGradH = Math.ceil(160 / (exitTileSize ?? 8));
+  const hasCustomTransition = (entryType === 'custom' && hasCustomEntry) || (exitType === 'custom' && hasCustomExit);
 
+  function getCoverCall(): string {
+    if (entryType === 'fade') return `fadeToScene(sceneData, ${entryTotalFrames})`;
+    if (entryType === 'custom' && hasCustomEntry) return `runToBlack_Entry(sceneData, ${totalFrames})`;
+    return '';
+  }
+  function getRevealCall(): string {
+    if (exitType === 'fade') return `fadeToBlack(sceneData, ${exitTotalFrames})`;
+    if (exitType === 'custom' && hasCustomExit) return `runToScene_Exit(sceneData, ${totalFrames})`;
+    if (entryType === 'custom' && hasCustomEntry) return `runToScene_Entry(sceneData, ${totalFrames})`;
+    return '';
+  }
   function hexColor(cssColor: string): number {
     let hex = cssColor.replace('#', '');
     if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
@@ -544,6 +559,42 @@ static void waitVSync(void) {
 }
 `;
 
+  if (hasTransition && (entryType === 'fade' || exitType === 'fade')) {
+    cCode += `
+// ── Fade Transition ──────────────────────────────────────────────────────
+static void fadeToScene(const u16* scene, int totalFrames) {
+  u16* screen = (u16*)VRAM;
+  int i, p;
+  for (i = 0; i < totalFrames; i++) {
+    int t = i + 1;
+    for (p = 0; p < PIXEL_COUNT; p++) {
+      u16 s = scene[p];
+      int r = (s & 0x1F) * t / totalFrames;
+      int g = ((s >> 5) & 0x1F) * t / totalFrames;
+      int b = ((s >> 10) & 0x1F) * t / totalFrames;
+      screen[p] = r | (g << 5) | (b << 10);
+    }
+    waitVSync();
+  }
+}
+
+static void fadeToBlack(const u16* scene, int totalFrames) {
+  u16* screen = (u16*)VRAM;
+  int i, p;
+  for (i = 0; i < totalFrames; i++) {
+    for (p = 0; p < PIXEL_COUNT; p++) {
+      u16 cur = screen[p];
+      int r = (cur & 0x1F) * (totalFrames - i) / totalFrames;
+      int g = ((cur >> 5) & 0x1F) * (totalFrames - i) / totalFrames;
+      int b = ((cur >> 10) & 0x1F) * (totalFrames - i) / totalFrames;
+      screen[p] = r | (g << 5) | (b << 10);
+    }
+    waitVSync();
+  }
+}
+`;
+  }
+
   if (hasSplash) {
     cCode += `
 // ── Splash Screen ─────────────────────────────────────────────────────
@@ -584,7 +635,7 @@ const u16 sceneData[PIXEL_COUNT] = { [0 ... PIXEL_COUNT-1] = ${fallbackHex} };
     log.add('Sin cancion de fondo para la ROM');
   }
 
-  if (hasEntry) {
+  if (entryType === 'custom' && hasCustomEntry) {
     cCode += generateTransitionData(
       entryTilesetCArray!, entryTileSize!,
       entryTilesetFrames!, entryTilesetSpeed ?? 5,
@@ -594,7 +645,7 @@ const u16 sceneData[PIXEL_COUNT] = { [0 ... PIXEL_COUNT-1] = ${fallbackHex} };
     );
     log.add(`Transicion de entrada (cover): ${entryTilesetFrames} frames, tile ${entryTileSize}px`);
   }
-  if (hasExit) {
+  if (exitType === 'custom' && hasCustomExit) {
     cCode += generateTransitionData(
       exitTilesetCArray!, exitTileSize!,
       exitTilesetFrames!, exitTilesetSpeed ?? 5,
@@ -603,6 +654,13 @@ const u16 sceneData[PIXEL_COUNT] = { [0 ... PIXEL_COUNT-1] = ${fallbackHex} };
       exitGradientCArray ?? null, exitGradientW ?? tilesForGradW, exitGradientH ?? tilesForGradH,
     );
     log.add(`Transicion de salida (reveal): ${exitTilesetFrames} frames, tile ${exitTileSize}px`);
+  }
+
+  if (hasTransition) {
+    if (entryType === 'fade') log.add(`Transicion de entrada (fade): ${entryTilesetSpeed ?? 5}s`);
+    if (entryType === 'instant') log.add('Transicion de entrada: instantanea');
+    if (exitType === 'fade') log.add(`Transicion de salida (fade): ${exitTilesetSpeed ?? 5}s`);
+    if (exitType === 'instant') log.add('Transicion de salida: instantanea');
   }
 
   cCode += `
@@ -641,9 +699,9 @@ int main() {
     }
   }
 `;
-      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+      cCode += hasTransition ? `  ${getCoverCall()};
 
-  ${revealFn}(sceneData, ${totalFrames});
+  ${getRevealCall()};
 
 ` + fillScene() + `
 
@@ -657,9 +715,9 @@ int main() {
     for (i = 0; i < frames; i++) waitVSync();
   }
 `;
-      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+      cCode += hasTransition ? `  ${getCoverCall()};
 
-  ${revealFn}(sceneData, ${totalFrames});
+  ${getRevealCall()};
 
 ` + fillScene() + `
 
@@ -678,9 +736,9 @@ int main() {
   initSound();
 
 `;
-      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+      cCode += hasTransition ? `  ${getCoverCall()};
 
-  ${revealFn}(sceneData, ${totalFrames});
+  ${getRevealCall()};
 
 ` + fillScene() + `
 
@@ -703,9 +761,9 @@ int main() {
   }
 `;
     } else {
-      cCode += hasTransition ? `  ${coverFn}(sceneData, ${totalFrames});
+      cCode += hasTransition ? `  ${getCoverCall()};
 
-  ${revealFn}(sceneData, ${totalFrames});
+  ${getRevealCall()};
 
 ` + fillScene() + `
 

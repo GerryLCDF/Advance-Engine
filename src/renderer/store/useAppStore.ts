@@ -38,8 +38,8 @@ const defaultSplashScreen = (): SplashScreen => ({
   duration: 3,
   usePauseScreen: false,
   pauseColor: '#000000',
-  entryTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8, animSpeed: 5 },
-  exitTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8, animSpeed: 5 },
+  entryTransition: { type: 'fade' as const, duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8, animSpeed: 5 },
+  exitTransition: { type: 'fade' as const, duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8, animSpeed: 5 },
 });
 
 const defaultActor = (): Actor => ({
@@ -1212,6 +1212,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         log.add('Transicion de salida: sin tileset o tileSize, saltando');
       }
+      const entryTransitionType = state.splashScreen?.entryTransition?.type || 'fade';
+      const exitTransitionType = state.splashScreen?.exitTransition?.type || 'fade';
+      if (entryTransition && !entryTilesetSpeed) entryTilesetSpeed = entryTransition.animSpeed || 5;
+      if (exitTransition && !exitTilesetSpeed) exitTilesetSpeed = exitTransition.animSpeed || 5;
 
       // ── Exit gradient ────────────────────────────────────────────────
       let exitGradientCArray: string | null = null;
@@ -1314,7 +1318,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         entryTilesetCArray, entryTileSize, entryTilesetFrames, entryTilesetSpeed, entryTilesetFw, entryTilesetFh,
         exitTilesetCArray, exitTileSize, exitTilesetFrames, exitTilesetSpeed, exitTilesetFw, exitTilesetFh,
         exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
-        entryGradientCArray, entryGradientW, entryGradientH);
+        entryGradientCArray, entryGradientW, entryGradientH,
+        entryTransitionType, exitTransitionType);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
@@ -1377,8 +1382,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           collisionTileSize: sc.collisionTileSize ?? 8,
           collisionMap: sc.collisionMap ?? createCollisionMap(sc.width, sc.height, sc.collisionTileSize ?? 8),
         })),
-        sceneConnections: (result.state.sceneConnections ?? []).map((c: any) => ({ ...makeDefaultConnection(c.fromSceneId, c.toSceneId), ...c, id: c.id, usePauseScreen: c.usePauseScreen ?? false, pauseColor: c.pauseColor ?? '#000000', entryTransition: { tileSize: 8, animSpeed: 5, ...(c.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, animSpeed: 5, ...(c.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } })),
-        splashScreen: { ...defaultSplashScreen(), ...result.state.splashScreen, usePauseScreen: result.state.splashScreen?.usePauseScreen ?? false, pauseColor: result.state.splashScreen?.pauseColor ?? '#000000', entryTransition: { tileSize: 8, animSpeed: 5, ...(result.state.splashScreen?.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, animSpeed: 5, ...(result.state.splashScreen?.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } },
+        sceneConnections: (result.state.sceneConnections ?? []).map((c: any) => ({ ...makeDefaultConnection(c.fromSceneId, c.toSceneId), ...c, id: c.id, usePauseScreen: c.usePauseScreen ?? false, pauseColor: c.pauseColor ?? '#000000', entryTransition: { tileSize: 8, animSpeed: 5, ...(c.entryTransition ?? { type: 'fade', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, animSpeed: 5, ...(c.exitTransition ?? { type: 'fade', duration: 0.5, gradientId: '', tilesetId: '' }) } })),
+        splashScreen: { ...defaultSplashScreen(), ...result.state.splashScreen, usePauseScreen: result.state.splashScreen?.usePauseScreen ?? false, pauseColor: result.state.splashScreen?.pauseColor ?? '#000000', entryTransition: { tileSize: 8, animSpeed: 5, ...(result.state.splashScreen?.entryTransition ?? { type: 'fade', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, animSpeed: 5, ...(result.state.splashScreen?.exitTransition ?? { type: 'fade', duration: 0.5, gradientId: '', tilesetId: '' }) } },
         backgrounds: result.state.backgrounds ?? [],
         spriteSheets: result.state.sprites ?? [],
         songs: result.state.songs ?? [],

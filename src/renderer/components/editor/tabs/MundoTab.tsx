@@ -591,12 +591,15 @@ function TransitionPreview({
 
   // ── Cada nivel de brillo del degradado = un paso de animaci├│n ──
   const hasGradient = gradientData && gradientW > 0 && gradientH > 0 && numGradientLevels > 1;
-  const extraFrames = hasGradient ? totalFrames : 0; // frames extra para que los ├║ltimos tiles terminen y se pongan negros
+  const extraFrames = hasGradient ? totalFrames : 0;
   const maxFrame = hasGradient ? numGradientLevels + extraFrames : (totalFrames > 1 ? totalFrames : 1);
-  const maxFrameSafe = maxFrame > 1 ? maxFrame : 1;
+  const fadeFrames = entry.type === 'fade' ? Math.max(2, Math.round((entry.animSpeed || 5) * 10)) : 1;
+  const actualMaxFrame = entry.type === 'fade' ? fadeFrames : maxFrame;
+  const maxFrameSafe = actualMaxFrame > 1 ? actualMaxFrame : 1;
 
   useEffect(() => {
-    if (!asset || totalFrames <= 1 || frames.length === 0) return;
+    if (entry.type === 'instant') return;
+    if (entry.type !== 'fade' && (!asset || totalFrames <= 1 || frames.length === 0)) return;
     const totalMs = (entry.animSpeed || 5) * 1000;
     const steps = Math.max(1, maxFrameSafe);
     const tick = Math.max(16, totalMs / steps);
@@ -630,6 +633,37 @@ function TransitionPreview({
     canvas.width = W;
     canvas.height = H;
     ctx.imageSmoothingEnabled = false;
+
+    if (entry.type === 'instant') {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 40px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(bgLabel, W / 2, H / 2);
+      return;
+    }
+
+    if (entry.type === 'fade') {
+      const progress = maxFrameSafe > 1
+        ? Math.min(1, Math.max(0, (mode === 'exit' ? (maxFrameSafe - 1 - frame) : frame) / (maxFrameSafe - 1)))
+        : 0;
+      // Entry: black → scene (alpha goes 1→0). Exit: scene → black (alpha goes 0→1)
+      const alpha = mode === 'exit' ? progress : 1 - progress;
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 40px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(bgLabel, W / 2, H / 2);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      return;
+    }
 
     // Scene background
     ctx.fillStyle = bgColor;
@@ -696,6 +730,77 @@ function TransitionPreview({
   );
 }
 
+function TransitionSectionContent({
+  config, onChange, otherConfig, onOtherChange, fxAssets, projectDir, label, color,
+}: {
+  config: TransitionConfig;
+  onChange: (patch: Partial<TransitionConfig>) => void;
+  otherConfig?: TransitionConfig;
+  onOtherChange?: (patch: Partial<TransitionConfig>) => void;
+  fxAssets: FxAsset[];
+  projectDir: string | null;
+  label: string;
+  color: string;
+}) {
+  const STYLE = { fontSize: 10, color: 'var(--text-secondary)' };
+  const selType = config.type || 'fade';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <label style={STYLE}>Tipo:</label>
+        <select value={selType}
+          onChange={(e) => {
+            const newType = e.target.value as TransitionType;
+            onChange({ type: newType });
+            if (newType === 'instant' && otherConfig && onOtherChange) {
+              onOtherChange({ type: 'instant' });
+            }
+          }}
+          style={{ flex: 1, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px' }}>
+          <option value="fade">Degradado</option>
+          <option value="instant">Instantánea</option>
+          <option value="custom">Personalizada</option>
+        </select>
+      </div>
+      {selType === 'custom' ? (
+        <>
+          <TransitionPreview entry={config} fxAssets={fxAssets} mode={label === 'Entrada' ? 'entry' : 'exit'} bgColor={color} bgLabel={label === 'Entrada' ? 'A' : 'B'} />
+          <TilesetSelector
+            value={config.tilesetId}
+            fxAssets={fxAssets}
+            onChange={(id) => onChange({ tilesetId: id })}
+            projectDir={projectDir}
+          />
+          <TilesetOptions
+            tilesetId={config.tilesetId}
+            fxAssets={fxAssets}
+            tileSize={config.tileSize}
+          />
+          <GradientSelector
+            value={config.gradientId}
+            fxAssets={fxAssets}
+            onChange={(id) => onChange({ gradientId: id })}
+            projectDir={projectDir}
+          />
+        </>
+      ) : selType === 'fade' ? (
+        <TransitionPreview entry={config} fxAssets={fxAssets} mode={label === 'Entrada' ? 'entry' : 'exit'} bgColor={color} bgLabel={label === 'Entrada' ? 'A' : 'B'} />
+      ) : null}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <label style={STYLE}>Duración:</label>
+        <input type="number" value={config.animSpeed || 5} min={0.1} max={60} step={0.1}
+          onChange={(e) => {
+            const sec = Math.max(0.1, Math.min(60, parseFloat(e.target.value) || 5));
+            onChange({ animSpeed: sec, duration: sec });
+          }}
+          style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
+        />
+        <span style={STYLE}>seg</span>
+      </div>
+    </div>
+  );
+}
+
 function buildTransitionSections(
   entry: TransitionConfig,
   fxAssets: FxAsset[],
@@ -707,80 +812,12 @@ function buildTransitionSections(
   return [
     {
       title: 'Transición (entrada)',
-      content: (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <TransitionPreview entry={entry} fxAssets={fxAssets} mode="entry" bgColor="#4488cc" bgLabel="A" />
-          <TilesetSelector
-            value={entry.tilesetId}
-            fxAssets={fxAssets}
-            onChange={(id) => onChangeEntry({ tilesetId: id })}
-            projectDir={projectDir}
-          />
-          <TilesetOptions
-            tilesetId={entry.tilesetId}
-            fxAssets={fxAssets}
-            tileSize={entry.tileSize}
-          />
-          <GradientSelector
-            value={entry.gradientId}
-            fxAssets={fxAssets}
-            onChange={(id) => onChangeEntry({ gradientId: id })}
-            projectDir={projectDir}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
-            <input type="number" value={entry.animSpeed || 5} min={0.1} max={60} step={0.1}
-              onChange={(e) => {
-                const sec = Math.max(0.1, Math.min(60, parseFloat(e.target.value) || 5));
-                onChangeEntry({ animSpeed: sec, duration: sec });
-              }}
-              style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
-            />
-            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
-          </div>
-        </div>
-      ),
+      content: <TransitionSectionContent config={entry} onChange={onChangeEntry} otherConfig={exit} onOtherChange={onChangeExit} fxAssets={fxAssets} projectDir={projectDir} label="Entrada" color="#4488cc" />,
     },
-    {
+    ...(exit && onChangeExit ? [{
       title: 'Transición (salida)',
-      content: (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <TransitionPreview entry={exit ?? entry} fxAssets={fxAssets} mode="exit" bgColor="#88cc66" bgLabel="B" />
-          {exit && onChangeExit && (
-            <>
-              <TilesetSelector
-                value={exit.tilesetId}
-                fxAssets={fxAssets}
-                onChange={(id) => onChangeExit({ tilesetId: id })}
-                projectDir={projectDir}
-              />
-              <TilesetOptions
-                tilesetId={exit.tilesetId}
-                fxAssets={fxAssets}
-                tileSize={exit.tileSize}
-              />
-              <GradientSelector
-                value={exit.gradientId}
-                fxAssets={fxAssets}
-                onChange={(id) => onChangeExit({ gradientId: id })}
-                projectDir={projectDir}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
-              <input type="number" value={exit.animSpeed || 5} min={0.1} max={60} step={0.1}
-                onChange={(e) => {
-                  const sec = Math.max(0.1, Math.min(60, parseFloat(e.target.value) || 5));
-                  onChangeExit({ animSpeed: sec, duration: sec });
-                }}
-                style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
-              />
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
-              </div>
-            </>
-          )}
-        </div>
-      ),
-    },
+      content: <TransitionSectionContent config={exit} onChange={onChangeExit} otherConfig={entry} onOtherChange={onChangeEntry} fxAssets={fxAssets} projectDir={projectDir} label="Salida" color="#88cc66" />,
+    }] : []),
   ];
 }
 

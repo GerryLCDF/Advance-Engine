@@ -51,7 +51,7 @@ export interface Actor {
   properties: Record<string, string>;
 }
 
-export type TransitionType = 'instant' | 'fade' | 'curtain' | 'scroll' | 'custom';
+export type TransitionType = 'fade' | 'instant' | 'custom';
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 export type FxAssetType = 'gradient' | 'tileset';
 export type TilesetAnimDirection = 'forward' | 'reverse';
@@ -74,17 +74,15 @@ export interface FxAsset {
 
 export interface TransitionConfig {
   type: TransitionType;
-  direction: TransitionDirection;
-  duration: number; // total transition duration in seconds (unused in C, kept for compat)
-  gradientId: string; // FxAsset id of type 'gradient'
-  tilesetId: string; // FxAsset id of type 'tileset'
-  tileSize: number; // 8, 10, or 16
-  animSpeed: number; // frames per tileset frame (0 = use tileset asset default)
+  duration: number; // total transition time in seconds (0.1-60)
+  gradientId: string; // FxAsset id of type 'gradient' (solo custom)
+  tilesetId: string; // FxAsset id of type 'tileset' (solo custom)
+  tileSize: number; // 8, 10, or 16 (solo custom)
+  animSpeed: number; // segundos (solo custom, legacy compat)
 }
 
 const defaultTransition = (): TransitionConfig => ({
-  type: 'instant',
-  direction: 'right',
+  type: 'fade',
   duration: 0.5,
   gradientId: '',
   tilesetId: '',
