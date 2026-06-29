@@ -597,7 +597,8 @@ function TransitionPreview({
 
   useEffect(() => {
     if (!asset || totalFrames <= 1 || frames.length === 0) return;
-    const tick = Math.max(16, ((entry.duration || 1) * 1000) / maxFrameSafe);
+    const effectiveSpeed = entry.animSpeed || 5;
+    const tick = Math.max(16, effectiveSpeed * 30);
 
     if (paused) {
       const id = setTimeout(() => {
