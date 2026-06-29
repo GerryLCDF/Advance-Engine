@@ -598,7 +598,7 @@ function TransitionPreview({
   useEffect(() => {
     if (!asset || totalFrames <= 1 || frames.length === 0) return;
     const effectiveSpeed = entry.animSpeed || 5;
-    const tick = Math.max(16, effectiveSpeed * 30);
+    const tick = Math.max(16, 1800 / effectiveSpeed);
 
     if (paused) {
       const id = setTimeout(() => {
@@ -736,7 +736,7 @@ function buildTransitionSections(
               }}
               style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
             />
-            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{entry.animSpeed ? 'vsyncs/frame' : '(0 = usar tileset)'}</span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{entry.animSpeed ? '(más rápido)' : '(0 = usar tileset)'}</span>
           </div>
         </div>
       ),
@@ -775,7 +775,7 @@ function buildTransitionSections(
                 }}
                 style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
               />
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{exit.animSpeed ? 'vsyncs/frame' : '(0 = usar tileset)'}</span>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{exit.animSpeed ? '(más rápido)' : '(0 = usar tileset)'}</span>
               </div>
             </>
           )}

@@ -906,7 +906,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   entryTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                   entryTileSize = tileSize;
                   entryTilesetFrames = totalFrames;
-                  entryTilesetSpeed = entryTransition.animSpeed || tilesetAsset.animSpeed;
+                  entryTilesetSpeed = entryTransition.animSpeed > 0 ? Math.max(1, Math.round(60 / entryTransition.animSpeed)) : tilesetAsset.animSpeed;
                   entryTilesetFw = fw;
                   entryTilesetFh = fh;
                   log.add(`Transicion: usado .h pre-generado "${tilesetAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
@@ -963,7 +963,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 entryTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                 entryTileSize = tileSize;
                 entryTilesetFrames = totalFrames;
-                entryTilesetSpeed = entryTransition.animSpeed || tilesetAsset.animSpeed;
+                entryTilesetSpeed = entryTransition.animSpeed > 0 ? Math.max(1, Math.round(60 / entryTransition.animSpeed)) : tilesetAsset.animSpeed;
                 entryTilesetFw = fw;
                 entryTilesetFh = fh;
                 log.add(`Transicion: tileset convertido (${sw}x${sh}, ${cols}x${rows} frames)`);
@@ -1140,7 +1140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   exitTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                   exitTileSize = tileSize;
                   exitTilesetFrames = totalFrames;
-                  exitTilesetSpeed = exitTransition.animSpeed || tilesetAsset.animSpeed;
+                  exitTilesetSpeed = exitTransition.animSpeed > 0 ? Math.max(1, Math.round(60 / exitTransition.animSpeed)) : tilesetAsset.animSpeed;
                   exitTilesetFw = fw;
                   exitTilesetFh = fh;
                   log.add(`Transicion salida: usado .h pre-generado "${tilesetAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
@@ -1195,7 +1195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 exitTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                 exitTileSize = tileSize;
                 exitTilesetFrames = totalFrames;
-                exitTilesetSpeed = exitTransition.animSpeed || tilesetAsset.animSpeed;
+                exitTilesetSpeed = exitTransition.animSpeed > 0 ? Math.max(1, Math.round(60 / exitTransition.animSpeed)) : tilesetAsset.animSpeed;
                 exitTilesetFw = fw;
                 exitTilesetFh = fh;
                 log.add(`Transicion salida: tileset convertido (${sw}x${sh}, ${cols}x${rows} frames)`);
