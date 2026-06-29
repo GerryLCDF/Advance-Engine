@@ -598,7 +598,8 @@ function TransitionPreview({
   useEffect(() => {
     if (!asset || totalFrames <= 1 || frames.length === 0) return;
     const totalMs = (entry.animSpeed || 5) * 1000;
-    const tick = Math.max(16, totalMs / maxFrameSafe);
+    const steps = Math.max(1, maxFrameSafe);
+    const tick = Math.max(16, totalMs / steps);
 
     if (paused) {
       const id = setTimeout(() => {
@@ -728,9 +729,9 @@ function buildTransitionSections(
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
-            <input type="number" value={entry.animSpeed || 5} min={1} max={60}
+            <input type="number" value={entry.animSpeed || 5} min={0.1} max={60} step={0.1}
               onChange={(e) => {
-                const sec = Math.max(1, Math.min(60, parseInt(e.target.value) || 5));
+                const sec = Math.max(0.1, Math.min(60, parseFloat(e.target.value) || 5));
                 onChangeEntry({ animSpeed: sec, duration: sec });
               }}
               style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
@@ -766,9 +767,9 @@ function buildTransitionSections(
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
-              <input type="number" value={exit.animSpeed || 5} min={1} max={60}
+              <input type="number" value={exit.animSpeed || 5} min={0.1} max={60} step={0.1}
                 onChange={(e) => {
-                  const sec = Math.max(1, Math.min(60, parseInt(e.target.value) || 5));
+                  const sec = Math.max(0.1, Math.min(60, parseFloat(e.target.value) || 5));
                   onChangeExit({ animSpeed: sec, duration: sec });
                 }}
                 style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}

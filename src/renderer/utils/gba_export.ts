@@ -311,8 +311,44 @@ function generateTransitionData(
   // totalDurationSec = desired total transition time in seconds
   // Each group animates through all tilesetFrames at full speed,
   // then waits `frameDelay` VSyncs before forcing the tile.
+  // If there are too many groups to fit in the available VSync budget,
+  // merge consecutive brightness bins so each bin gets at least 1 VSync.
   const totalVSyncs = totalDurationSec * 60;
-  const frameDelay = Math.max(1, Math.round(totalVSyncs / numGroups));
+  const maxGroups = Math.max(1, Math.floor(totalVSyncs));
+  const groupsArr: { brightness: number; indices: number[] }[] = [];
+
+  if (numGroups > maxGroups && totalVSyncs > 0) {
+    // Merge groups into maxGroups bins
+    const binSize = Math.ceil(sortedBrightness.length / maxGroups);
+    for (let b = 0; b < maxGroups; b++) {
+      const start = b * binSize;
+      const end = Math.min(start + binSize, sortedBrightness.length);
+      const merged: number[] = [];
+      for (let i = start; i < end; i++) {
+        const bi = sortedBrightness[i];
+        const indices = groupsMap.get(bi)!;
+        merged.push(...indices);
+      }
+      groupsArr.push({ brightness: maxGroups - b, indices: merged });
+    }
+  } else {
+    for (const b of sortedBrightness) {
+      groupsArr.push({ brightness: b, indices: groupsMap.get(b)! });
+    }
+  }
+
+  // Rebuild group offsets and flat tile order from (possibly merged) groups
+  const finalGroupOffsets: number[] = [0];
+  const finalFlatOrder: number[] = [];
+  for (const grp of groupsArr) {
+    for (const idx of grp.indices) finalFlatOrder.push(idx);
+    finalGroupOffsets.push(finalFlatOrder.length);
+  }
+  const finalNumGroups = groupsArr.length;
+  const finalGroupOffsetsStr = '{' + finalGroupOffsets.join(',') + '}';
+  const finalFlatOrderStr = '{' + finalFlatOrder.join(',') + '}';
+
+  const frameDelay = Math.max(1, Math.round(totalVSyncs / finalNumGroups));
   const forceTile = (color: string, txVar: string, tyVar: string) => `        int iy;
         for (iy = 0; iy < ${tileSize} && (${tyVar} * ${tileSize} + iy) < 160; iy++) {
           int ix;
@@ -344,10 +380,10 @@ function generateTransitionData(
   const seqFn = (fnName: string, cmp: string, val: string, forceVal: string, clearBeforeFrame: boolean, reverseFrames: boolean) => `
 static void ${fnName}(const u16* scene, int totalFrames) {
   u16* screen = (u16*)VRAM;
-  const int gGroupOffsets_${tag}[${numGroups + 1}] = ${groupOffsetsStr};
-  const int gTileOrder_${tag}[${tileCount}] = ${flatOrderStr};
+  const int gGroupOffsets_${tag}[${finalNumGroups + 1}] = ${finalGroupOffsetsStr};
+  const int gTileOrder_${tag}[${tileCount}] = ${finalFlatOrderStr};
   int g;
-  for (g = 0; g < ${numGroups}; g++) {
+  for (g = 0; g < ${finalNumGroups}; g++) {
     ${reverseFrames ? `int f = ${tilesetFrames};
     while (f-- > 0) {` : `int f;
     for (f = 0; f < ${tilesetFrames}; f++) {`}
