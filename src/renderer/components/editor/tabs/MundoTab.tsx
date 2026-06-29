@@ -732,12 +732,12 @@ function buildTransitionSections(
             projectDir={projectDir}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
-            <input type="number" value={entry.duration} min={0.1} max={30} step={0.1}
-              onChange={(e) => onChangeEntry({ duration: Math.max(0.1, parseFloat(e.target.value) || 1) })}
+            <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
+            <input type="number" value={entry.animSpeed || 5} min={1} max={60}
+              onChange={(e) => onChangeEntry({ animSpeed: Math.max(1, parseInt(e.target.value) || 5) })}
               style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
             />
-            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>vsyncs/frame</span>
           </div>
         </div>
       ),
@@ -767,12 +767,12 @@ function buildTransitionSections(
                 projectDir={projectDir}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Duración:</label>
-              <input type="number" value={exit.duration} min={0.1} max={30} step={0.1}
-                onChange={(e) => onChangeExit({ duration: Math.max(0.1, parseFloat(e.target.value) || 1) })}
+              <label style={{ fontSize: 9, color: 'var(--text-muted)' }}>Velocidad:</label>
+              <input type="number" value={exit.animSpeed || 5} min={1} max={60}
+                onChange={(e) => onChangeExit({ animSpeed: Math.max(1, parseInt(e.target.value) || 5) })}
                 style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }}
               />
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>seg</span>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>vsyncs/frame</span>
               </div>
             </>
           )}

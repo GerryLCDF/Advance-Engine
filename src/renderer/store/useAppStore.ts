@@ -38,8 +38,8 @@ const defaultSplashScreen = (): SplashScreen => ({
   duration: 3,
   usePauseScreen: false,
   pauseColor: '#000000',
-  entryTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8 },
-  exitTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8 },
+  entryTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8, animSpeed: 0 },
+  exitTransition: { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '', tileSize: 8, animSpeed: 0 },
 });
 
 const defaultActor = (): Actor => ({
@@ -906,7 +906,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   entryTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                   entryTileSize = tileSize;
                   entryTilesetFrames = totalFrames;
-                  entryTilesetSpeed = tilesetAsset.animSpeed;
+                  entryTilesetSpeed = entryTransition.animSpeed || tilesetAsset.animSpeed;
                   entryTilesetFw = fw;
                   entryTilesetFh = fh;
                   log.add(`Transicion: usado .h pre-generado "${tilesetAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
@@ -963,7 +963,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 entryTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                 entryTileSize = tileSize;
                 entryTilesetFrames = totalFrames;
-                entryTilesetSpeed = tilesetAsset.animSpeed;
+                entryTilesetSpeed = entryTransition.animSpeed || tilesetAsset.animSpeed;
                 entryTilesetFw = fw;
                 entryTilesetFh = fh;
                 log.add(`Transicion: tileset convertido (${sw}x${sh}, ${cols}x${rows} frames)`);
@@ -1140,7 +1140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   exitTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                   exitTileSize = tileSize;
                   exitTilesetFrames = totalFrames;
-                  exitTilesetSpeed = tilesetAsset.animSpeed;
+                  exitTilesetSpeed = exitTransition.animSpeed || tilesetAsset.animSpeed;
                   exitTilesetFw = fw;
                   exitTilesetFh = fh;
                   log.add(`Transicion salida: usado .h pre-generado "${tilesetAsset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
@@ -1195,7 +1195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 exitTilesetCArray = `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`;
                 exitTileSize = tileSize;
                 exitTilesetFrames = totalFrames;
-                exitTilesetSpeed = tilesetAsset.animSpeed;
+                exitTilesetSpeed = exitTransition.animSpeed || tilesetAsset.animSpeed;
                 exitTilesetFw = fw;
                 exitTilesetFh = fh;
                 log.add(`Transicion salida: tileset convertido (${sw}x${sh}, ${cols}x${rows} frames)`);
@@ -1377,8 +1377,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           collisionTileSize: sc.collisionTileSize ?? 8,
           collisionMap: sc.collisionMap ?? createCollisionMap(sc.width, sc.height, sc.collisionTileSize ?? 8),
         })),
-        sceneConnections: (result.state.sceneConnections ?? []).map((c: any) => ({ ...makeDefaultConnection(c.fromSceneId, c.toSceneId), ...c, id: c.id, usePauseScreen: c.usePauseScreen ?? false, pauseColor: c.pauseColor ?? '#000000', entryTransition: { tileSize: 8, ...(c.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, ...(c.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } })),
-        splashScreen: { ...defaultSplashScreen(), ...result.state.splashScreen, usePauseScreen: result.state.splashScreen?.usePauseScreen ?? false, pauseColor: result.state.splashScreen?.pauseColor ?? '#000000', entryTransition: { tileSize: 8, ...(result.state.splashScreen?.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, ...(result.state.splashScreen?.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } },
+        sceneConnections: (result.state.sceneConnections ?? []).map((c: any) => ({ ...makeDefaultConnection(c.fromSceneId, c.toSceneId), ...c, id: c.id, usePauseScreen: c.usePauseScreen ?? false, pauseColor: c.pauseColor ?? '#000000', entryTransition: { tileSize: 8, animSpeed: 0, ...(c.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, animSpeed: 0, ...(c.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } })),
+        splashScreen: { ...defaultSplashScreen(), ...result.state.splashScreen, usePauseScreen: result.state.splashScreen?.usePauseScreen ?? false, pauseColor: result.state.splashScreen?.pauseColor ?? '#000000', entryTransition: { tileSize: 8, animSpeed: 0, ...(result.state.splashScreen?.entryTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) }, exitTransition: { tileSize: 8, animSpeed: 0, ...(result.state.splashScreen?.exitTransition ?? { type: 'instant', direction: 'right', duration: 0.5, gradientId: '', tilesetId: '' }) } },
         backgrounds: result.state.backgrounds ?? [],
         spriteSheets: result.state.sprites ?? [],
         songs: result.state.songs ?? [],

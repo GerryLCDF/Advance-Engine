@@ -75,10 +75,11 @@ export interface FxAsset {
 export interface TransitionConfig {
   type: TransitionType;
   direction: TransitionDirection;
-  duration: number; // total transition duration in seconds
+  duration: number; // total transition duration in seconds (unused in C, kept for compat)
   gradientId: string; // FxAsset id of type 'gradient'
   tilesetId: string; // FxAsset id of type 'tileset'
   tileSize: number; // 8, 10, or 16
+  animSpeed: number; // frames per tileset frame (0 = use tileset asset default)
 }
 
 const defaultTransition = (): TransitionConfig => ({
@@ -88,6 +89,7 @@ const defaultTransition = (): TransitionConfig => ({
   gradientId: '',
   tilesetId: '',
   tileSize: 8,
+  animSpeed: 0,
 });
 
 const defaultFxAsset = (): FxAsset => ({
