@@ -264,12 +264,6 @@ function TilesetOptions({
       {tilesetUrl && <TilesetAnimPreview asset={sel} tilesetUrl={tilesetUrl} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 4, background: 'var(--bg-canvas)', borderRadius: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={STYLE}>Velocidad:</span>
-          <input type="number" value={sel.animSpeed} min={1} max={60}
-            onChange={(e) => upd({ animSpeed: parseInt(e.target.value) || 5 })}
-            style={{ width: 50, background: 'var(--bg-canvas)', border: '1px solid var(--border-color)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 4px' }} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={STYLE}>Dirección:</span>
           <select value={sel.animDirection}
             onChange={(e) => upd({ animDirection: e.target.value as TilesetAnimDirection })}
