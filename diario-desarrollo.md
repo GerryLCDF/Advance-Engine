@@ -300,4 +300,27 @@ Con 30×20 tiles × 8 frames × `FRAME_DELAY`:
 - `src/renderer/components/editor/tabs/MundoTab.tsx`: auto-genera .h para gradiente al importar
 - `AGENTS.md`, `diario-desarrollo.md`, `README.md`, `src/version.ts`: documentación y versión
 
-El usuario confirmó que ambas transiciones (entrada y salida) funcionan correctamente ahora. El ajuste de velocidad queda pendiente.
+El usuario confirmó que ambas transiciones (entrada y salida) funcionan correctamente.
+
+## 29 Junio 2026 — Control de velocidad + merge de grupos para duraciones cortas
+
+**v0.42.0**. Sesión centrada en implementar el control de velocidad de la transición, iterando varios enfoques hasta dar con el que el usuario quería.
+
+### Iteraciones:
+1. **Primer intento**: slider `animSpeed` (VSyncs/frame) separado del tileset. Tenía duplicado con el de `TilesetOptions`.
+2. **Segundo intento**: invertir la relación (más alto = más rápido). Pero la preview no respondía al cambio.
+3. **Tercer intento**: preview usa `animSpeed` directamente para el tick (`speed * 30ms`). Se nota el cambio en preview.
+4. **Cuarto intento**: `animSpeed = duración total en segundos` (1-60). El C calcula `frameDelay = round(segundos × 60 / grupos)`.
+5. **Quinto intento**: mover `waitVSync()` fuera del loop de frames (espera por grupo, no por frame). Reduce pasos de `grupos×frames` a solo `grupos`.
+6. **Sexto intento**: mergear grupos cuando `frameDelay < 1`. Si hay 256 grupos y 0.5s (30 VSyncs), mergea a 30 grupos para que cada uno tenga exactamente 1 VSync.
+7. **Final**: UI acepta 0.1s - 60s con step 0.1. El preview sincronizado. La ROM respeta la duración exacta dentro del mínimo hardware (1 VSync por grupo).
+
+### Archivos modificados:
+- `src/renderer/types/editor.ts`: `TransitionConfig.animSpeed` default 5 (segundos)
+- `src/renderer/utils/gba_export.ts`: merge de grupos, `waitVSync` por grupo, `frameDelay` calculado
+- `src/renderer/store/useAppStore.ts`: speed = total segundos, sin fallback a tileset
+- `src/renderer/components/editor/tabs/MundoTab.tsx`: UI duración 0.1-60s, preview usa segundos
+- `PENDIENTES.md`: marcado control de velocidad completado
+
+### Conclusión
+El sistema de transiciones está completo. El usuario confirmó que funciona y cerró el tema.

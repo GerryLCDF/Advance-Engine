@@ -182,7 +182,7 @@ Advance Engine puede generar una ROM `.gba` directamente desde el editor:
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.42.0**
+Definida en `src/version.ts` — semver. Actual: **0.43.0**
 
 ### v0.40.0 — Transiciones entre escenas
 - Modelo de datos `TransitionConfig` + `FxAsset` (gradientes y tilesets)
@@ -198,3 +198,9 @@ Definida en `src/version.ts` — semver. Actual: **0.42.0**
 - **Salida mejorada**: cada frame limpia el tile a negro antes de escribir, asegurando que todos los frames de tileset se vean completos; frames iteran en reversa (7→0)
 - **Entrada mejorada**: frames iteran en orden 0→7 con force black al final
 - Correcciones críticas: bug de gW=0/gH=0 en entry, parsing de gradiente con llaves anidadas, lectura correcta de exit tileset desde .h
+
+### v0.43.0 — Control de duración de transición (0.1s-60s)
+- **Duración configurable**: slider 0.1s a 60s con step 0.1s, control independiente por entrada/salida
+- **Merge automático de grupos**: cuando hay más grupos de brillo que VSyncs disponibles, mergea grupos consecutivos para que cada uno tenga al menos 1 VSync (precisión máxima)
+- **Preview sincronizado**: la preview responde al cambio de duración
+- **Código C optimizado**: `waitVSync()` movido fuera del loop de frames (espera por grupo, no por frame de tileset)
