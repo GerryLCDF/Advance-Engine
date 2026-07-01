@@ -981,6 +981,7 @@ export function MundoTab() {
   const mouseCanvasPos = useRef({ x: 0, y: 0 });
   const [mouseWorld, setMouseWorld] = useState({ x: 0, y: 0 });
   const [highlightedConnId, setHighlightedConnId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const splashConnection = useMemo(() => {
     if (!splashScreen.nextSceneId) return null;
@@ -1171,7 +1172,11 @@ export function MundoTab() {
 
   const selectedScene = scenes.find((sc) => sc.id === selectedNodeId);
   const selectedSplash = selectedNodeId === splashScreen.id ? splashScreen : null;
-  const selectedConnection = selectedNodeId === '__splash_conn__' ? splashConnection : connections.find((c) => c.id === selectedNodeId) ?? null;
+  const selectedConnection = useMemo(() => {
+    const connId = highlightedConnId || selectedNodeId;
+    if (connId === '__splash_conn__') return splashConnection;
+    return connections.find((c) => c.id === connId) ?? null;
+  }, [connections, selectedNodeId, highlightedConnId, splashConnection]);
   const [songSearch, setSongSearch] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -1297,7 +1302,7 @@ export function MundoTab() {
   }, [backgrounds]);
 
   const inspectorSections: InspectorSection[] = [];
-  if (selectedScene) {
+  if (selectedScene && !selectedConnection) {
     inspectorSections.push({
       title: 'Escena',
       fields: selectedScene.backgroundImage
@@ -1539,7 +1544,7 @@ export function MundoTab() {
     }
   }, [selectedSplash?.videoPath]);
 
-  if (selectedSplash) {
+  if (selectedSplash && !selectedConnection) {
     inspectorSections.push({
       title: 'SplashScreen',
       fields: [
@@ -1775,7 +1780,7 @@ export function MundoTab() {
 
   // ── Connection inspector ────────────────────────────────────────────
   if (selectedConnection) {
-    const isSplashConn = selectedNodeId === '__splash_conn__';
+    const isSplashConn = selectedConnection === splashConnection;
     const fromScene = scenes.find((s) => s.id === selectedConnection.fromSceneId);
     const toScene = scenes.find((s) => s.id === selectedConnection.toSceneId);
     inspectorSections.push({
@@ -1791,7 +1796,7 @@ export function MundoTab() {
             <span style={{ color: 'var(--text)', fontSize: 11 }}>{toScene?.name ?? '?'}</span>
           </div>
           {!isSplashConn && (
-            <button onClick={() => { removeConnection(selectedConnection.id); setSelectedNodeId(''); }}
+            <button onClick={() => { removeConnection(selectedConnection.id); setSelectedNodeId(''); setHighlightedConnId(null); }}
               style={{ padding: '4px 8px', fontSize: 10, cursor: 'pointer', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 4, alignSelf: 'flex-start' }}>
               Eliminar conexión
             </button>
@@ -1909,10 +1914,12 @@ export function MundoTab() {
   const handleRemove = (id: string) => {
     if (id === splashScreen.id) return;
     removeScene(id);
+    setHighlightedConnId(null);
     if (selectedNodeId === id) setSelectedNodeId('');
   };
 
   return (
+    <>
     <ResizableEditorLayout
       leftWidth={hierarchyWidth}
       rightWidth={inspectorWidth}
@@ -1923,14 +1930,22 @@ export function MundoTab() {
       left={
         <HierarchyPanel
           sections={hierarchySections}
-          selectedId={selectedNodeId}
+          selectedId={highlightedConnId || selectedNodeId}
+          editingId={editingId}
+          onRename={(id, name) => updateScene(id, { name })}
+          onEditingChange={setEditingId}
+          onDoubleClick={(id) => {
+            const isScene = scenes.some((s) => s.id === id);
+            if (isScene) setEditingId(id);
+          }}
           onSelect={(id) => {
+            setEditingId(null);
             const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
             if (isConn) {
-              setSelectedNodeId(id);
               setHighlightedConnId((prev) => prev === id ? null : id);
             } else {
               setSelectedNodeId(id);
+              setHighlightedConnId(null);
             }
           }}
           onContextMenu={(id, x, y) => {
@@ -2197,7 +2212,6 @@ export function MundoTab() {
                         fill="none" stroke="transparent" strokeWidth={24}
                         style={{ cursor: 'pointer' }}
                         onClick={() => {
-                          setSelectedNodeId(c.id);
                           setHighlightedConnId((prev) => prev === c.id ? null : c.id);
                         }}
                         onContextMenu={(e) => {
@@ -2285,68 +2299,6 @@ export function MundoTab() {
             }}>
               {Math.round(zoom * 100)}%
             </div>
-            {/* Context menu */}
-            {ctxMenu && (
-              <>
-                <div style={{
-                  position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
-                  zIndex: 999, background: 'transparent',
-                }} onMouseDown={() => setCtxMenu(null)} />
-                <div style={{
-                  position: 'fixed', left: ctxMenu.x, top: ctxMenu.y,
-                  zIndex: 1000, background: 'var(--bg-panel)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 6, padding: 4,
-                  display: 'flex', flexDirection: 'column', gap: 2,
-                  minWidth: 120, boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-                }}>
-                  {ctxMenu.sceneId && (
-                    <>
-                      <div
-                        onClick={() => {
-                          const sc = scenes.find((s) => s.id === ctxMenu.sceneId);
-                          if (sc) {
-                            const name = prompt('Renombrar escena:', sc.name);
-                            if (name && name.trim()) updateScene(ctxMenu.sceneId!, { name: name.trim() });
-                          }
-                          setCtxMenu(null);
-                        }}
-                        style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        Renombrar
-                      </div>
-                      <div
-                        onClick={() => {
-                          handleRemove(ctxMenu.sceneId!);
-                          setCtxMenu(null);
-                        }}
-                        style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: '#ef4444' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        Eliminar escena
-                      </div>
-                    </>
-                  )}
-                  {ctxMenu.connectionId && (
-                    <div
-                      onClick={() => {
-                        removeConnection(ctxMenu.connectionId!);
-                        if (selectedNodeId === ctxMenu.connectionId) setSelectedNodeId('');
-                        setCtxMenu(null);
-                      }}
-                      style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: '#ef4444' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      Eliminar conexión
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
           </div>
         </>
       }
@@ -2403,6 +2355,64 @@ export function MundoTab() {
         </div>
       }
     />
+    {ctxMenu && (
+      <>
+        <div style={{
+          position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
+          zIndex: 999, background: 'transparent',
+        }} onMouseDown={() => setCtxMenu(null)} />
+        <div style={{
+          position: 'fixed', left: ctxMenu.x, top: ctxMenu.y,
+          zIndex: 1000, background: 'var(--bg-panel)',
+          border: '1px solid var(--border-color)',
+          borderRadius: 6, padding: 4,
+          display: 'flex', flexDirection: 'column', gap: 2,
+          minWidth: 120, boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>
+          {ctxMenu.sceneId && (
+            <>
+              <div
+                onClick={() => {
+                  setEditingId(ctxMenu.sceneId!);
+                  setCtxMenu(null);
+                }}
+                style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                Renombrar
+              </div>
+              <div
+                onClick={() => {
+                  handleRemove(ctxMenu.sceneId!);
+                  setCtxMenu(null);
+                }}
+                style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: '#ef4444' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                Eliminar escena
+              </div>
+            </>
+          )}
+          {ctxMenu.connectionId && (
+            <div
+              onClick={() => {
+                removeConnection(ctxMenu.connectionId!);
+                if (selectedNodeId === ctxMenu.connectionId) setSelectedNodeId('');
+                setCtxMenu(null);
+              }}
+              style={{ padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', color: '#ef4444' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              Eliminar conexión
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </>
   );
 }
 
@@ -2509,6 +2519,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   const batchCollisionTiles = useAppStore((s) => s.batchCollisionTiles);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1) return; // Middle click: let bubble for canvas panning
     e.preventDefault();
     e.stopPropagation();
 

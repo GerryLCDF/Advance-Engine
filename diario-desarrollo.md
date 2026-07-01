@@ -324,3 +324,26 @@ El usuario confirmó que ambas transiciones (entrada y salida) funcionan correct
 
 ### Conclusión
 El sistema de transiciones está completo. El usuario confirmó que funciona y cerró el tema.
+
+## 1 Julio 2026 — Hierarquía: rename inline, conexión no deselecciona escena, menú contextual fijo
+
+**v0.44.0**. Sesión de bugfixes y pulido de la jerarquía/conexiones.
+
+### Bugs corregidos
+
+1. **Middle-mouse-button no funcionaba en SceneCards** — El `e.stopPropagation()` en `handleMouseDown` tragaba el botón del medio (button === 1), impediendo el pan con rueda sobre el canvas. Fix: `if (e.button === 1) return` antes del `stopPropagation`.
+
+2. **Seleccionar conexión deseleccionaba la escena** — Al hacer clic en una conexión de la jerarquía, se asignaba `selectedNodeId` al id de la conexión, perdiendo la selección de la escena y ocultando todas las conexiones. Fix: separar en `highlightedConnId` (estado local) + `selectedNodeId` (apunta a la escena). `selectedConnection` deriva de `highlightedConnId || selectedNodeId`.
+
+3. **Secciones del inspector duplicadas** — Cuando se seleccionaba una conexión, el inspector seguía mostrando las secciones de escena/splash porque los `if (selectedScene)` y `if (selectedSplash)` no verificaban si había una conexión activa. Fix: agregar `&& !selectedConnection` a ambos guards.
+
+### Features
+
+4. **Rename inline en jerarquía** — Al hacer doble-clic en una escena, o "Renombrar" en el menú contextual, aparece un `<input>` inline con el nombre seleccionado. Enter/blur guarda, Escape cancela. Usa un solo `editingInputRef` global en vez de hooks por nodo para evitar "Rendered more hooks" errors.
+
+5. **Menú contextual fuera del canvas** — El `ctxMenu` (backdrop + menú) estaba anidado dentro del center `ResizableEditorLayout`, donde los eventos eran interceptados por los handlers del canvas (drag/pan/zoom). Fix: mover el menú contextual **fuera** del layout, como sibling al mismo nivel del return, con `zIndex: 1000`. Ahora los clics en "Renombrar" y "Eliminar escena" funcionan correctamente.
+
+### Archivos modificados
+- `src/renderer/components/editor/HierarchyPanel.tsx`: props `editingId`, `onRename`, `onEditingChange`, `onDoubleClick`; renderizado condicional de `<input>` inline
+- `src/renderer/components/editor/tabs/MundoTab.tsx`: `highlightedConnId`, `editingId`; `selectedConnection` derivado; guards en inspector; SVG onClick actualizado; `handleRemove` limpia `highlightedConnId`; menú contextual movido fuera del layout; SceneCard pasa button===1
+- `src/version.ts`: 0.43.0 → 0.44.0

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 export interface HierarchyItem {
   id: string;
@@ -27,10 +27,14 @@ interface HierarchyPanelProps {
   onSelect: (id: string) => void;
   onRemove?: (id: string) => void;
   onContextMenu?: (id: string, x: number, y: number) => void;
+  editingId?: string | null;
+  onRename?: (id: string, name: string) => void;
+  onEditingChange?: (id: string | null) => void;
+  onDoubleClick?: (id: string) => void;
 }
 
 export function HierarchyPanel({
-  sections, selectedId, onSelect, onRemove, onContextMenu,
+  sections, selectedId, onSelect, onRemove, onContextMenu, editingId, onRename, onEditingChange, onDoubleClick,
 }: HierarchyPanelProps) {
   const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(() => {
     const m: Record<string, boolean> = {};
@@ -43,6 +47,14 @@ export function HierarchyPanel({
   };
 
   const [collapsedItems, setCollapsedItems] = useState<Record<string, boolean>>({});
+  const editingInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId && editingInputRef.current) {
+      editingInputRef.current.focus();
+      editingInputRef.current.select();
+    }
+  }, [editingId]);
 
   const toggleItemCollapse = (id: string) => {
     setCollapsedItems((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -51,6 +63,7 @@ export function HierarchyPanel({
   const renderNode = (node: HierarchyItem, depth: number) => {
     const hasChildren = node.children && node.children.length > 0;
     const isCollapsed = collapsedItems[node.id] ?? false;
+    const isEditing = editingId === node.id;
 
     if (node.isHeader) {
       return (
@@ -84,7 +97,8 @@ export function HierarchyPanel({
     return (
       <div key={node.id}>
         <div
-          onClick={() => onSelect(node.id)}
+          onClick={() => { if (!isEditing) onSelect(node.id); }}
+          onDoubleClick={() => { onDoubleClick?.(node.id); }}
           onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(node.id, e.clientX, e.clientY); }}
           style={{
             display: 'flex',
@@ -92,7 +106,7 @@ export function HierarchyPanel({
             gap: 5,
             padding: '5px 8px 5px 8px',
             paddingLeft: 8 + depth * 14,
-            cursor: 'pointer',
+            cursor: isEditing ? 'default' : 'pointer',
             background: selectedId === node.id ? 'var(--bg-raised)' : 'transparent',
             borderRadius: 4,
             fontSize: 12,
@@ -101,10 +115,10 @@ export function HierarchyPanel({
             userSelect: 'none',
           }}
           onMouseEnter={(e) => {
-            if (selectedId !== node.id) e.currentTarget.style.background = '#2a2a30';
+            if (selectedId !== node.id && !isEditing) e.currentTarget.style.background = '#2a2a30';
           }}
           onMouseLeave={(e) => {
-            if (selectedId !== node.id) e.currentTarget.style.background = 'transparent';
+            if (selectedId !== node.id && !isEditing) e.currentTarget.style.background = 'transparent';
           }}
         >
           {node.icon && (typeof node.icon === 'string' ? <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{node.icon}</span> : <span style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{node.icon}</span>)}
@@ -114,16 +128,49 @@ export function HierarchyPanel({
               background: node.color, flexShrink: 0, display: 'inline-block',
             }} />
           )}
-          <span
-            style={{
-              flex: 1,
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {node.label}
-          </span>
+          {isEditing ? (
+            <input
+              ref={editingInputRef}
+              defaultValue={node.label}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const val = e.currentTarget.value.trim();
+                  if (val) onRename?.(node.id, val);
+                  onEditingChange?.(null);
+                } else if (e.key === 'Escape') {
+                  onEditingChange?.(null);
+                }
+              }}
+              onBlur={(e) => {
+                const val = e.currentTarget.value.trim();
+                if (val) onRename?.(node.id, val);
+                onEditingChange?.(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                flex: 1,
+                background: '#1a1a22',
+                border: '1px solid var(--accent)',
+                borderRadius: 3,
+                color: '#fff',
+                fontSize: 12,
+                padding: '2px 4px',
+                outline: 'none',
+                minWidth: 0,
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                flex: 1,
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {node.label}
+            </span>
+          )}
           {node.actions && (
             <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
               {node.actions}
