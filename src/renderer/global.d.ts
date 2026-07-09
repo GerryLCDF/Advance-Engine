@@ -18,6 +18,7 @@ interface AdvanceAPI {
     openImage: () => Promise<{ path: string | null; error: string | null }>;
     openAnyImage: () => Promise<{ path: string | null; error: string | null }>;
     openVideo: () => Promise<{ path: string | null; size?: number }>;
+    openAudio: () => Promise<{ path: string | null }>;
   };
   shell: {
     openExternal: (url: string) => void;

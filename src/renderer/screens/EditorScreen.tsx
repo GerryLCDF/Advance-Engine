@@ -7,6 +7,7 @@ import { SpriteTab } from '../components/editor/tabs/SpriteTab';
 import { ImagenTab } from '../components/editor/tabs/ImagenTab';
 import { MusicTab } from '../components/editor/tabs/MusicTab';
 import { DialogoTab } from '../components/editor/tabs/DialogoTab';
+import { SoundTab } from '../components/editor/tabs/SoundTab';
 import { ComingSoonTab } from '../components/editor/tabs/ComingSoonTab';
 
 interface EditorScreenProps {
@@ -39,7 +40,7 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
       case 'sprite':    return <SpriteTab />;
       case 'imagen':    return <ImagenTab />;
       case 'music':     return <MusicTab />;
-      case 'sound':     return <ComingSoonTab label="Sound" />;
+      case 'sound':     return <SoundTab />;
       case 'dialogo':   return <DialogoTab />;
     }
   };

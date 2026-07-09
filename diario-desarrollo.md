@@ -347,3 +347,32 @@ El sistema de transiciones está completo. El usuario confirmó que funciona y c
 - `src/renderer/components/editor/HierarchyPanel.tsx`: props `editingId`, `onRename`, `onEditingChange`, `onDoubleClick`; renderizado condicional de `<input>` inline
 - `src/renderer/components/editor/tabs/MundoTab.tsx`: `highlightedConnId`, `editingId`; `selectedConnection` derivado; guards en inspector; SVG onClick actualizado; `handleRemove` limpia `highlightedConnId`; menú contextual movido fuera del layout; SceneCard pasa button===1
 - `src/version.ts`: 0.43.0 → 0.44.0
+
+## 6 Julio 2026 — SoundTab funcional + collision map en exportación C
+
+**v0.46.0**. Implementé dos features que estaban pendientes hace rato.
+
+### Collision map exportado a C (1.9)
+El mapa de colisión de la escena destino (nextSceneId) ahora se exporta como `const u8 collisionMap[ROWS][COLS]` en el `main.c`. Define `COLLISION_COLS`, `COLLISION_ROWS`, `COLLISION_TILE_SIZE`.
+
+### SoundTab
+Reemplacé el `ComingSoonTab` de Sound por un editor completo:
+- **SoundEffect type**: define tipo (duty/wave/noise), duración, volumen, nota, envelope, duty cycle, sweep
+- **Jerarquía**: lista todos los sonidos con icono según tipo y preview button
+- **Inspector**: controles para nombre, tipo, nota, duración, volumen, duty cycle, envelope, sweep shift + visualización de forma de onda
+- **Preview**: usa `playGBASound()` de `gba_audio.ts` para reproducción en tiempo real
+- **Importación**: nuevo IPC `dialog:openAudio` para seleccionar WAV/MP3/OGG, el archivo se reproduce con Web Audio API
+- Store: `sounds` tipado como `SoundEffect[]`, acciones `addSound(overrides?)`, `updateSound`, `removeSound`
+- Añadido `dialog:openAudio` en Electron main + preload + global.d.ts
+
+### Archivos modificados
+- `src/renderer/types/editor.ts`: `SoundEffect` interface + `defaultSoundEffect()`
+- `src/renderer/store/useAppStore.ts`: sounds tipado, CRUD completo, `addSound` acepta overrides
+- `src/renderer/components/editor/tabs/SoundTab.tsx`: **nuevo** — editor completo
+- `src/renderer/screens/EditorScreen.tsx`: SoundTab registrado
+- `src/renderer/utils/gba_export.ts`: collision map export params + C array generation
+- `electron/main.ts`: `dialog:openAudio` IPC handler
+- `electron/preload.ts`: `openAudio` expuesto
+- `src/renderer/global.d.ts`: `openAudio` type
+- `PENDIENTES.md`: marcado 1.9 + SoundTab items
+- `src/version.ts`, `README.md`, `diario-desarrollo.md`: docs

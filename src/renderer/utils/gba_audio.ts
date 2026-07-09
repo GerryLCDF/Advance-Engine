@@ -287,3 +287,23 @@ export function playGBASound(params: GBAInstrumentParams): void {
     src.stop(ctx.currentTime + params.duration);
   } catch { /* audio not available */ }
 }
+
+// –––‑‑‑ File audio cache (WAV/MP3) ──────────────────────────────────────────
+const fileAudioCache = new Map<string, AudioBuffer>();
+
+export async function loadAudioFileBuffer(filePath: string): Promise<AudioBuffer | null> {
+  const cached = fileAudioCache.get(filePath);
+  if (cached) return cached;
+  try {
+    const api = window.advanceAPI;
+    const result = await api.file.readBinary(filePath);
+    if (!result.success || !result.base64) return null;
+    const ctx = getAudioContext();
+    const binaryStr = atob(result.base64);
+    const arr = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) arr[i] = binaryStr.charCodeAt(i);
+    const audioBuf = await ctx.decodeAudioData(arr.buffer);
+    fileAudioCache.set(filePath, audioBuf);
+    return audioBuf;
+  } catch { return null; }
+}

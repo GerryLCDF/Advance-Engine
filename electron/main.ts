@@ -663,6 +663,16 @@ ipcMain.handle('dialog:openAnyImage', async () => {
   return { path: filePath, error: null };
 });
 
+ipcMain.handle('dialog:openAudio', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Seleccionar audio',
+    filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'flac'] }],
+    properties: ['openFile'],
+  });
+  if (canceled || filePaths.length === 0) return { path: null };
+  return { path: filePaths[0] };
+});
+
 ipcMain.handle('shell:openExternal', (_e, url: string) => {
   shell.openExternal(url);
 });

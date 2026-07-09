@@ -35,81 +35,12 @@ function dutyToGBA(dutyVal: number): number {
   return 3;
 }
 
-function generateSongData(song: Song): string {
+function generateSoundTypes(): string {
   const periods = buildPeriodTable();
-  const allSteps = song.patterns.flatMap((p) => p.rows);
-  const stepCount = allSteps.length;
   const TABLE_SIZE = periods.length;
 
-  let code = `
-// ── Note period table (C1-B8, ${TABLE_SIZE} notes) ──────────────────────
-const u16 gNotePeriods[${TABLE_SIZE}] = {${periods.map((p) => `0x${p.toString(16).padStart(4, '0')}`).join(', ')}};
-
-// ── Song: ${song.name} ──────────────────────────────────────────────────
-#define SONG_BPM ${song.bpm}
-#define SONG_STEPS ${stepCount}
-
-typedef struct {
-  u8 volume;      // initial volume (0-15)
-  u8 duty;        // GBA duty value (0-3)
-  u8 envDir;      // envelope direction (0=decrease, 1=increase)
-  u8 envSweep;    // envelope sweep rate (0-7)
-  u8 sweepShift;  // sweep shift (0-7)
-  u8 sweepTime;   // sweep time (0-7)
-  u8 sweepDir;    // sweep direction (0=increase, 1=decrease)
-} GBAInst;
-
-typedef struct {
-  u8 periodIdx;  // 0-${TABLE_SIZE - 1}, 0xFF=rest
-  u8 instIdx;    // instrument index
-} GBANote;
-
-typedef struct {
-  GBANote ch[4]; // [pulse1, pulse2, wave, noise]
-} GBAStep;
-`;
-
-  // Instrument table
-  const insts = song.instruments;
-  code += `
-const GBAInst gInstruments[${insts.length}] = {`;
-  for (const inst of insts) {
-    const env = inst.envelope || { attack: 0, decay: 0, sustain: 1, release: 0 };
-    const initialVol = Math.round(Math.max(1, Math.min(15, env.sustain * 15)));
-    const envDir = env.attack > env.decay ? 1 : 0;
-    const envSweep = Math.min(7, Math.max(0, Math.round(Math.max(env.attack, env.decay) * 7)));
-    code += `
-  {${initialVol}, ${dutyToGBA(inst.dutyCycle)}, ${envDir}, ${envSweep}, 0, 0, 0},`;
-  }
-  code += `
-};
-
-const GBAStep gSongData[SONG_STEPS] = {`;
-  for (let s = 0; s < stepCount; s++) {
-    const row = allSteps[s];
-    const channels = ['ch-pulse1', 'ch-pulse2', 'ch-wave', 'ch-noise'];
-    const parts: string[] = [];
-    for (let c = 0; c < channels.length; c++) {
-      const nr = row[channels[c]];
-      if (nr && nr.note && nr.instrumentId) {
-        const rawIdx = noteToPeriodIdx(nr.note, nr.octave);
-        const pIdx = Math.max(0, Math.min(TABLE_SIZE - 1, rawIdx));
-        const iIdx = insts.findIndex((i) => i.id === nr.instrumentId);
-        parts.push(`{${pIdx}, ${iIdx >= 0 ? iIdx : 0}}`);
-      } else {
-        parts.push('{0xFF, 0}');
-      }
-    }
-    code += '\n  {{' + parts.join(', ') + '}}';
-    if (s < stepCount - 1) code += ',';
-  }
-  code += `
-};
-`;
-
-  // Sound functions
-  code += `
-// GBA sound register addresses
+  return `
+// ── GBA Sound Registers & Types ─────────────────────────────────────────
 #define REG_SND1SWEEP *(vu16*)(0x04000060)
 #define REG_SND1CNT   *(vu16*)(0x04000062)
 #define REG_SND1FREQ  *(vu16*)(0x04000064)
@@ -125,9 +56,29 @@ const GBAStep gSongData[SONG_STEPS] = {`;
 #define REG_SNDCNTH   *(vu16*)(0x04000082)
 #define REG_SNDCNTX   *(vu16*)(0x04000084)
 
+typedef struct {
+  u8 volume;
+  u8 duty;
+  u8 envDir;
+  u8 envSweep;
+  u8 sweepShift;
+  u8 sweepTime;
+  u8 sweepDir;
+} GBAInst;
+
+typedef struct {
+  u8 periodIdx;  // 0-${TABLE_SIZE - 1}, 0xFF=rest
+  u8 instIdx;
+} GBANote;
+
+typedef struct {
+  GBANote ch[4]; // [pulse1, pulse2, wave, noise]
+} GBAStep;
+
+// ── Note period table (C1-B8, ${TABLE_SIZE} notes) ──────────────────────
+const u16 gNotePeriods[${TABLE_SIZE}] = {${periods.map((p) => `0x${p.toString(16).padStart(4, '0')}`).join(', ')}};
+
 static void initWaveRAM(void) {
-  // Write 32 4-bit samples (16 bytes) at 0x04000090
-  // Sawtooth wave: 0,1,2,...,15,0,1,2,...,15
   vu16* wave = (vu16*)0x04000090;
   const u16 waveData[8] = {
     0x0123, 0x4567, 0x89AB, 0xCDEF,
@@ -138,7 +89,6 @@ static void initWaveRAM(void) {
 }
 
 static void initSound(void) {
-  // Reset all channel registers
   REG_SND1SWEEP = 0;
   REG_SND1CNT = 0;
   REG_SND1FREQ = 0;
@@ -149,23 +99,12 @@ static void initSound(void) {
   REG_SND3FREQ = 0;
   REG_SND4CNT = 0;
   REG_SND4FREQ = 0;
-
-  // 1. Bias FIRST (mGBA necesita el bias antes de master enable)
   REG_SNDBIAS = 0x200;
-
-  // 2. Master sound enable (bit 7)
   REG_SNDCNTX = 0x0080;
-
-  // 3. DMG 100% volume ratio, Direct Sound off
   REG_SNDCNTH = 0x0002;
-
-  // 4. Route all PSG channels to left and right output, max volume
   REG_SNDCTL = 0xFF77;
-
-  // Enable wave RAM + 100% volume for Sound 3
   REG_SND3CNT_L = 0x0080;
   REG_SND3CNT_H = 0x0001;
-
   initWaveRAM();
 }
 
@@ -173,7 +112,6 @@ static void noteOn(int ch, const GBAInst* inst, u16 period) {
   u16 dutyVal = (inst->duty & 3) << 0;
   u16 envVal = ((inst->volume & 0xF) << 11) | ((inst->envDir & 1) << 8) | ((inst->envSweep & 7) << 4);
   u16 freqVal = 0xC000 | (period & 0x07FF);
-
   switch (ch) {
   case 0: {
     u16 sweepVal = (inst->sweepShift & 7) | ((inst->sweepTime & 7) << 3) | ((inst->sweepDir & 1) << 6);
@@ -197,15 +135,62 @@ static void noteOn(int ch, const GBAInst* inst, u16 period) {
     break;
   }
 }
+`;
+}
 
-static void playStep(int step) {
-  if (step < 0 || step >= SONG_STEPS) return;
-  const GBAStep* s = &gSongData[step];
+function generateSongData(song: Song, suffix: string = ''): string {
+  const allSteps = song.patterns.flatMap((p) => p.rows);
+  const stepCount = allSteps.length;
+  const insts = song.instruments;
+  const TABLE_SIZE = buildPeriodTable().length;
+
+  let code = `
+// ── Song: ${song.name} ──────────────────────────────────────────────────
+#define SONG_BPM${suffix} ${song.bpm}
+#define SONG_STEPS${suffix} ${stepCount}
+
+const GBAInst gInstruments${suffix}[${insts.length}] = {`;
+  for (const inst of insts) {
+    const env = inst.envelope || { attack: 0, decay: 0, sustain: 1, release: 0 };
+    const initialVol = Math.round(Math.max(1, Math.min(15, env.sustain * 15)));
+    const envDir = env.attack > env.decay ? 1 : 0;
+    const envSweep = Math.min(7, Math.max(0, Math.round(Math.max(env.attack, env.decay) * 7)));
+    code += `
+  {${initialVol}, ${dutyToGBA(inst.dutyCycle)}, ${envDir}, ${envSweep}, 0, 0, 0},`;
+  }
+  code += `
+};
+
+const GBAStep gSongData${suffix}[SONG_STEPS${suffix}] = {`;
+  for (let s = 0; s < stepCount; s++) {
+    const row = allSteps[s];
+    const channels = ['ch-pulse1', 'ch-pulse2', 'ch-wave', 'ch-noise'];
+    const parts: string[] = [];
+    for (let c = 0; c < channels.length; c++) {
+      const nr = row[channels[c]];
+      if (nr && nr.note && nr.instrumentId) {
+        const rawIdx = noteToPeriodIdx(nr.note, nr.octave);
+        const pIdx = Math.max(0, Math.min(TABLE_SIZE - 1, rawIdx));
+        const iIdx = insts.findIndex((i) => i.id === nr.instrumentId);
+        parts.push(`{${pIdx}, ${iIdx >= 0 ? iIdx : 0}}`);
+      } else {
+        parts.push('{0xFF, 0}');
+      }
+    }
+    code += '\n  {{' + parts.join(', ') + '}}';
+    if (s < stepCount - 1) code += ',';
+  }
+  code += `
+};
+
+static void playStep${suffix}(int step) {
+  if (step < 0 || step >= SONG_STEPS${suffix}) return;
+  const GBAStep* s = &gSongData${suffix}[step];
   int c;
   for (c = 0; c < 4; c++) {
     if (s->ch[c].periodIdx != 0xFF) {
       if (s->ch[c].instIdx < ${insts.length}) {
-        const GBAInst* inst = &gInstruments[s->ch[c].instIdx];
+        const GBAInst* inst = &gInstruments${suffix}[s->ch[c].instIdx];
         noteOn(c, inst, gNotePeriods[s->ch[c].periodIdx]);
       }
     }
@@ -447,6 +432,7 @@ export function generateGBAProject(
   splashImageCArray?: string,
   splashDuration?: number,
   splashSong?: Song,
+  sceneSong?: Song,
   sceneImageCArray?: string,
   sceneBackgroundColor?: string,
   entryTilesetCArray?: string,
@@ -470,12 +456,16 @@ export function generateGBAProject(
   entryGradientH?: number,
   entryTransitionType?: string,
   exitTransitionType?: string,
+  collisionMap?: number[][],
+  collisionTileSize?: number,
 ): string {
   log.add(`Generando proyecto GBA: ${name}`);
   log.add(`Autor: ${author}`);
 
   const hasSplash = splashImageCArray && splashDuration && splashDuration > 0;
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
+  const hasSceneMusic = sceneSong && sceneSong.patterns.length > 0 && sceneSong.patterns.some((p) => p.rows.length > 0);
+  const sceneSongSuffix = (hasSceneMusic && hasMusic && splashSong!.id !== sceneSong!.id) ? '_Scene' : '';
   const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
   const entryType = entryTransitionType || 'fade';
   const exitType = exitTransitionType || 'fade';
@@ -533,11 +523,32 @@ export function generateGBAProject(
   }`;
   }
 
-  function renderScene(): string {
-    return fillScene() + `
+  function sceneLoop(suffix: string = sceneSongSuffix): string {
+    if (hasSceneMusic) {
+      return `  initSound();
 
-  while (1) waitVSync();
+  {
+    int step = 0;
+    u32 accum = 0;
+    while (1) {
+      waitVSync();
+      accum += SONG_BPM${suffix};
+      if (accum >= 900) {
+        accum -= 900;
+        playStep${suffix}(step);
+        step++;
+        if (step >= SONG_STEPS${suffix}) step = 0;
+      }
+    }
+  }
 `;
+    }
+    return `  while (1) waitVSync();
+`;
+  }
+
+  function renderScene(): string {
+    return fillScene() + '\n' + sceneLoop(sceneSongSuffix);
   }
 
   let cCode = `/*
@@ -628,10 +639,42 @@ const u16 sceneData[PIXEL_COUNT] = { [0 ... PIXEL_COUNT-1] = ${fallbackHex} };
 `;
   }
 
+  if (collisionMap && collisionMap.length > 0 && collisionMap[0].length > 0) {
+    const ts = collisionTileSize ?? 8;
+    const rows = collisionMap.length;
+    const cols = collisionMap[0].length;
+    const lines = collisionMap.map((row) =>
+      '  {' + row.join(',') + '}'
+    );
+    cCode += `
+// ── Collision Map ─────────────────────────────────────────────────────
+#define COLLISION_COLS ${cols}
+#define COLLISION_ROWS ${rows}
+#define COLLISION_TILE_SIZE ${ts}
+
+const u8 collisionMap[COLLISION_ROWS][COLLISION_COLS] = {
+${lines.join(',\n')}
+};
+`;
+    log.add(`Collision map: ${cols}x${rows} tiles (${ts}px)`);
+  }
+
+  cCode += generateSoundTypes();
+
   if (hasMusic) {
-    cCode += generateSongData(splashSong!);
-    log.add(`Cancion "${splashSong!.name}" incluida en la ROM (${splashSong!.patterns.length} patrones)`);
-  } else {
+    cCode += generateSongData(splashSong!, '');
+    log.add(`Cancion splash: "${splashSong!.name}" (${splashSong!.patterns.length} patrones)`);
+  }
+  if (hasSceneMusic && sceneSongSuffix === '_Scene') {
+    cCode += generateSongData(sceneSong!, '_Scene');
+    log.add(`Cancion escena: "${sceneSong!.name}" (${sceneSong!.patterns.length} patrones) — distinta de splash`);
+  } else if (hasSceneMusic && !hasMusic) {
+    cCode += generateSongData(sceneSong!, '');
+    log.add(`Cancion escena: "${sceneSong!.name}" (${sceneSong!.patterns.length} patrones)`);
+  } else if (hasSceneMusic) {
+    log.add(`Cancion escena: "${sceneSong!.name}" (misma que splash)`);
+  }
+  if (!hasMusic && !hasSceneMusic) {
     log.add('Sin cancion de fondo para la ROM');
   }
 
@@ -703,10 +746,7 @@ int main() {
 
   ${getRevealCall()};
 
-` + fillScene() + `
-
-  while (1) waitVSync();
-` : renderScene();
+` + fillScene() + '\n' + sceneLoop() : renderScene();
     } else {
       cCode += `
   {
@@ -719,10 +759,7 @@ int main() {
 
   ${getRevealCall()};
 
-` + fillScene() + `
-
-  while (1) waitVSync();
-` : renderScene();
+` + fillScene() + '\n' + sceneLoop() : renderScene();
     }
   } else {
     cCode += `
@@ -740,36 +777,13 @@ int main() {
 
   ${getRevealCall()};
 
-` + fillScene() + `
-
-  while (1) {
-    waitVSync();
-  }
-` : `  {
-    int step = 0;
-    u32 accum = 0;
-    while (1) {
-      waitVSync();
-      accum += SONG_BPM;
-      if (accum >= 900) {
-        accum -= 900;
-        playStep(step);
-        step++;
-        if (step >= SONG_STEPS) step = 0;
-      }
-    }
-  }
-`;
+` + fillScene() + '\n' + sceneLoop() : sceneLoop();
     } else {
       cCode += hasTransition ? `  ${getCoverCall()};
 
   ${getRevealCall()};
 
-` + fillScene() + `
-
-  while (1) waitVSync();
-` : `  while (1) waitVSync();
-`;
+` + fillScene() + '\n' + sceneLoop() : sceneLoop();
     }
   }
 
@@ -780,8 +794,13 @@ int main() {
   log.add(`${hasSplash ? 'SplashScreen incluido (' + splashDuration + 's)' : 'Sin SplashScreen - pantalla purpura'}`);
   if (hasMusic) {
     const totalSteps = splashSong!.patterns.reduce((s, p) => s + p.rows.length, 0);
-    log.add(`Musica incluida (${splashSong!.patterns.length} patrones, ${totalSteps} steps)`);
-  } else {
+    log.add(`Musica splash: ${splashSong!.name} (${splashSong!.patterns.length} patrones, ${totalSteps} steps)`);
+  }
+  if (hasSceneMusic) {
+    const totalSteps = sceneSong!.patterns.reduce((s, p) => s + p.rows.length, 0);
+    log.add(`Musica escena: ${sceneSong!.name} (${sceneSong!.patterns.length} patrones, ${totalSteps} steps) — ${hasSceneMusic ? 'con loop' : 'sin loop'}`);
+  }
+  if (!hasMusic && !hasSceneMusic) {
     log.add('Sin musica');
   }
   log.add('Codigo fuente C generado correctamente');

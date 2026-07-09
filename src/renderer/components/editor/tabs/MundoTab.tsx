@@ -3,7 +3,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
-import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection } from '../../../types/editor';
+import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection, SoundEffect } from '../../../types/editor';
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
 import { imageDataUrlToGradientHeader } from '../../../utils/transitionGradientHeader';
@@ -825,6 +825,7 @@ export function MundoTab() {
   const scenes = useAppStore((s) => s.scenes);
   const connections = useAppStore((s) => s.sceneConnections);
   const songs = useAppStore((s) => s.songs);
+  const sounds = useAppStore((s) => s.sounds);
   const selectedNodeId = useAppStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useAppStore((s) => s.setSelectedNodeId);
   const hierarchyWidth = useAppStore((s) => s.hierarchyWidth);
@@ -1190,11 +1191,19 @@ export function MundoTab() {
   const [sceneSearch, setSceneSearch] = useState('');
   const sceneDropdownRef = useRef<HTMLDivElement | null>(null);
 
+  const musicSounds = useMemo(() => sounds.filter((sd) => sd.usage === 'music'), [sounds]);
+
   const filteredSongs = useMemo(() => {
     if (!songSearch) return songs;
     const q = songSearch.toLowerCase();
     return songs.filter((so) => so.name.toLowerCase().includes(q));
   }, [songs, songSearch]);
+
+  const filteredMusicSounds = useMemo(() => {
+    if (!songSearch) return musicSounds;
+    const q = songSearch.toLowerCase();
+    return musicSounds.filter((sd) => sd.name.toLowerCase().includes(q));
+  }, [musicSounds, songSearch]);
 
   const imageOptions = useMemo(() => {
     return backgrounds.flatMap((bg) =>
@@ -1466,6 +1475,9 @@ export function MundoTab() {
 
     // Canción de fondo
     const selectedBgSong = songs.find((so) => so.id === selectedScene.backgroundSong);
+    const selectedBgSound = sounds.find((sd) => sd.id === selectedScene.backgroundSoundId);
+    const hasBgm = !!(selectedScene.backgroundSong || selectedScene.backgroundSoundId);
+    const displayBgmName = selectedBgSong?.name ?? selectedBgSound?.name ?? 'Ninguna';
     inspectorSections.push({
       title: 'Canción de fondo',
       content: (
@@ -1476,12 +1488,27 @@ export function MundoTab() {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '4px 8px', fontSize: 11, cursor: 'pointer',
               background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
-              borderRadius: 4, color: selectedScene.backgroundSong ? '#fff' : 'var(--text-muted)',
+              borderRadius: 4, color: hasBgm ? '#fff' : 'var(--text-muted)',
             }}
           >
-            <span>{selectedBgSong?.name ?? 'Ninguna'}</span>
+            <span>{displayBgmName}</span>
             <span style={{ fontSize: 8, opacity: 0.6 }}>{dropdownOpen ? '▲' : '▼'}</span>
           </div>
+          {selectedScene.backgroundSoundId && (
+            <div style={{
+              marginTop: 6, padding: '6px 8px', background: '#2a1a1a',
+              border: '1px solid #8a3a3a', borderRadius: 4, fontSize: 10, color: '#f0a0a0',
+            }}>
+              <strong style={{ fontSize: 11 }}>⚠ Posibles fallos como música de fondo:</strong>
+              <ul style={{ margin: '4px 0 0 0', paddingLeft: 14 }}>
+                <li>No loop automático — el sonido se reproduce una sola vez</li>
+                <li>Sin control de tempo o compás</li>
+                <li>Sin mezcla con efectos SFX (un solo canal)</li>
+                <li>Sin pausa/transición entre escenas</li>
+                <li>Formato WAV/MP3 pesado para ROM GBA</li>
+              </ul>
+            </div>
+          )}
           {dropdownOpen && (
             <div style={{
               position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 2,
@@ -1493,7 +1520,7 @@ export function MundoTab() {
                 type="text"
                 value={songSearch}
                 onChange={(e) => setSongSearch(e.target.value)}
-                placeholder="Buscar canción..."
+                placeholder="Buscar..."
                 onClick={(e) => e.stopPropagation()}
                 autoFocus
                 style={{
@@ -1504,28 +1531,51 @@ export function MundoTab() {
               />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto', maxHeight: 140 }}>
                 <div
-                  onClick={() => { updateScene(selectedScene.id, { backgroundSong: '' }); setDropdownOpen(false); setSongSearch(''); }}
+                  onClick={() => { updateScene(selectedScene.id, { backgroundSong: '', backgroundSoundId: undefined }); setDropdownOpen(false); setSongSearch(''); }}
                   style={{
                     padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
-                    background: !selectedScene.backgroundSong ? 'var(--accent)' : 'transparent',
-                    color: !selectedScene.backgroundSong ? '#fff' : 'var(--text-secondary)',
+                    background: !hasBgm ? 'var(--accent)' : 'transparent',
+                    color: !hasBgm ? '#fff' : 'var(--text-secondary)',
                   }}
                 >
                   Ninguna
                 </div>
-                {filteredSongs.map((so) => (
-                  <div
-                    key={so.id}
-                    onClick={() => { updateScene(selectedScene.id, { backgroundSong: so.id }); setDropdownOpen(false); setSongSearch(''); }}
-                    style={{
-                      padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
-                      background: selectedScene.backgroundSong === so.id ? 'var(--accent)' : 'transparent',
-                      color: selectedScene.backgroundSong === so.id ? '#fff' : 'var(--text-secondary)',
-                    }}
-                  >
-                    {so.name}
-                  </div>
-                ))}
+                {filteredSongs.length > 0 && (
+                  <>
+                    <div style={{ padding: '2px 6px', fontSize: 9, color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', marginTop: 2 }}>Canciones</div>
+                    {filteredSongs.map((so) => (
+                      <div
+                        key={so.id}
+                        onClick={() => { updateScene(selectedScene.id, { backgroundSong: so.id, backgroundSoundId: undefined }); setDropdownOpen(false); setSongSearch(''); }}
+                        style={{
+                          padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                          background: selectedScene.backgroundSong === so.id ? 'var(--accent)' : 'transparent',
+                          color: selectedScene.backgroundSong === so.id ? '#fff' : 'var(--text-secondary)',
+                        }}
+                      >
+                        {so.name}
+                      </div>
+                    ))}
+                  </>
+                )}
+                {filteredMusicSounds.length > 0 && (
+                  <>
+                    <div style={{ padding: '2px 6px', fontSize: 9, color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', marginTop: 2 }}>Sonidos (música)</div>
+                    {filteredMusicSounds.map((sd) => (
+                      <div
+                        key={sd.id}
+                        onClick={() => { updateScene(selectedScene.id, { backgroundSoundId: sd.id, backgroundSong: '' }); setDropdownOpen(false); setSongSearch(''); }}
+                        style={{
+                          padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                          background: selectedScene.backgroundSoundId === sd.id ? 'var(--accent)' : 'transparent',
+                          color: selectedScene.backgroundSoundId === sd.id ? '#fff' : 'var(--text-secondary)',
+                        }}
+                      >
+                        {sd.name}
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -1561,6 +1611,8 @@ export function MundoTab() {
       ],
     });
     const splashBgSong = songs.find((so) => so.id === selectedSplash.backgroundSong);
+    const splashBgSound = sounds.find((sd) => sd.id === selectedSplash.backgroundSoundId);
+    const splashHasBgm = !!(selectedSplash.backgroundSong || selectedSplash.backgroundSoundId);
     inspectorSections.push({
       title: 'Canción de fondo',
       content: (
@@ -1571,10 +1623,10 @@ export function MundoTab() {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '4px 8px', fontSize: 11, cursor: 'pointer',
               background: 'var(--bg-canvas)', border: '1px solid var(--border-color)',
-              borderRadius: 4, color: selectedSplash.backgroundSong ? '#fff' : 'var(--text-muted)',
+              borderRadius: 4, color: splashHasBgm ? '#fff' : 'var(--text-muted)',
             }}
           >
-            <span>{splashBgSong?.name ?? 'Ninguna'}</span>
+            <span>{splashBgSong?.name ?? splashBgSound?.name ?? 'Ninguna'}</span>
             <span style={{ fontSize: 8, opacity: 0.6 }}>{dropdownOpen ? '▲' : '▼'}</span>
           </div>
           {dropdownOpen && (
@@ -1588,7 +1640,7 @@ export function MundoTab() {
                 type="text"
                 value={songSearch}
                 onChange={(e) => setSongSearch(e.target.value)}
-                placeholder="Buscar canción..."
+                placeholder="Buscar..."
                 onClick={(e) => e.stopPropagation()}
                 autoFocus
                 style={{
@@ -1599,28 +1651,51 @@ export function MundoTab() {
               />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto', maxHeight: 140 }}>
                 <div
-                  onClick={() => { updateSplashScreen({ backgroundSong: '' }); setDropdownOpen(false); setSongSearch(''); }}
+                  onClick={() => { updateSplashScreen({ backgroundSong: '', backgroundSoundId: undefined }); setDropdownOpen(false); setSongSearch(''); }}
                   style={{
                     padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
-                    background: !selectedSplash.backgroundSong ? 'var(--accent)' : 'transparent',
-                    color: !selectedSplash.backgroundSong ? '#fff' : 'var(--text-secondary)',
+                    background: !splashHasBgm ? 'var(--accent)' : 'transparent',
+                    color: !splashHasBgm ? '#fff' : 'var(--text-secondary)',
                   }}
                 >
                   Ninguna
                 </div>
-                {filteredSongs.map((so) => (
-                  <div
-                    key={so.id}
-                    onClick={() => { updateSplashScreen({ backgroundSong: so.id }); setDropdownOpen(false); setSongSearch(''); }}
-                    style={{
-                      padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
-                      background: selectedSplash.backgroundSong === so.id ? 'var(--accent)' : 'transparent',
-                      color: selectedSplash.backgroundSong === so.id ? '#fff' : 'var(--text-secondary)',
-                    }}
-                  >
-                    {so.name}
-                  </div>
-                ))}
+                {filteredSongs.length > 0 && (
+                  <>
+                    <div style={{ padding: '2px 6px', fontSize: 9, color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', marginTop: 2 }}>Canciones</div>
+                    {filteredSongs.map((so) => (
+                      <div
+                        key={so.id}
+                        onClick={() => { updateSplashScreen({ backgroundSong: so.id, backgroundSoundId: undefined }); setDropdownOpen(false); setSongSearch(''); }}
+                        style={{
+                          padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                          background: selectedSplash.backgroundSong === so.id ? 'var(--accent)' : 'transparent',
+                          color: selectedSplash.backgroundSong === so.id ? '#fff' : 'var(--text-secondary)',
+                        }}
+                      >
+                        {so.name}
+                      </div>
+                    ))}
+                  </>
+                )}
+                {filteredMusicSounds.length > 0 && (
+                  <>
+                    <div style={{ padding: '2px 6px', fontSize: 9, color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', marginTop: 2 }}>Sonidos (música)</div>
+                    {filteredMusicSounds.map((sd) => (
+                      <div
+                        key={sd.id}
+                        onClick={() => { updateSplashScreen({ backgroundSoundId: sd.id, backgroundSong: '' }); setDropdownOpen(false); setSongSearch(''); }}
+                        style={{
+                          padding: '4px 6px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+                          background: selectedSplash.backgroundSoundId === sd.id ? 'var(--accent)' : 'transparent',
+                          color: selectedSplash.backgroundSoundId === sd.id ? '#fff' : 'var(--text-secondary)',
+                        }}
+                      >
+                        {sd.name}
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           )}

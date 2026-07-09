@@ -139,6 +139,7 @@ export interface Scene {
   type: 'platformer' | 'topdown' | 'rpg' | 'fighting';
   actors: Actor[];
   backgroundSong?: string;
+  backgroundSoundId?: string;
   collisionTileSize: number;
   collisionMap: number[][];
 }
@@ -151,6 +152,7 @@ export interface SplashScreen {
   y: number;
   backgroundImage?: string;
   backgroundSong?: string;
+  backgroundSoundId?: string;
   duration: number; // 1-5 seconds for static images / max seconds for video
   videoPath?: string;
   videoFps?: number; // frames per second for video export (default 15)
@@ -216,6 +218,56 @@ export interface Background {
 
 // ── Music/Sound ──────────────────────────────────────────────────────────
 export type InstrumentType = 'duty' | 'wave' | 'noise';
+
+export interface SoundEffect {
+  id: string;
+  name: string;
+  usage: 'sfx' | 'music';
+  type: 'duty' | 'wave' | 'noise';
+  duration: number;
+  volume: number; // 0-15 GBA / 0-100 master
+  dutyCycleValue: number;
+  change: number;
+  sweepShift: number;
+  sweepTime: number;
+  lengthEnabled: boolean;
+  length: number;
+  waveData: number[];
+  freq: number;
+  filePath?: string;
+  // Playback controls
+  masterVolume: number; // 0-100
+  pitch: number; // semitones -12..+12
+  speed: number; // 0.25..4
+  delay: number; // seconds 0..2
+  attack: number; // seconds 0..1
+  release: number; // seconds 0..2
+}
+
+export const defaultSoundEffect = (): SoundEffect => ({
+  id: '',
+  name: 'Nuevo sonido',
+  usage: 'sfx',
+  type: 'duty',
+  duration: 0.5,
+  volume: 12,
+  dutyCycleValue: 50,
+  change: 0,
+  sweepShift: 0,
+  sweepTime: 0,
+  lengthEnabled: false,
+  length: 0,
+  waveData: Array.from({ length: 32 }, (_, i) =>
+    Math.round((Math.sin(i / 32 * Math.PI * 2) + 1) / 2 * 15)
+  ),
+  freq: 440,
+  masterVolume: 80,
+  pitch: 0,
+  speed: 1,
+  delay: 0,
+  attack: 0,
+  release: 0.05,
+});
 
 export interface ADSREnvelope {
   attack: number;

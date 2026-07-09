@@ -31,6 +31,7 @@ export interface AdvanceAPI {
     openImage: () => Promise<{ path: string | null; error: string | null }>;
     openAnyImage: () => Promise<{ path: string | null; error: string | null }>;
     openVideo: () => Promise<{ path: string | null; size?: number }>;
+    openAudio: () => Promise<{ path: string | null }>;
   };
   // Shell
   shell: {
@@ -100,6 +101,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     openImage: () => ipcRenderer.invoke('dialog:openImage'),
     openAnyImage: () => ipcRenderer.invoke('dialog:openAnyImage'),
     openVideo: () => ipcRenderer.invoke('dialog:openVideo'),
+    openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

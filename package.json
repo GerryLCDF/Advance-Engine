@@ -1,6 +1,6 @@
 {
   "name": "advance-engine",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Advance Engine - Electron + React + Vite + TypeScript",
   "main": "dist/electron/main.js",
   "scripts": {

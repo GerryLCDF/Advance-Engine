@@ -143,6 +143,13 @@ advance-engine/
 - Fondo configurable: cuadrícula o ajedrez
 - Atajos de teclado (Ctrl+Z/Y/X/C/V/A, Del, Espacio play/pause, R reset)
 
+### Sound
+- Editor de efectos de sonido con tipo Pulse/Wave/Noise
+- Parámetros editables: nota, duración, volumen, duty cycle, envelope, sweep
+- Previsualización en tiempo real con Web Audio API
+- Importación de archivos WAV/MP3/OGG
+- Forma de onda visualizada según el tipo seleccionado
+
 ### Diálogo
 - Editor de diálogos con múltiples páginas
 - Opciones de elección por página
@@ -198,6 +205,10 @@ Definida en `src/version.ts` — semver. Actual: **0.43.0**
 - **Salida mejorada**: cada frame limpia el tile a negro antes de escribir, asegurando que todos los frames de tileset se vean completos; frames iteran en reversa (7→0)
 - **Entrada mejorada**: frames iteran en orden 0→7 con force black al final
 - Correcciones críticas: bug de gW=0/gH=0 en entry, parsing de gradiente con llaves anidadas, lectura correcta de exit tileset desde .h
+
+### v0.46.0 — SoundTab + exportación collision map
+- **SoundTab**: editor de efectos de sonido con Pulse/Wave/Noise, preview en tiempo real, importación de WAV/MP3
+- **Collision map exportado a C**: `#define COLLISION_COLS/ROWS/TILE_SIZE` + `const u8 collisionMap[ROWS][COLS]` en ROM exportada
 
 ### v0.43.0 — Control de duración de transición (0.1s-60s)
 - **Duración configurable**: slider 0.1s a 60s con step 0.1s, control independiente por entrada/salida

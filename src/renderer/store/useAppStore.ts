@@ -3,9 +3,9 @@ import type { Project, ActiveScreen, LauncherTab, CreditEntry, TemplateId } from
 import type {
   EditorTab, Scene, SceneConnection, SpriteSheet, Background,
   Song, DialogueEntry, Actor, Animation, AnimationFrame,
-  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset,
+  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset, SoundEffect,
 } from '../types/editor';
-import { createCollisionMap, makeDefaultConnection } from '../types/editor';
+import { createCollisionMap, makeDefaultConnection, defaultSoundEffect } from '../types/editor';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
   { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
@@ -475,8 +475,10 @@ interface AppState {
   removePage: (dialogueId: string, pageId: string) => void;
 
   // ── Sound / Script / FX ─────────────────────────────────────────────────
-  sounds: any[];
-  addSound: () => void;
+  sounds: SoundEffect[];
+  addSound: (overrides?: Partial<SoundEffect>) => string;
+  updateSound: (id: string, patch: Partial<SoundEffect>) => void;
+  removeSound: (id: string) => void;
   scripts: any[];
   addScript: () => void;
   fxAssets: FxAsset[];
@@ -775,14 +777,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (splashSong) {
         log.add(`Canción de splash: "${splashSong.name}"`);
       }
+      if (state.splashScreen?.backgroundSoundId) {
+        const found = state.sounds.find((s) => s.id === state.splashScreen.backgroundSoundId);
+        log.add(`[WARN] Splash: sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
+      }
 
       // ── Scene target after splash ─────────────────────────────────────
       let sceneCArray: string | undefined;
       let sceneColor: string | undefined;
+      let sceneCollisionMap: number[][] | undefined;
+      let sceneCollisionTileSize: number | undefined;
+      let sceneSong: Song | undefined;
       if (state.splashScreen?.nextSceneId) {
         const targetScene = state.scenes.find((s) => s.id === state.splashScreen.nextSceneId);
         if (targetScene) {
           sceneColor = targetScene.backgroundColor || '#000000';
+          if (targetScene.collisionMap?.length && targetScene.collisionMap[0]?.length) {
+            sceneCollisionMap = targetScene.collisionMap;
+            sceneCollisionTileSize = targetScene.collisionTileSize || 8;
+          }
           const imgPath = targetScene.backgroundImage;
           if (imgPath) {
             try {
@@ -820,6 +833,20 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
           } else {
             log.add(`Escena "${targetScene.name}": sin imagen de fondo, se usará color sólido`);
+          }
+          // ── Scene background music ──────────────────────────────────────
+          if (targetScene.backgroundSong) {
+            const found = state.songs.find((s) => s.id === targetScene.backgroundSong);
+            if (found) {
+              sceneSong = found;
+              log.add(`Canción de escena: "${found.name}" (${found.patterns.length} patrones)`);
+            } else {
+              log.add(`[WARN] backgroundSong "${targetScene.backgroundSong}" no encontrada entre las canciones`);
+            }
+          }
+          if (targetScene.backgroundSoundId) {
+            const found = state.sounds.find((s) => s.id === targetScene.backgroundSoundId);
+            log.add(`[WARN] Sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
           }
         } else {
           log.add(`[WARN] nextSceneId "${state.splashScreen.nextSceneId}" no coincide con ninguna escena`);
@@ -1314,12 +1341,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         sounds: state.sounds ?? [],
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
-      }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneCArray, sceneColor,
+      }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneSong, sceneCArray, sceneColor,
         entryTilesetCArray, entryTileSize, entryTilesetFrames, entryTilesetSpeed, entryTilesetFw, entryTilesetFh,
         exitTilesetCArray, exitTileSize, exitTilesetFrames, exitTilesetSpeed, exitTilesetFw, exitTilesetFh,
         exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
         entryGradientCArray, entryGradientW, entryGradientH,
-        entryTransitionType, exitTransitionType);
+        entryTransitionType, exitTransitionType,
+        sceneCollisionMap, sceneCollisionTileSize);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
@@ -2063,7 +2091,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     ),
   })),
   sounds: [],
-  addSound: () => set((s) => ({ sounds: [...s.sounds, { id: Date.now().toString(), name: 'Nuevo sonido' }] })),
+  addSound: (overrides) => {
+    const id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    set((s) => ({
+      sounds: [...s.sounds, { ...defaultSoundEffect(), id, name: `Sonido ${s.sounds.length + 1}`, ...overrides }],
+      selectedNodeId: id,
+    }));
+    return id;
+  },
+  updateSound: (id, patch) => set((s) => ({
+    sounds: s.sounds.map((sd) => sd.id === id ? { ...sd, ...patch } : sd),
+  })),
+  removeSound: (id) => set((s) => ({ sounds: s.sounds.filter((sd) => sd.id !== id) })),
   scripts: [],
   addScript: () => set((s) => ({ scripts: [...s.scripts, { id: Date.now().toString(), name: 'Nuevo script', code: '' }] })),
   fxAssets: [],
