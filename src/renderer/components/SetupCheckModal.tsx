@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 
 interface ToolResult {
@@ -12,29 +12,59 @@ export function SetupCheckModal({ onClose }: { onClose: () => void }) {
     { name: 'devkitARM (compilador GBA)', ok: false },
   ]);
   const [checking, setChecking] = useState(true);
+  const [installing, setInstalling] = useState(false);
+  const [installLog, setInstallLog] = useState<string[]>([]);
+  const [installError, setInstallError] = useState<string | null>(null);
+
+  const runCheck = useCallback(async () => {
+    setChecking(true);
+    try {
+      const api = window.advanceAPI;
+      const arm = await api.system.checkDevkitARM();
+      setResults([
+        {
+          name: 'devkitARM (compilador GBA)',
+          ok: arm.found,
+          detail: arm.found
+            ? `Encontrado: ${arm.path}${arm.version ? ` (${arm.version})` : ''}`
+            : 'No esta instalado. Necesitas devkitPro para compilar ROMs GBA.',
+        },
+      ]);
+    } catch {
+      setResults([
+        { name: 'devkitARM (compilador GBA)', ok: false, detail: 'Error al verificar' },
+      ]);
+    }
+    setChecking(false);
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const api = window.advanceAPI;
-        const arm = await api.system.checkDevkitARM();
-        setResults([
-          {
-            name: 'devkitARM (compilador GBA)',
-            ok: arm.found,
-            detail: arm.found
-              ? `Encontrado: ${arm.path}${arm.version ? ` (${arm.version})` : ''}`
-              : 'No instalado. Necesitas devkitPro para compilar ROMs GBA.',
-          },
-        ]);
-      } catch {
-        setResults([
-          { name: 'devkitARM (compilador GBA)', ok: false, detail: 'Error al verificar' },
-        ]);
+    runCheck();
+  }, [runCheck]);
+
+  const handleInstall = useCallback(async () => {
+    if (installing) return;
+    setInstalling(true);
+    setInstallError(null);
+    setInstallLog([]);
+    const off = window.advanceAPI.system.onDevkitInstallProgress((payload) => {
+      setInstallLog((prev) => [...prev, payload.line]);
+    });
+    try {
+      const res = await window.advanceAPI.system.installDevkitPro();
+      if (res.success) {
+        await runCheck();
+        setInstallLog((prev) => [...prev, 'devkitARM instalado correctamente.']);
+      } else {
+        setInstallError(res.cancelled ? 'Instalacion cancelada.' : (res.reason || 'No se pudo instalar.'));
       }
-      setChecking(false);
-    })();
-  }, []);
+    } catch (err) {
+      setInstallError(String(err));
+    } finally {
+      off();
+      setInstalling(false);
+    }
+  }, [installing, runCheck]);
 
   const missing = results.filter(r => !r.ok);
 
@@ -93,18 +123,55 @@ export function SetupCheckModal({ onClose }: { onClose: () => void }) {
             border: '1px solid rgba(251,191,36,0.2)',
             fontSize: 12, color: '#fbbf24', lineHeight: 1.5,
           }}>
-            <strong>⚠ Algunas herramientas no están instaladas.</strong>
+            <strong>Algunas herramientas no estan instaladas.</strong>
             <div style={{ marginTop: 6, color: '#ccc' }}>
-              La exportación GBA requiere devkitPro.{' '}
+              La exportacion GBA requiere devkitPro.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
+              <button
+                onClick={handleInstall}
+                disabled={installing}
+                style={{
+                  background: installing ? 'var(--bg-raised)' : 'var(--accent)',
+                  border: 'none', borderRadius: 6,
+                  color: installing ? '#888' : '#fff', fontSize: 12, fontWeight: 600,
+                  padding: '8px 16px', cursor: installing ? 'default' : 'pointer',
+                }}
+              >
+                {installing ? 'Instalando...' : 'Instalar devkitPro'}
+              </button>
               <span
-                style={{ color: '#60a5fa', cursor: 'pointer', textDecoration: 'underline' }}
+                style={{ color: '#60a5fa', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}
                 onClick={() => window.advanceAPI.shell.openExternal('https://devkitpro.org/wiki/Getting_Started')}
               >
-                Descargar devkitPro
+                o descargar manualmente
               </span>
             </div>
-            <div style={{ marginTop: 4, color: '#888', fontSize: 11 }}>
-              Después de instalar, reinicia la aplicación.
+            {installing && (
+              <div style={{ marginTop: 10, fontSize: 11, color: '#60a5fa' }}>
+                {window.advanceAPI.platform === 'linux' ? (
+                  'Puede aparecer una ventana del sistema para escribir tu contrasena (pkexec).'
+                ) : (
+                  'Descargando e instalando, esto puede tardar varios minutos.'
+                )}
+              </div>
+            )}
+            {installLog.length > 0 && (
+              <pre style={{
+                marginTop: 10, padding: 8, maxHeight: 140, overflow: 'auto',
+                background: 'var(--bg-dark)', borderRadius: 6,
+                color: '#a8f0a8', fontSize: 10, lineHeight: 1.4, whiteSpace: 'pre-wrap',
+              }}>
+                {installLog.join('\n')}
+              </pre>
+            )}
+            {installError && (
+              <div style={{ marginTop: 10, fontSize: 11, color: '#f87171', lineHeight: 1.5 }}>
+                {installError}
+              </div>
+            )}
+            <div style={{ marginTop: 8, color: '#888', fontSize: 11 }}>
+              Despues de instalar, reinicia la aplicacion.
             </div>
           </div>
         )}
@@ -123,7 +190,7 @@ export function SetupCheckModal({ onClose }: { onClose: () => void }) {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20, gap: 8 }}>
           {missing.length > 0 && (
             <div style={{ fontSize: 11, color: '#888', alignSelf: 'center' }}>
-              Puedes seguir editando, la exportación requerirá las herramientas faltantes.
+              Puedes seguir editando, la exportacion requerira las herramientas faltantes.
             </div>
           )}
           <button

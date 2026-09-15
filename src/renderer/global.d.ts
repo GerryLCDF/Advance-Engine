@@ -1,6 +1,7 @@
 import type { Project } from './types';
 
 interface AdvanceAPI {
+  platform: string;
   emu: {
     play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
     stop: () => Promise<{ success: boolean }>;
@@ -27,6 +28,8 @@ interface AdvanceAPI {
   system: {
     checkDevkitARM: () => Promise<{ found: boolean; path?: string; version?: string }>;
     runCommand: (cmd: string, cwd: string) => Promise<{ success: boolean; output: string }>;
+    installDevkitPro: () => Promise<{ success: boolean; cancelled?: boolean; reason?: string; path?: string; version?: string }>;
+    onDevkitInstallProgress: (callback: (payload: { line: string }) => void) => () => void;
   };
   window: {
     minimize: () => void;

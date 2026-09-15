@@ -11,6 +11,7 @@ export interface Project {
 }
 
 export interface AdvanceAPI {
+  platform: string;
   // Emulador GBA
   emu: {
     play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
@@ -42,6 +43,8 @@ export interface AdvanceAPI {
   system: {
     checkDevkitARM: () => Promise<{ found: boolean; path?: string; version?: string }>;
     runCommand: (cmd: string, cwd: string) => Promise<{ success: boolean; output: string }>;
+    installDevkitPro: () => Promise<{ success: boolean; cancelled?: boolean; reason?: string; path?: string; version?: string }>;
+    onDevkitInstallProgress: (callback: (payload: { line: string }) => void) => () => void;
   };
   // Ventana
   window: {
@@ -84,6 +87,7 @@ export interface AdvanceAPI {
 }
 
 contextBridge.exposeInMainWorld('advanceAPI', {
+  platform: process.platform,
   emu: {
     play: (romPath: string) => ipcRenderer.invoke('emu:play', romPath),
     stop: () => ipcRenderer.invoke('emu:stop'),
@@ -110,6 +114,12 @@ contextBridge.exposeInMainWorld('advanceAPI', {
   system: {
     checkDevkitARM: () => ipcRenderer.invoke('system:checkDevkitARM'),
     runCommand: (cmd: string, cwd: string) => ipcRenderer.invoke('system:runCommand', cmd, cwd),
+    installDevkitPro: () => ipcRenderer.invoke('system:installDevkitPro'),
+    onDevkitInstallProgress: (callback: (payload: { line: string }) => void) => {
+      const listener = (_e: unknown, payload: { line: string }) => callback(payload);
+      ipcRenderer.on('system:devkit-install-progress', listener);
+      return () => ipcRenderer.removeListener('system:devkit-install-progress', listener);
+    },
   },
   window: {
     minimize: () => ipcRenderer.send('window-minimize'),

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, protocol, scre
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { exec, execFileSync } from 'child_process';
+import { exec, execFileSync, spawn } from 'child_process';
 import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning } from './emuWindow';
 
 // isDev: true cuando se corre con NODE_ENV=development (npm run dev)
@@ -735,6 +735,181 @@ ipcMain.handle('system:runCommand', async (_e, cmd: string, cwd: string) => {
     return { success: false, output: String(err) };
   }
 });
+
+// ── IPC: Instalación automática de devkitPro ────────────────────────────────
+
+const DEVKIT_WIN_INSTALLER_URL = 'https://github.com/devkitPro/installer/releases/download/v3.0.3/devkitProUpdater-3.0.3.exe';
+const DEVKIT_KEY_ID = 'BC26F752D25B92CE272E0F44F7FD5492264BB9D0';
+
+const LINUX_INSTALL_SCRIPT = `
+set -e
+exec 2>&1
+echo "==> [1/5] Verificando pacman..."
+if ! command -v pacman >/dev/null 2>&1; then
+  echo "==> pacman no encontrado, instalandolo..."
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y pacman
+  elif command -v apt-get >/dev/null 2>&1; then
+    apt-get update && apt-get install -y pacman
+  else
+    echo "==> ERROR: no se encontro un gestor para instalar pacman"
+    exit 3
+  fi
+fi
+echo "==> [2/5] Inicializando y confiando claves de pacman..."
+pacman-key --init
+pacman-key --recv ${DEVKIT_KEY_ID} --keyserver keyserver.ubuntu.com
+pacman-key --lsign ${DEVKIT_KEY_ID}
+echo "==> [3/5] Instalando keyring de devkitPro..."
+pacman -U --noconfirm https://pkg.devkitpro.org/devkitpro-keyring.pkg.tar.zst || echo "==> keyring ya estaba o fallo menor"
+echo "==> [4/5] Anadiendo repositorios dkp a pacman.conf..."
+if ! grep -q '\\[dkp-libs\\]' /etc/pacman.conf; then
+cat >> /etc/pacman.conf <<'CONFEOF'
+
+[dkp-libs]
+Server = https://pkg.devkitpro.org/packages
+
+[dkp-linux]
+Server = https://pkg.devkitpro.org/packages/linux/$arch/
+CONFEOF
+fi
+echo "==> [5/5] Instalando gba-dev (devkitARM + libgba)..."
+pacman -Syu --noconfirm
+pacman -S --noconfirm gba-dev
+echo "==> Variables de entorno para el usuario..."
+U_ID="$PKEXEC_UID"
+if [ -n "$U_ID" ]; then
+  U_HOME="$(getent passwd "$U_ID" | cut -d: -f6)"
+  if [ -n "$U_HOME" ] && [ -f "$U_HOME/.bashrc" ]; then
+    grep -q 'DEVKITPRO=/opt/devkitpro' "$U_HOME/.bashrc" || cat >> "$U_HOME/.bashrc" <<'ENVEOF'
+
+export DEVKITPRO=/opt/devkitpro
+export DEVKITARM=$DEVKITPRO/devkitARM
+export PATH=$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH
+ENVEOF
+    echo "==> Variables de entorno anadidas a $U_HOME/.bashrc"
+  fi
+fi
+echo "==> INSTALL_DONE"
+`.trim();
+
+function runStream(cmd: string, args: string[], onLine: (line: string) => void, timeoutMs: number): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    let output = '';
+    const child = spawn(cmd, args, { env: process.env });
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ code: -1, output: output.trim() + '\n[TIMEOUT]' });
+    }, timeoutMs);
+    const onData = (chunk: Buffer) => {
+      const text = chunk.toString();
+      output += text;
+      for (const line of text.split(/\r?\n/)) {
+        if (line.trim()) onLine(line.trim());
+      }
+    };
+    child.stdout?.on('data', onData);
+    child.stderr?.on('data', onData);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code: code ?? -1, output: output.trim() });
+    });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ code: -2, output: output.trim() + '\n' + err.message });
+    });
+  });
+}
+
+async function installDevkitPro(): Promise<{ success: boolean; cancelled?: boolean; reason?: string; path?: string; version?: string }> {
+  const win = mainWindow;
+  const emit = (line: string) => win?.webContents.send('system:devkit-install-progress', { line });
+
+  try {
+    if (process.platform === 'linux') {
+      emit('Iniciando instalacion en Linux');
+      emit('Puede aparecer una ventana del sistema para escribir tu contrasena (pkexec)');
+      const res = await runStream('pkexec', ['bash', '-c', LINUX_INSTALL_SCRIPT], emit, 15 * 60 * 1000);
+      if (res.code === 0) {
+        const check = await checkDevkitARM();
+        if (check.found) {
+          emit('devkitARM instalado correctamente. Relanza la app si el modal no cambia.');
+          return { success: true, path: check.path, version: check.version };
+        }
+        return { success: false, reason: 'La instalacion termino pero no se encontro arm-none-eabi-gcc' };
+      }
+      const cancelled = res.code === 126 || res.code === 127;
+      return {
+        success: false,
+        cancelled,
+        reason: `${cancelled ? 'Autenticacion cancelada o denegada.' : 'Fallo la instalacion.'}\n${res.output.slice(-600)}`,
+      };
+    }
+
+    if (process.platform === 'win32') {
+      if (process.arch === 'ia32') {
+        return { success: false, reason: 'devkitPro requiere Windows de 64 bits.' };
+      }
+      const tmpExe = path.join(os.tmpdir(), 'devkitProUpdater.exe');
+      emit('Descargando instalador de devkitPro...');
+      const dl = await runStream(
+        'powershell',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Invoke-WebRequest -Uri '${DEVKIT_WIN_INSTALLER_URL}' -OutFile '${tmpExe}'`],
+        emit,
+        5 * 60 * 1000,
+      );
+      if (dl.code !== 0) {
+        return { success: false, reason: 'Fallo la descarga del instalador:\n' + dl.output.slice(-400) };
+      }
+      emit('Ejecutando instalador en modo silencioso (puede tardar varios minutos)...');
+      const inst = await runStream(tmpExe, ['/S'], emit, 20 * 60 * 1000);
+      const check = await checkDevkitARM();
+      if (check.found) {
+        emit('devkitARM instalado correctamente.');
+        return { success: true, path: check.path, version: check.version };
+      }
+      return { success: false, reason: 'El instalador termino pero no se encontro el compilador:\n' + inst.output.slice(-400) };
+    }
+
+    if (process.platform === 'darwin') {
+      const pkgPath = path.join(os.tmpdir(), 'devkitpro-pacman-installer.pkg');
+      const pkgUrl = 'https://github.com/devkitPro/pacman/releases/download/v6.0.2/devkitpro-pacman-installer.pkg';
+      emit('Descargando instalador de devkitPro (pkg oficial)...');
+      const dl = await runStream('curl', ['-L', '-sS', '-o', pkgPath, pkgUrl], emit, 5 * 60 * 1000);
+      if (!fs.existsSync(pkgPath)) {
+        return { success: false, reason: 'Fallo la descarga del instalador (curl):\n' + (dl.output.slice(-300) || 'sin output') };
+      }
+      emit('Instalando con permisos de administrador (aparecera un dialogo del sistema)...');
+      const installScript = [
+        `installer -pkg '${pkgPath}' -target /`,
+        'PATH="/opt/devkitpro/pacman/bin:$PATH" dkp-pacman-key --init 2>/dev/null || true',
+        'PATH="/opt/devkitpro/pacman/bin:$PATH" dkp-pacman -S --noconfirm gba-dev',
+        `rm -f '${pkgPath}'`,
+      ].join(' && ');
+      const inst = await runStream(
+        'osascript',
+        ['-e', `do shell script "${installScript}" with administrator privileges`],
+        emit,
+        20 * 60 * 1000,
+      );
+      const check = await checkDevkitARM();
+      if (check.found) {
+        emit('devkitARM instalado correctamente.');
+        return { success: true, path: check.path, version: check.version };
+      }
+      return {
+        success: false,
+        reason: 'El instalador termino pero no se encontro el compilador:\n' + inst.output.slice(-500),
+      };
+    }
+
+    return { success: false, reason: `Plataforma no soportada: ${process.platform}` };
+  } catch (err) {
+    return { success: false, reason: String(err) };
+  }
+}
+
+ipcMain.handle('system:installDevkitPro', async () => installDevkitPro());
 
 // ── IPC: Emulador ───────────────────────────────────────────────────────────
 

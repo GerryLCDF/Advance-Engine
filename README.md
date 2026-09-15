@@ -6,8 +6,8 @@ Motor de desarrollo visual para Game Boy Advance hecho con Electron + React + Vi
 
 - Node.js 18+
 - npm 9+
-- Windows 10/11
-- devkitARM (para exportar ROMs GBA) — https://devkitpro.org
+- Windows 10/11 (x64) o Linux (x64/arm64)
+- devkitARM (para exportar ROMs GBA) — en el check de inicio de la app hay un botón "Instalar devkitPro" que lo instala automáticamente (Linux vía pkexec, Windows con el instalador oficial, macOS con el pkg oficial y diálogo del sistema)
 
 ## Instalación
 

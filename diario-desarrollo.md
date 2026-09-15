@@ -376,3 +376,27 @@ Reemplacé el `ComingSoonTab` de Sound por un editor completo:
 - `src/renderer/global.d.ts`: `openAudio` type
 - `PENDIENTES.md`: marcado 1.9 + SoundTab items
 - `src/version.ts`, `README.md`, `diario-desarrollo.md`: docs
+
+## 14 Septiembre 2026 — v0.47.0 Auto-instalacion de devkitARM (Linux y Windows)
+
+Arreglé el check de herramientas del inicio: solo aparecía la primera vez por un flag de localStorage (`advance-studio-setup-done`). Ahora comprueba devkitARM en cada arranque y muestra el modal solo si falta la herramienta.
+
+El cambio gordo del día: el botón "Instalar devkitPro". Antes el modal solo te mandaba a descargar devkitPro manualmente; ahora lo instala solo:
+
+- **Linux**: corre un script bash vía `pkexec` (Electron spawn) que instala `pacman` si no existe, confía la keyring de devkitPro (`BC26F752...`), agrega los repos `[dkp-libs]` y `[dkp-linux]` a `/etc/pacman.conf`, y ejecuta `pacman -S gba-dev` (devkitARM + libgba). Al final también agrega `DEVKITPRO`/`DEVKITARM`/PATH al `.bashrc` del usuario (usa la variable `PKEXEC_UID`). Si el usuario cancela la ventana de polkit, se detecta (exit 126/127) y se muestra "Instalación cancelada".
+- **Windows**: descarga `devkitProUpdater-3.0.3.exe` (NSIS oficial) con PowerShell y lo ejecuta en silencio (`/S`). Instala en `c:\devkitPro`, que es la ruta que ya busca `checkDevkitARM`.
+- **macOS**: descarga el `.pkg` oficial (`devkitpro-pacman-installer.pkg` v6.0.2) con `curl` y lo instala con `osascript ... with administrator privileges` (pide la contraseña del sistema), después corre `dkp-pacman -S --noconfirm gba-dev`. Best-effort: no probado en hardware mac.
+- El progreso se transmite al renderer por un canal IPC (`system:devkit-install-progress`) y se muestra en un log dentro del modal.
+
+Detalles técnicos: en el renderer no existe `process` (contextIsolation true), así que expuse `platform` en preload para saber si es Linux (para el hint de pkexec). El progreso usa `runStream()` con `spawn` en main para no quedarse sin output stream; timeout de 15-20 min según plataforma.
+
+### Archivos modificados
+- `electron/main.ts`: `system:installDevkitPro` + `runStream()` + script Linux + lógica Windows
+- `electron/preload.ts`: `installDevkitPro`, `onDevkitInstallProgress`, `platform`
+- `src/renderer/global.d.ts`: tipos de las 3 APIs nuevas
+- `src/renderer/components/SetupCheckModal.tsx`: botón "Instalar devkitPro", log de progreso, re-check al terminar; el check corre en cada arranque
+- `src/renderer/main.tsx`: quité el flag `advance-studio-setup-done`, muestro el modal solo si falta la herramienta
+- `src/renderer/components/editor/tabs/MundoTab.tsx`: import faltante de `TransitionType` (error de typecheck pre-existente)
+- `src/version.ts`: 0.46.0 -> 0.47.0
+- `README.md`: requisitos (Linux + auto-instalación)
+- `PENDIENTES.md`: item de auto-instalación marcado

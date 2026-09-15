@@ -112,7 +112,18 @@ class ErrorBoundary extends React.Component<
 }
 
 function Root() {
-  const [showSetup, setShowSetup] = useState(() => !localStorage.getItem('advance-studio-setup-done'));
+  const [showSetup, setShowSetup] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const arm = await window.advanceAPI.system.checkDevkitARM();
+        setShowSetup(!arm.found);
+      } catch {
+        setShowSetup(true);
+      }
+    })();
+  }, []);
 
   return (
     <React.StrictMode>
@@ -120,7 +131,7 @@ function Root() {
         <ThemeApplier>
           <Launcher />
         </ThemeApplier>
-        {showSetup && <SetupCheckModal onClose={() => { localStorage.setItem('advance-studio-setup-done', '1'); setShowSetup(false); }} />}
+        {showSetup && <SetupCheckModal onClose={() => setShowSetup(false)} />}
       </ErrorBoundary>
     </React.StrictMode>
   );

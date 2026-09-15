@@ -3,7 +3,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
-import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection, SoundEffect } from '../../../types/editor';
+import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection, SoundEffect, TransitionType } from '../../../types/editor';
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
 import { imageDataUrlToGradientHeader } from '../../../utils/transitionGradientHeader';
