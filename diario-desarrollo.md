@@ -503,3 +503,12 @@ Seguía sin mostrarse la calcomanía. Encontré el bug de verdad: en Linux las r
 - `CrearScreen` y `ModificarPortadaScreen`: la condición para copiar la portada al proyecto pasó de `!startsWith('/')` a `!startsWith('atom://')` (en Linux las absolutas empiezan con `/` y sí deben copiarse).
 - El botón se llama **"Colocar calcomanía"** (pide el usuario).
 - `src/version.ts`: 0.49.1 -> 0.49.2
+
+## 15 Septiembre 2026 — v0.49.3 Assets de cartucho y calcomanía al repo
+
+El usuario pidió que quien descargue el proyecto pueda disfrutar de la experiencia completa, así que forcé a git (estaban en `recursos/`, gitignored) los assets nuevos:
+- Los 20 cartuchos de color (sólido + transparente × 10 colores) en `public/recursos/cartuchos/`.
+- La calcomanía: `recorte.png` (máscara) y `plantilla.png` (silueta blanca) en `public/recursos/calcomania/`.
+- Las 4 bases (`cartucho.png`, `cartucho_color.png`, `cartuchotransparente.png`, `portada.png`) ya estaban versionadas.
+
+`src/version.ts`: 0.49.2 -> 0.49.3
