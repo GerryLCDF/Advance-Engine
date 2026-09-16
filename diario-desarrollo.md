@@ -400,3 +400,106 @@ Detalles técnicos: en el renderer no existe `process` (contextIsolation true), 
 - `src/version.ts`: 0.46.0 -> 0.47.0
 - `README.md`: requisitos (Linux + auto-instalación)
 - `PENDIENTES.md`: item de auto-instalación marcado
+
+## 15 Septiembre 2026 — v0.47.1 Degradado del nombre anclado a la base del cartucho
+
+En la pantalla "Modificar Cartucho" el nombre del proyecto se veía sobre la portada con un degradado negro que terminaba en el borde de la ventana del cartucho (quedaba flotando más arriba de la base). La capa del nombre (Layer 3 en `CartuchoDisplay`) usaba los insets de la ventana (`top 11% … bottom 18%`), así que el degradado solo cubría hasta el final de la portada.
+
+Lo cambié para que la capa ocupe todo el cartucho (`inset: 0`) con un degradado `to bottom` anclado a la base, y el nombre centrado abajo.
+
+### Archivos modificados
+- `src/renderer/components/CartuchoDisplay.tsx`: Layer 3 ahora cubre todo el cartucho con degradado anclado a la base
+- `src/version.ts`: 0.47.0 -> 0.47.1
+
+## 15 Septiembre 2026 — v0.48.0 Selector de colores de cartucho (Color plano / Color transparente)
+
+Rediseñé la sección "Colores:" de Modificar Cartucho. Ahora hay dos botones centrados: "Color plano" y "Color transparente". Al hacer clic en uno se abre un menú con una cuadrícula de 2×5 con las 10 opciones: los 9 colores fijos (gris, blanco, rojo, verde, azul, morado, café, amarillo, negro) más el "Color propio".
+
+El selector se guarda como un string encodificado `${style}:${colorKey}` o `${style}:custom:#rrggbb`, y los valores legacy (`cartucho`, `cartuchotransparente`, `cartucho_color`) siguen resueltos para no romper proyectos existentes.
+
+Carpeta nueva `public/recursos/cartuchos/` con las 18 imágenes nuevas (480×270) que pasó el usuario (copiadas de `/home/gerardo/Imagenes/advance engine/cartuchos`, nombres normalizados a guion bajo). Para el "Color propio" se tiñe el cartucho blanco con un filtro CSS generado desde el hex (`sepia + hue-rotate + saturate + brightness`).
+
+Feedback visual: hover (escala 1.07) y clic (escala 0.94) en botones y opciones, borde de selección encendido.
+
+### Archivos modificados
+- `public/recursos/cartuchos/*.png`: 18 imágenes nuevas (9 colores × plano/transparente)
+- `src/renderer/types/index.ts`: `TemplateId` -> string (formato encodificado), `CARTUCHO_STYLES`, `CARTUCHO_COLORS`
+- `src/renderer/utils/cartuchos.ts`: `parseTemplate`, `encodeTemplate`, `encodeCustomTemplate`, `cartuchoFile`, `hexToHsl`, `hexToFilter`
+- `src/renderer/components/CartuchoDisplay.tsx`: resuelve la plantilla con `parseTemplate` y aplica el filtro del color propio
+- `src/renderer/components/CartuchoColorPicker.tsx`: nuevo selector (2 botones + cuadrícula 2×5 + color propio)
+- `src/renderer/screens/ModificarPortadaScreen.tsx`: sección "Colores:" usa el nuevo picker
+- `src/version.ts`: 0.47.1 -> 0.48.0
+
+## 15 Septiembre 2026 — v0.48.1 Ajustes del selector de colores (feedback del usuario)
+
+Ajustes menores sobre el picker de cartuchos según comentarios del usuario:
+
+- Los botones de estilo ya no son botones de texto: ahora son miniaturas del **cartucho gris** (gris = plano, gris trans = transparente), centradas, con hover/clic.
+- Al elegir un color el menú **ya no se cierra**: se aplica en vivo al preview y el usuario puede seguir probando combinaciones.
+- El **color propio** se actualiza en vivo mientras se arrastra el selector nativo; el menú tampoco se cierra.
+- Se **quitaron Blanco y Negro** de las opciones (los más cercanos a blanco/negro) → quedan 7 colores + "Color propio" en una cuadrícula 4×2.
+- Corregido el **swap de nombres del negro**: `cartucho_negro.png` (sólido) y `cartucho_negro_trans.png` (transparente) estaban intercambiados; ya están en su sitio.
+
+### Archivos modificados
+- `public/recursos/cartuchos/cartucho_negro*.png`: swap de contenidos
+- `src/renderer/types/index.ts`: `CARTUCHO_COLORS` sin blanco/negro (7 colores)
+- `src/renderer/components/CartuchoColorPicker.tsx`: miniaturas gris como botones de estilo, menú que no se cierra, color propio en vivo, cuadrícula 4×2
+- `src/version.ts`: 0.48.0 -> 0.48.1
+
+## 15 Septiembre 2026 — v0.48.2 Blanco y Negro de vuelta en los predefinidos
+
+Aclaración del usuario: Blanco y Negro SÍ van en la selección de predefinidos (son 9 colores de nuevo, cuadrícula 2×5). Lo que se restringe es el **color propio**: su tinte ya no deja el cartucho pegado a casi-blanco/casi-negro.
+
+`hexToFilter` ahora delimita la luminancia del color elegido al rango 18-82% y fuerza una saturación mínima, para que el color propio siempre pinte un cartucho con color visible (el selector nativo del navegador no se puede restringir, así que es el filtro el que evita los extremos).
+
+### Archivos modificados
+- `src/renderer/types/index.ts`: `CARTUCHO_COLORS` de nuevo con los 9 colores (blanco y negro incluidos)
+- `src/renderer/utils/cartuchos.ts`: `hexToFilter` delimita L a [18,82] y S mínima
+- `src/renderer/components/CartuchoColorPicker.tsx`: cuadrícula de vuelta a 2×5
+- `src/version.ts`: 0.48.1 -> 0.48.2
+
+## 15 Septiembre 2026 — v0.49.0 Calcomania delantera de cartucho
+
+Los cartuchos GBA llevan una calcomania (etiqueta) en el frente. El usuario pasó dos PNG estaticos: `recorte.png` (mascara blanco/negro, blanco=visible) y `plantilla.png` (silueta blanca de la zona delantera). La idea: el usuario carga su propio diseño (importar imagen PNG, como la portada) y este se **recorta con la mascara** sobre la zona delantera.
+
+Corré un analisis de pixeles (no puedo ver imagenes con este modelo) para deducir la geometria:
+- La zona blanca de `recorte.png` (x 18.75-81.04%, y 25.93-84.81%) coincide al 100% con la silueta blanca de `plantilla.png`.
+- En los cartuchos (ej. `cartucho_gris.png`) esa zona es el rectangulo blanco de la etiqueta delantera → la calcomania se pinta exactamente ahí, encima.
+
+Implementación:
+- `public/recursos/calcomania/recorte.png` y `plantilla.png` (assets).
+- `Project.calcomaniaPath` ('' = plantilla por defecto) en types, store (drafts) y electron (interface + create default).
+- `file:copyCalcomania` IPC (+ preload + global.d.ts): copia el diseño a `calcomania.png` dentro de la carpeta del proyecto.
+- `CartuchoDisplay` nueva capa Mask: `mask-image` con `recorte.png` (100% 100%) sobre `plantilla.png` o el diseño importado; zIndex 4, el nombre pasa a zIndex 5.
+- `ModificarPortadaScreen`: botón "Cambiar calcomanía" (importa PNG), "Quitar calcomanía" para volver a la plantilla, preview en vivo y guardado.
+- Recientes y Todos-proyectos: muestran la calcomanía del proyecto.
+
+### Archivos modificados
+- `public/recursos/calcomania/`: recorte.png + plantilla.png
+- `src/renderer/types/index.ts`: `Project.calcomaniaPath`
+- `src/renderer/store/useAppStore.ts`: draftCalcomaniaPath + default en addProject + demos
+- `src/renderer/screens/ModificarPortadaScreen.tsx`: botón calcomanía + guardado
+- `src/renderer/components/CartuchoDisplay.tsx`: capa con mask-image
+- `src/renderer/screens/RecientesScreen.tsx`, `TodosProyectosScreen.tsx`: pasan calcomaniaPath
+- `electron/main.ts`: Project interface + file:copyCalcomania + default en create
+- `electron/preload.ts`, `src/renderer/global.d.ts`: copyCalcomania
+- `src/version.ts`: 0.48.2 -> 0.49.0
+
+## 15 Septiembre 2026 — v0.49.1 La calcomania y la portada son lo mismo
+
+El usuario me aclaró algo importante: **la calcomania ES la portada**, no son cosas diferentes. El botón que carga el diseño es el mismo de siempre ("Cambiar portada") y ese diseño va **por delante** del cartucho. Mi idea de un botón e IPC separados estaba de más, y además al cargar no se veía nada porque el diseño quedaba detrás del marco opaco del cartucho.
+
+### Cambios
+- `CartuchoDisplay`: la portada ahora se pinta como **capa delantera** (zIndex 4) recortada por `recorte.png`; sin portada queda la plantilla blanca. Quité la portada interior (ventana) y el segundo marco que la tapaban (el cartucho no tiene ventana transparente).
+- Quité `Project.calcomaniaPath`, los drafts, `file:copyCalcomania` (IPC, preload, global.d.ts) y los botones "Cambiar/Quitar calcomanía": se reutiliza el flujo de `coverPath`.
+- `src/version.ts`: 0.49.0 -> 0.49.1
+
+## 15 Septiembre 2026 — v0.49.2 Arreglada la calcomanía que no se veía
+
+Seguía sin mostrarse la calcomanía. Encontré el bug de verdad: en Linux las rutas absolutas empiezan con `/`, y la resolución de imagen trataba eso como ruta web → `<img src="/home/...">` pedía `http://localhost:5173/home/...` (404) → caía al fallback blanco (invisible contra la etiqueta blanca).
+
+### Cambios
+- `CartuchoDisplay`: las rutas absolutas del sistema ahora se sirven siempre por `atom://local/...` (detectando `atom://` o `http(s)://`; nunca `/` web para datos del proyecto).
+- `CrearScreen` y `ModificarPortadaScreen`: la condición para copiar la portada al proyecto pasó de `!startsWith('/')` a `!startsWith('atom://')` (en Linux las absolutas empiezan con `/` y sí deben copiarse).
+- El botón se llama **"Colocar calcomanía"** (pide el usuario).
+- `src/version.ts`: 0.49.1 -> 0.49.2

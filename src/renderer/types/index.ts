@@ -1,7 +1,33 @@
 // ── Tipos globales de Advance Studio ────────────────────────────────────────
 
-export type TemplateId = 'cartucho' | 'cartuchotransparente' | 'cartucho_color';
+// Plantilla de cartucho. Valor encodificado según el tipo:
+//   `${style}:${colorKey}`              → uno de los 9 colores fijos
+//   `${style}:custom:#rrggbb`           → color personalizado (selector)
+//   (legacy) 'cartucho' | 'cartuchotransparente' | 'cartucho_color'
+export type TemplateId = string;
 
+export type CartuchoStyle = 'plano' | 'transparente';
+
+export const CARTUCHO_STYLES: { key: CartuchoStyle; label: string }[] = [
+  { key: 'plano', label: 'Color plano' },
+  { key: 'transparente', label: 'Color transparente' },
+];
+
+// Orden fijo de los 9 colores: gris, blanco, rojo, verde, azul,
+// morado, café, amarillo, negro
+export const CARTUCHO_COLORS: { key: string; label: string }[] = [
+  { key: 'gris',     label: 'Gris' },
+  { key: 'blanco',   label: 'Blanco' },
+  { key: 'rojo',     label: 'Rojo' },
+  { key: 'verde',    label: 'Verde' },
+  { key: 'azul',     label: 'Azul' },
+  { key: 'morado',   label: 'Morado' },
+  { key: 'cafe',     label: 'Café' },
+  { key: 'amarillo', label: 'Amarillo' },
+  { key: 'negro',    label: 'Negro' },
+];
+
+// Plantillas legacy (primeras versiones) — se mantienen para compatibilidad
 export const TEMPLATES: { id: TemplateId; label: string; file: string }[] = [
   { id: 'cartucho',              label: 'Clásico',       file: '/recursos/cartucho.png' },
   { id: 'cartucho_color',        label: 'Color plano',   file: '/recursos/cartucho_color.png' },
@@ -14,7 +40,7 @@ export interface Project {
   author: string;
   path: string;
   template: TemplateId;
-  coverPath: string;   // '' = usa portada por defecto
+  coverPath: string;   // '' = usa plantilla por defecto
   lastOpened: string;  // ISO date string
 }
 

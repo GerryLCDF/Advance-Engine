@@ -31,7 +31,7 @@ export function CrearScreen() {
     if (project) {
       try {
         // Copy cover image to project folder if present
-        if (draftCoverPath && !draftCoverPath.startsWith('/')) {
+        if (draftCoverPath && !draftCoverPath.startsWith('atom://')) {
           const api = window.advanceAPI;
           if (api?.file?.copyCover) {
             const result = await api.file.copyCover(draftCoverPath, project.path);

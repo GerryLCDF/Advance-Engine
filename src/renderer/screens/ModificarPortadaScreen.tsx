@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../store/useAppStore';
 import { CartuchoDisplay } from '../components/CartuchoDisplay';
-import { TEMPLATES } from '../types';
+import { CartuchoColorPicker } from '../components/CartuchoColorPicker';
 import type { TemplateId } from '../types';
 
 const SKIP_HINT_KEY = 'advance-studio:skip-cover-hint';
@@ -35,7 +35,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
   // Al montar, leer el flag de localStorage
   useEffect(() => {
     const skip = localStorage.getItem(SKIP_HINT_KEY) === 'true';
-    // No mostramos el modal al montar; solo al presionar "Cambiar portada"
+    // No mostramos el modal al montar; solo al presionar "Colocar calcomanía"
     setDontShowAgain(skip);
   }, []);
 
@@ -76,7 +76,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
 
   const handleSave = async () => {
     let finalCover = localCover;
-    if (projectId !== '__draft__' && localCover && !localCover.startsWith('/')) {
+    if (projectId !== '__draft__' && localCover && !localCover.startsWith('atom://')) {
       const project = projects.find((p) => p.id === projectId);
       const projectDir = project?.path;
       if (projectDir) {
@@ -199,7 +199,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
             cursor: 'pointer',
             }}
           >
-            Cambiar portada
+Colocar calcomanía
           </motion.button>
         </div>
 
@@ -214,17 +214,7 @@ export function ModificarPortadaScreen({ projectId }: ModificarPortadaScreenProp
           }}
         >
           <span style={{ color: 'var(--text)', fontSize: 15, fontWeight: 700 }}>Colores:</span>
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            {TEMPLATES.map((t) => (
-              <TemplateCard
-                key={t.id}
-                label={t.label}
-                file={t.file}
-                selected={localTemplate === t.id}
-                onSelect={() => setLocalTemplate(t.id as TemplateId)}
-              />
-            ))}
-          </div>
+          <CartuchoColorPicker value={localTemplate} onChange={setLocalTemplate} />
         </div>
 
         {/* Pie: Cancel / Save */}
@@ -407,39 +397,5 @@ function ReqRow({ icon, label, value }: { icon: string; label: string; value: st
       <span style={{ color: 'var(--text-muted)', fontSize: 12, minWidth: 80 }}>{label}</span>
       <span style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>{value}</span>
     </div>
-  );
-}
-
-function TemplateCard({
-  label, file, selected, onSelect,
-}: {
-  label: string; file: string; selected: boolean; onSelect: () => void;
-}) {
-  return (
-    <motion.div
-      onClick={onSelect}
-      whileHover={{ scale: 1.06 }}
-      whileTap={{ scale: 0.94 }}
-      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-    >
-      <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>{label}</span>
-      <div
-        style={{
-          width: 80,
-          height: 60,
-          borderRadius: 6,
-          border: selected ? '2px solid var(--accent-light)' : '2px solid var(--border-color)',
-          overflow: 'hidden',
-          background: 'var(--bg-dark)',
-          transition: 'border-color 0.15s',
-        }}
-      >
-        <img
-          src={file}
-          alt={label}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', imageRendering: 'pixelated' }}
-        />
-      </div>
-    </motion.div>
   );
 }
