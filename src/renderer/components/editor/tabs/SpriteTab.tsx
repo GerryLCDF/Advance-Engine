@@ -205,17 +205,17 @@ export function SpriteTab() {
     return () => { cancelled = true; };
   }, [selectedSprite?.tilesetPath]);
 
-  // Calculate tile size ONCE from image dimensions (not when H/V changes)
+  // Calculate tile size from image dimensions (recalcula también al cambiar H/V)
   useEffect(() => {
     if (!spriteImgSize) return;
     const sp = spriteSheets.find((s) => s.id === selectedNodeId);
     if (!sp) return;
-    const tileW = Math.floor(spriteImgSize.w / sp.cols);
-    const tileH = Math.floor(spriteImgSize.h / sp.rows);
+    const tileW = Math.floor(spriteImgSize.w / Math.max(1, sp.cols));
+    const tileH = Math.floor(spriteImgSize.h / Math.max(1, sp.rows));
     if (tileW > 0 && tileH > 0 && (tileW !== sp.tileWidth || tileH !== sp.tileHeight)) {
       updateSpriteSheet(sp.id, { tileWidth: tileW, tileHeight: tileH });
     }
-  }, [spriteImgSize]);
+  }, [spriteImgSize, selectedSprite?.id, selectedSprite?.cols, selectedSprite?.rows, spriteSheets]);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
@@ -240,7 +240,7 @@ export function SpriteTab() {
     }
     if (!sprite) return;
 
-    const destPath = projectDir ? `${projectDir}/sprites/${file.name}` : filePath;
+    const destPath = (projectDir ? `${projectDir}/sprites/${file.name}` : filePath).replace(/\\/g, '/');
     if (projectDir) {
       await api.dir.create(`${projectDir}/sprites`);
       await api.file.copy(filePath, destPath);
@@ -610,31 +610,37 @@ export function SpriteTab() {
   // ── Auto-detect empty frames from tileset image ──────────────────────
   const autoDetectEmpty = useCallback(async () => {
     if (!selectedSprite || !tilesetUrl) return;
-    const img = new Image();
-    img.src = tilesetUrl;
-    await img.decode();
-    const tw = selectedSprite.tileWidth;
-    const th = selectedSprite.tileHeight;
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0);
-    const empty: number[] = [];
-    for (let row = 0; row < selectedSprite.rows; row++) {
-      for (let col = 0; col < selectedSprite.cols; col++) {
-        const x = col * tw;
-        const y = row * th;
-        const data = ctx.getImageData(x, y, tw, th).data;
-        let hasPixel = false;
-        for (let i = 3; i < data.length; i += 4) {
-          if (data[i] > 0) { hasPixel = true; break; }
+    try {
+      const img = new Image();
+      img.src = tilesetUrl;
+      await img.decode();
+      // Imagen no cargada → no marcar nada (evita marcar todo por error)
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0);
+      const empty: number[] = [];
+      for (let row = 0; row < selectedSprite.rows; row++) {
+        const sy = Math.round((row * H) / selectedSprite.rows);
+        const sy2 = Math.round(((row + 1) * H) / selectedSprite.rows);
+        for (let col = 0; col < selectedSprite.cols; col++) {
+          const sx = Math.round((col * W) / selectedSprite.cols);
+          const sx2 = Math.round(((col + 1) * W) / selectedSprite.cols);
+          const data = ctx.getImageData(sx, sy, Math.max(1, sx2 - sx), Math.max(1, sy2 - sy)).data;
+          let hasPixel = false;
+          for (let i = 3; i < data.length; i += 4) {
+            if (data[i] > 0) { hasPixel = true; break; }
+          }
+          if (!hasPixel) empty.push(row * selectedSprite.cols + col);
         }
-        if (!hasPixel) empty.push(row * selectedSprite.cols + col);
       }
-    }
-    updateSpriteSheet(selectedSprite.id, { skippedFrames: empty });
+      updateSpriteSheet(selectedSprite.id, { skippedFrames: empty });
+    } catch { /* imagen inválida → no cambiar nada */ }
   }, [selectedSprite, tilesetUrl]);
 
   const toggleSkipped = useCallback((tileIdx: number) => {
@@ -695,6 +701,9 @@ export function SpriteTab() {
               const th = selectedSprite.tileHeight;
               const fullW = selectedSprite.cols * tw;
               const fullH = selectedSprite.rows * th;
+              // Tamaño natural de la imagen: evita reescalar (que recortaba/sangraba píxeles)
+              const imgW = spriteImgSize?.w ?? fullW;
+              const imgH = spriteImgSize?.h ?? fullH;
               const tx = tileIndex % selectedSprite.cols;
               const ty = Math.floor(tileIndex / selectedSprite.cols);
 
@@ -717,7 +726,7 @@ export function SpriteTab() {
                 const otx = tileIdx % sp.cols;
                 const oty = Math.floor(tileIdx / sp.cols);
                 const maskPos = `${-otx * tw}px ${-oty * th}px`;
-                const maskSize = `${fullW}px ${fullH}px`;
+                const maskSize = `${imgW}px ${imgH}px`;
                 return (
                   <div style={{
                     position: 'absolute', left: 0, top: 0,
@@ -762,7 +771,7 @@ export function SpriteTab() {
                       position: 'absolute', inset: 0,
                       backgroundImage: `url(${tilesetUrl})`,
                       backgroundPosition: `${-tx * tw}px ${-ty * th}px`,
-                      backgroundSize: `${fullW}px ${fullH}px`,
+                      backgroundSize: `${imgW}px ${imgH}px`,
                       backgroundRepeat: 'no-repeat',
                       imageRendering: imageSmoothing ? 'auto' : 'pixelated',
                       pointerEvents: 'none',
@@ -990,14 +999,15 @@ export function SpriteTab() {
                             title={`Tile ${tileIdx}`}
                           >
                             {tilesetUrl && (
-                              <div style={{
-                                position: 'absolute', inset: 0,
-                                backgroundImage: `url(${tilesetUrl})`,
-                                backgroundPosition: `${-tx * ps.tileWidth}px ${-ty * ps.tileHeight}px`,
-                                backgroundSize: `${ps.cols * ps.tileWidth}px ${ps.rows * ps.tileHeight}px`,
-                                backgroundRepeat: 'no-repeat',
-                                imageRendering: 'pixelated',
-                              }} />
+                              <TileThumb
+                                url={tilesetUrl}
+                                col={tx}
+                                row={ty}
+                                cols={ps.cols}
+                                rows={ps.rows}
+                                dw={36}
+                                dh={36}
+                              />
                             )}
                             <span style={{
                               position: 'absolute', bottom: 0, right: 1,
@@ -1230,14 +1240,15 @@ export function SpriteTab() {
                     title={`Tile ${tileIdx}${isSkipped ? ' (omitido)' : ''}`}
                   >
                     {tilesetUrl && (
-                      <div style={{
-                        position: 'absolute', inset: 0,
-                        backgroundImage: `url(${tilesetUrl})`,
-                        backgroundPosition: `${-tx * selectedSprite.tileWidth}px ${-ty * selectedSprite.tileHeight}px`,
-                        backgroundSize: `${selectedSprite.cols * selectedSprite.tileWidth}px ${selectedSprite.rows * selectedSprite.tileHeight}px`,
-                        backgroundRepeat: 'no-repeat',
-                        imageRendering: 'pixelated',
-                      }} />
+                      <TileThumb
+                        url={tilesetUrl}
+                        col={tx}
+                        row={ty}
+                        cols={selectedSprite.cols}
+                        rows={selectedSprite.rows}
+                        dw={Math.round(cellW)}
+                        dh={Math.round(cellH)}
+                      />
                     )}
                     <span style={{
                       position: 'absolute', bottom: 1, right: 2,
@@ -1361,6 +1372,46 @@ function TrashIcon({ size }: { size: number }) {
       <polyline points="3 6 5 6 21 6" />
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
+  );
+}
+
+// Miniatura de tile por canvas: recorta la región exacta de la imagen original
+// (reparte el píxel sobrante entre columnas/filas) sin reescalar el fondo, así
+// no se "sangran" píxeles de tiles vecinos ni se pierde el borde derecho.
+function TileThumb({ url, col, row, cols, rows, dw, dh }: {
+  url: string; col: number; row: number; cols: number; rows: number; dw: number; dh: number;
+}) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const c = ref.current;
+      if (!c) return;
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+      if (!W || !H) return;
+      const sx = Math.round((col * W) / cols);
+      const sx2 = Math.round(((col + 1) * W) / cols);
+      const sy = Math.round((row * H) / rows);
+      const sy2 = Math.round(((row + 1) * H) / rows);
+      c.width = dw;
+      c.height = dh;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, dw, dh);
+      ctx.drawImage(img, sx, sy, sx2 - sx, sy2 - sy, 0, 0, dw, dh);
+    };
+    img.src = url;
+    return () => { cancelled = true; };
+  }, [url, col, row, cols, rows, dw, dh]);
+  return (
+    <canvas
+      ref={ref}
+      style={{ position: 'absolute', inset: 0, width: dw, height: dh, imageRendering: 'pixelated', pointerEvents: 'none' }}
+    />
   );
 }
 

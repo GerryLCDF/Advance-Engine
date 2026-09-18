@@ -137,6 +137,12 @@ function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+// Normaliza rutas recibidas del frontend: los separadores `\` (Windows) se
+// convierten a `/` para que funcionen igual en Linux y en Windows.
+function normPath(p: string | undefined): string {
+  return (p ?? '').replace(/\\/g, '/');
+}
+
 ipcMain.handle('project:ensureProjectsDir', () => {
   ensureDir(GBA_PROJECTS_DIR);
   return GBA_PROJECTS_DIR;
@@ -231,9 +237,9 @@ ipcMain.handle('file:writeText', async (_e, filePath: string, content: string) =
 
 ipcMain.handle('file:copy', async (_e, src: string, dest: string) => {
   try {
-    const normalizedDest = path.resolve(dest);
+    const normalizedDest = path.resolve(normPath(dest));
     ensureDir(path.dirname(normalizedDest));
-    fs.copyFileSync(path.resolve(src), normalizedDest);
+    fs.copyFileSync(path.resolve(normPath(src)), normalizedDest);
     return { success: true };
   } catch (err) {
     return { success: false, reason: String(err) };
@@ -242,10 +248,10 @@ ipcMain.handle('file:copy', async (_e, src: string, dest: string) => {
 
 ipcMain.handle('file:copyCover', async (_e, srcPath: string, projectDir: string) => {
   try {
-    const src = path.resolve(srcPath);
-    const dest = path.join(projectDir, 'cover.png');
+    const src = path.resolve(normPath(srcPath));
+    const dest = path.join(normPath(projectDir), 'cover.png');
     if (!fs.existsSync(src)) return { success: false, reason: 'Origen no encontrado' };
-    ensureDir(projectDir);
+    ensureDir(normPath(projectDir));
     fs.copyFileSync(src, dest);
     return { success: true, destPath: dest };
   } catch (err) {
@@ -255,7 +261,7 @@ ipcMain.handle('file:copyCover', async (_e, srcPath: string, projectDir: string)
 
 ipcMain.handle('file:readImage', async (_e, filePath: string) => {
   try {
-    const normalized = path.resolve(filePath);
+    const normalized = path.resolve(normPath(filePath));
     const img = nativeImage.createFromPath(normalized);
     if (img.isEmpty()) return { success: false, reason: 'No se pudo leer la imagen' };
     return { success: true, dataUrl: img.toDataURL(), width: img.getSize().width, height: img.getSize().height };
@@ -266,7 +272,7 @@ ipcMain.handle('file:readImage', async (_e, filePath: string) => {
 
 ipcMain.handle('file:readVideo', async (_e, filePath: string) => {
   try {
-    const normalized = path.resolve(filePath);
+    const normalized = path.resolve(normPath(filePath));
     if (!fs.existsSync(normalized)) return { success: false, reason: 'Archivo no encontrado' };
     const stat = fs.statSync(normalized);
     // Read file and return as data URL
@@ -522,7 +528,7 @@ ipcMain.handle('file:extractVideoFrames', async (_e, videoPath: string, fps: num
 
 ipcMain.handle('dir:create', async (_e, dirPath: string) => {
   try {
-    ensureDir(dirPath);
+    ensureDir(normPath(dirPath));
     return { success: true };
   } catch (err) {
     return { success: false, reason: String(err) };
@@ -677,8 +683,27 @@ ipcMain.handle('shell:openExternal', (_e, url: string) => {
   shell.openExternal(url);
 });
 
+// Detecta si algún administrador de archivos ya tiene esta carpeta abierta,
+// para no abrir una ventana nueva cada vez (Linux usa `ps`, otros SO devuelven false).
+function isFolderOpenInFM(dirPath: string): boolean {
+  if (process.platform !== 'linux') return false;
+  const norm = path.normalize(dirPath).replace(/\/+$/, '');
+  if (!norm) return false;
+  const fms = ['nautilus', 'org.gnome.Nautilus', 'dolphin', 'thunar', 'nemo', 'caja', 'pcmanfm'];
+  try {
+    const out = execFileSync('ps', ['ax', '-o', 'args='], { timeout: 5000, maxBuffer: 16 * 1024 * 1024 }).toString();
+    return out.split('\n').some((line) => {
+      const t = line.trim();
+      return fms.some((fm) => t.startsWith(fm) && t.includes(norm));
+    });
+  } catch {
+    return false;
+  }
+}
+
 ipcMain.handle('shell:openPath', async (_e, dirPath: string) => {
-  await shell.openPath(dirPath);
+  if (isFolderOpenInFM(dirPath)) return 'ya-abierta';
+  return await shell.openPath(dirPath);
 });
 
 // ── IPC: Sistema ────────────────────────────────────────────────────────────
@@ -719,10 +744,39 @@ ipcMain.handle('system:checkDevkitARM', async () => {
   return checkDevkitARM();
 });
 
+// Detecta la raíz de devkitPro y devuelve un entorno con DEVKITPRO/DEVKITARM
+// y el PATH de binarios, para que `make` encuentre arm-none-eabi-gcc y pueda
+// expandir $(DEVKITPRO) aunque la app no herede las variables del shell.
+function detectDevkitRoot(): string | undefined {
+  if (process.env.DEVKITPRO && fs.existsSync(path.join(process.env.DEVKITPRO, 'devkitARM'))) {
+    return process.env.DEVKITPRO;
+  }
+  const candidates = process.platform === 'win32'
+    ? ['C:\\devkitPro', 'C:\\devkitpro']
+    : ['/opt/devkitpro', '/usr/local/opt/devkitpro', '/usr/local/devkitpro'];
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, 'devkitARM', 'bin'))) return c;
+  }
+  return undefined;
+}
+
+function withDevkitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const root = detectDevkitRoot();
+  if (!root) return base;
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const devkitArm = path.join(root, 'devkitARM');
+  const extra = [path.join(devkitArm, 'bin'), path.join(root, 'tools', 'bin')].join(sep);
+  const env: NodeJS.ProcessEnv = { ...base };
+  env.DEVKITPRO = root;
+  env.DEVKITARM = devkitArm;
+  env.PATH = `${extra}${sep}${base.PATH ?? ''}`;
+  return env;
+}
+
 ipcMain.handle('system:runCommand', async (_e, cmd: string, cwd: string) => {
   try {
     const result = await new Promise<{ success: boolean; output: string }>((resolve) => {
-      exec(cmd, { cwd, timeout: 120000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      exec(cmd, { cwd, timeout: 120000, maxBuffer: 1024 * 1024, env: withDevkitEnv() }, (err, stdout, stderr) => {
         const output = (stdout || '') + (stderr ? `\n${stderr}` : '');
         resolve({
           success: !err,

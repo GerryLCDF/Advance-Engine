@@ -144,6 +144,13 @@ export function EditorTopBar() {
     }
   };
 
+  const openBuildFolder = async () => {
+    if (projectDir) {
+      const api = (window as any).advanceAPI;
+      await api?.shell?.openPath(`${projectDir}/build`);
+    }
+  };
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -390,7 +397,7 @@ export function EditorTopBar() {
                 onMouseLeave={() => setShowExportMenu(false)}
               >
                 <ExportMenuItem label="Guardar proyecto" onClick={async () => { setShowExportMenu(false); await saveProject(); }} />
-                <ExportMenuItem label="Exportar ROM GBA" onClick={async () => { setShowExportMenu(false); await saveProject(); await exportGBA(); openProjectFolder(); }} />
+                <ExportMenuItem label="Exportar ROM GBA" onClick={async () => { setShowExportMenu(false); await saveProject(); await exportGBA(); openBuildFolder(); }} />
                 <ExportMenuItem label="Exportar canciones" divider />
                 <ExportMenuItem label="Exportar sprites" />
                 <ExportMenuItem label="Exportar fondos" />

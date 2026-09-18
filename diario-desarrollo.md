@@ -512,3 +512,62 @@ El usuario pidió que quien descargue el proyecto pueda disfrutar de la experien
 - Las 4 bases (`cartucho.png`, `cartucho_color.png`, `cartuchotransparente.png`, `portada.png`) ya estaban versionadas.
 
 `src/version.ts`: 0.49.2 -> 0.49.3
+
+## 17 Septiembre 2026 — v0.49.4 Fix: ruta con separador mezclado al abrir proyectos
+
+Al crear/abrir un proyecto salía:
+`[ERROR] ENOENT no such file or directory, open '/home/gerardo/Documentos/AdvanceEngineProjects\prueva sprite/project.json'`
+
+La ruta salía con un `\` incrustado porque `openProject` en la store construía la ruta con `projectsDir + '\\' + project.name` (separador de Windows hardcodeado). En Linux eso dejaba un backslash mezclado: `...\prueva sprite` (inexistente) → ENOENT.
+
+`src/renderer/store/useAppStore.ts` ahora une con `/` (válido también en Windows) normalizando los `\` sobrantes. `src/version.ts`: 0.49.3 -> 0.49.4
+
+## 17 Septiembre 2026 — v0.49.5 Fix: Skip/auto de sprites marcaba todo como vacío
+
+En la pestaña Sprites, el botón **Skip** abría el modal pero todos los tiles se veían vacíos y **Auto** marcaba todos como omitidos.
+
+Causa raíz: era el mismo bug de separadores de ruta. Al arrastrar un spritesheet, `destPath` se construía con el `projectDir` que tenía `\` incrustado (`...AdvanceEngineProjects\prueva sprite`), se guardaba así en `tilesetPath` y hasta se creaba una carpeta basura con `\` literal en Linux. `readImage` no encontraba el archivo → `tilesetUrl` vacío → modal vacío + Auto marcaba todo.
+
+### Cambios
+- `electron/main.ts`: nuevo helper `normPath()` (convierte `\` → `/`) aplicado a `file:copy`, `file:copyCover`, `file:readImage`, `file:readVideo` y `dir:create`. Así rutas con separador Windows funcionan también en Linux.
+- `SpriteTab.tsx`: `destPath` del drag&drop normaliza `\` antes de guardarlo en `tilesetPath`.
+- `SpriteTab.tsx`: `autoDetectEmpty` endurecido — si la imagen no carga (naturalWidth 0) no marca nada (evita el "marca todos"); calcula tile size desde la imagen si hace falta; todo con try/catch.
+- Limpié las carpetas basura `AdvanceEngineProjects\prueva sprite` y `...\prueva cartucho portada` creadas por el bug.
+- `src/version.ts`: 0.49.4 -> 0.49.5
+
+## 17 Septiembre 2026 — v0.49.6 Fix visual: tiles con contenido de otros en Skip
+
+Con un spritesheet de 273×186 dividido en 16×6, en el modal Skip se veía contenido de otros tiles (bleeding). Causa: `tileWidth/tileHeight` se calculaban UNA vez al cargar la imagen con la grilla inicial 1×1 (→ 273×186) y el efecto estaba deliberadamente diseñado para no recalcular al cambiar H/V. Al cortar en 16×6, los previews seguían recortando tiles de 273px → veías pedazos de otros tiles.
+
+El efecto ahora recalcula `tileWidth = floor(ancho / cols)` y `tileHeight = floor(alto / rows)` también cuando cambian cols/rows (con guarda anti-loop). `src/version.ts`: 0.49.5 -> 0.49.6
+
+## 17 Septiembre 2026 — v0.49.7 Tiles exactos por canvas (fin del sangrado y del píxel comido)
+
+Con el sheet de 273×186 (16×6), seguía viéndose contenido de tiles vecinos y se "comía" un píxel del borde derecho. Era porque el fondo se dibujaba con `background-size = cols×tileWidth` (272) sobre una imagen de 273 → reescalado (0.996) que sangra vecinos y pierde el último píxel; además 273/16 no es entero.
+
+Solución: nuevo componente `TileThumb` que recorta cada tile con un `<canvas>` y `drawImage`, usando **fronteras redondeadas** (`sx = round(col*W/cols)`, `sx2 = round((col+1)*W/cols)`) que reparten el píxel sobrante entre columnas/filas, y `imageSmoothingEnabled = false`. Así no hay reescalado, no se sangra y no se pierde ningún píxel.
+
+- `TileThumb` reemplaza el `backgroundPosition`/`backgroundSize` en el modal **Skip** y en el selector de frames de animación.
+- Lienzo principal: `backgroundSize` ahora usa el tamaño natural de la imagen (`spriteImgSize`) en vez de `cols×tileWidth` (evita el reescalado).
+- `autoDetectEmpty` muestrea con las mismas fronteras redondeadas.
+- `src/version.ts`: 0.49.6 -> 0.49.7
+
+## 17 Septiembre 2026 — v0.49.8 Fix exportación: entorno devkitPro para `make`
+
+Al exportar salía `arm-none-eabi-gcc: No existe el fichero o el directorio` y el include aparecía como `-I/libgba/include`. Causa: `system:runCommand` ejecutaba `make` heredando el entorno de la app, que no tiene `DEVKITPRO`/`DEVKITARM` ni el PATH de devkitARM (la instalación los escribe en `~/.bashrc`, pero Electron no es un shell de login). Así `$(DEVKITPRO)` quedaba vacío y `make` no encontraba el compilador.
+
+Añadido `detectDevkitRoot()` + `withDevkitEnv()` en `electron/main.ts`: detecta la raíz (`/opt/devkitpro`, `C:\devkitPro`, etc. o `$DEVKITPRO`) y construye un entorno con `DEVKITPRO`, `DEVKITARM` y `PATH` incluyendo `devkitARM/bin` y `tools/bin`. `system:runCommand` ahora pasa ese entorno a `exec`. Requiere recompilar Electron. `src/version.ts`: 0.49.7 -> 0.49.8
+
+## 17 Septiembre 2026 — v0.49.9 Abrir carpeta build al exportar (sin duplicar ventanas)
+
+Al pulsar "Exportar ROM GBA" ahora se abre la carpeta `build` del proyecto (antes abría la raíz del proyecto). Si esa carpeta ya está abierta en el administrador de archivos, no abre otra ventana: en Linux `isFolderOpenInFM()` mira con `ps ax -o args=` si algún gestor (nautilus/org.gnome.Nautilus, dolphin, thunar, nemo, caja, pcmanfm) ya muestra esa ruta y si es el caso devuelve `'ya-abierta'` sin llamar a `shell.openPath`. El ítem "Abrir carpeta del proyecto" sigue abriendo la raíz. `src/version.ts`: 0.49.8 -> 0.49.9
+
+## 17 Septiembre 2026 — v0.49.10 Menú Opciones en el launcher (+ aspecto funcional)
+
+En la pantalla inicial agregué el botón **"Opciones"** en la fila de pills (Documentación/Créditos), alineado a la derecha justo debajo de "V alfa {VERSION}". Al pulsarlo abre un menú desplegable con:
+
+- **Idioma** — sin funcionalidad por ahora (etiqueta "próximamente").
+- **Aspecto** — abre el `ThemeModal` (temas predefinidos, color de fondo/accento y tamaño de texto); funcionaba de verdad porque el tema ya se aplica con `--app-font-size`, `--bg-panel`, etc. y persiste en localStorage. El modal estaba definido pero abandonado, lo conecté aquí.
+- **Escala** — sin funcionalidad por ahora (etiqueta "próximamente").
+
+El menú cierra con clic fuera o al elegir una opción. Renderer-only (HMR). `src/version.ts`: 0.49.9 -> 0.49.10

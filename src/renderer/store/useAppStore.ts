@@ -573,7 +573,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const project = get().projects.find((p) => p.id === id);
     const projectsDir = await window.advanceAPI?.project?.ensureProjectsDir();
     const computedPath = project && projectsDir
-      ? projectsDir + '\\' + project.name
+      ? (projectsDir + '/' + project.name).replace(/\\/g, '/')
       : project?.path || null;
     set((s) => ({
       projects: s.projects.map((p) =>
