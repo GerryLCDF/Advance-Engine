@@ -4,7 +4,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
-import type { Scene, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection, SoundEffect, TransitionType } from '../../../types/editor';
+import type { Scene, Actor, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection, SoundEffect, TransitionType } from '../../../types/editor';
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
 import { imageDataUrlToGradientHeader } from '../../../utils/transitionGradientHeader';
@@ -856,6 +856,12 @@ export function MundoTab() {
   const setCollisionTile = useAppStore((s) => s.setCollisionTile);
   const clearCollisionMap = useAppStore((s) => s.clearCollisionMap);
   const updateScene = useAppStore((s) => s.updateScene);
+  const addActor = useAppStore((s) => s.addActor);
+  const updateActor = useAppStore((s) => s.updateActor);
+  const removeActor = useAppStore((s) => s.removeActor);
+  const spriteSheets = useAppStore((s) => s.spriteSheets);
+  const scripts = useAppStore((s) => s.scripts);
+  const dialogues = useAppStore((s) => s.dialogues);
   const addConnection = useAppStore((s) => s.addConnection);
   const removeConnection = useAppStore((s) => s.removeConnection);
   const updateConnection = useAppStore((s) => s.updateConnection);
@@ -880,6 +886,7 @@ export function MundoTab() {
   const [radialOpen, setRadialOpen] = useState(false);
   const [radialCollisionsOpen, setRadialCollisionsOpen] = useState(false);
   const radialTimer = useRef<number>(0);
+  const [selectedActor, setSelectedActor] = useState<{ sceneId: string; actorId: string } | null>(null);
   useEffect(() => () => window.clearTimeout(radialTimer.current), []);
 
   const radialItems = useMemo<RadialMenuItem[]>(() => [
@@ -888,6 +895,16 @@ export function MundoTab() {
     { label: 'Link', Icon: Link2, iconName: 'Link2', color: themeAccent },
     { label: 'Colisiones', Icon: Shield, iconName: 'Shield', color: themeAccent },
   ], [themeAccent]);
+
+  const placeActorInSelectedScene = () => {
+    const st = useAppStore.getState();
+    const sc = st.scenes.find((s) => s.id === st.selectedNodeId);
+    if (!sc) return false;
+    const actorId = addActor(sc.id, { x: Math.round(sc.width / 2) - 8, y: Math.round(sc.height / 2) - 8 });
+    setSelectedActor({ sceneId: sc.id, actorId });
+    setSelectedNodeId(sc.id);
+    return true;
+  };
 
   const onRadialPick = (item: RadialMenuItem) => {
     setRadialCollisionsOpen(false);
@@ -908,6 +925,14 @@ export function MundoTab() {
       setTool('connect');
       setConnectFrom(null);
       setRadialPick('Selecciona dos escenas para conectar');
+    } else if (item.iconName === 'User') {
+      const placed = placeActorInSelectedScene();
+      setTool('move');
+      if (placed) {
+        setRadialPick('Actor creado en el centro');
+      } else {
+        setRadialPick('Selecciona una escena primero');
+      }
     } else {
       setRadialPick(`${item.label} seleccionado`);
     }
@@ -1232,6 +1257,12 @@ export function MundoTab() {
       items: scenes.map((sc) => ({
         id: sc.id, label: sc.name, icon: '🌍',
         subtitle: `${sc.width}x${sc.height}`,
+        children: (sc.actors ?? []).map((a) => ({
+          id: `actor:${sc.id}:${a.id}`,
+          label: a.name,
+          icon: '🤖',
+          subtitle: a.spriteId ? spriteSheets.find((sp) => sp.id === a.spriteId)?.name : undefined,
+        })),
       })),
       onAdd: addSceneAtCursor,
     },
@@ -1388,7 +1419,118 @@ export function MundoTab() {
   }, [backgrounds]);
 
   const inspectorSections: InspectorSection[] = [];
+  const selectedActorObj = selectedActor
+    ? (scenes.find((sc) => sc.id === selectedActor.sceneId)?.actors.find((a) => a.id === selectedActor.actorId) ?? null)
+    : null;
+  const selectedActorScene = selectedActor ? scenes.find((sc) => sc.id === selectedActor.sceneId) : null;
   if (selectedScene && !selectedConnection) {
+    if (selectedActorObj && selectedActorScene) {
+      const selectedSheet = spriteSheets.find((sp) => sp.id === selectedActorObj.spriteId) ?? null;
+      const actorPatch = (patch: Partial<Actor>) => updateActor(selectedActorScene.id, selectedActorObj.id, patch);
+      inspectorSections.push({
+        title: 'Actor',
+        fields: [
+          { label: 'Nombre', type: 'text', value: selectedActorObj.name, onChange: (v) => actorPatch({ name: v as string }) },
+          {
+            label: 'Comportamiento', type: 'select', value: selectedActorObj.type,
+            options: [
+              { value: 'estatico', label: 'Estático' },
+              { value: 'interactuable', label: 'Interactuable' },
+              { value: 'objeto', label: 'Objeto' },
+            ],
+            onChange: (v) => actorPatch({ type: v as Actor['type'] }),
+          },
+          { label: 'Posición X', type: 'number', value: selectedActorObj.x, step: 1, onChange: (v) => actorPatch({ x: Math.round(v as number) }) },
+          { label: 'Posición Y', type: 'number', value: selectedActorObj.y, step: 1, onChange: (v) => actorPatch({ y: Math.round(v as number) }) },
+          { label: 'Capa Z', type: 'number', value: selectedActorObj.z, step: 1, onChange: (v) => actorPatch({ z: Math.round(v as number) }) },
+          { label: 'Ancho', type: 'number', value: selectedActorObj.width, min: 1, step: 1, onChange: (v) => actorPatch({ width: Math.max(1, Math.round(v as number)) }) },
+          { label: 'Alto', type: 'number', value: selectedActorObj.height, min: 1, step: 1, onChange: (v) => actorPatch({ height: Math.max(1, Math.round(v as number)) }) },
+        ],
+      });
+      inspectorSections.push({
+        title: 'Sprite',
+        content: (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Spritesheet</div>
+              <select
+                value={selectedActorObj.spriteId}
+                onChange={(e) => {
+                  const sp = spriteSheets.find((x) => x.id === e.target.value);
+                  actorPatch({
+                    spriteId: e.target.value,
+                    animId: '',
+                    ...(sp ? { width: sp.tileWidth * 2, height: sp.tileHeight * 2 } : {}),
+                  });
+                }}
+                style={{ width: '100%', background: 'var(--bg-canvas)', color: '#fff', border: '1px solid var(--border-color)', borderRadius: 4, padding: '4px 6px', fontSize: 11 }}
+              >
+                <option value="">— Ninguno —</option>
+                {spriteSheets.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+              </select>
+            </div>
+            {selectedSheet && selectedSheet.animations.length > 0 && (
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Animación idle</div>
+                <select
+                  value={selectedActorObj.animId}
+                  onChange={(e) => actorPatch({ animId: e.target.value })}
+                  style={{ width: '100%', background: 'var(--bg-canvas)', color: '#fff', border: '1px solid var(--border-color)', borderRadius: 4, padding: '4px 6px', fontSize: 11 }}
+                >
+                  <option value="">— Sin animación —</option>
+                  {selectedSheet.animations.map((an) => <option key={an.id} value={an.id}>{an.name}</option>)}
+                </select>
+              </div>
+            )}
+            {selectedSheet && selectedSheet.animations.length === 0 && (
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Este spritesheet no tiene animaciones</div>
+            )}
+            {!selectedSheet && selectedActorObj.spriteId && (
+              <div style={{ fontSize: 10, color: '#f0ad4e' }}>El spritesheet seleccionado no existe</div>
+            )}
+          </div>
+        ),
+      });
+      inspectorSections.push({
+        title: 'Colisión',
+        fields: [
+          { label: 'Collider', type: 'toggle', value: selectedActorObj.collider, onChange: (v) => actorPatch({ collider: v as boolean }) },
+          { label: 'Ancho collider', type: 'number', value: selectedActorObj.colliderWidth, min: 1, step: 1, onChange: (v) => actorPatch({ colliderWidth: Math.max(1, Math.round(v as number)) }) },
+          { label: 'Alto collider', type: 'number', value: selectedActorObj.colliderHeight, min: 1, step: 1, onChange: (v) => actorPatch({ colliderHeight: Math.max(1, Math.round(v as number)) }) },
+        ],
+      });
+      const sfxOptions = sounds.filter((sd) => sd.usage === 'sfx').map((sd) => ({ value: sd.id, label: sd.name }));
+      inspectorSections.push({
+        title: 'Audio',
+        fields: [
+          {
+            label: 'Sonido', type: 'select', value: selectedActorObj.soundId ?? '',
+            options: [{ value: '', label: '— Ninguno —' }, ...sfxOptions],
+            onChange: (v) => actorPatch({ soundId: (v as string) || undefined }),
+          },
+          {
+            label: 'Música', type: 'select', value: selectedActorObj.musicId ?? '',
+            options: [{ value: '', label: '— Ninguna —' }, ...songs.map((so) => ({ value: so.id, label: so.name }))],
+            onChange: (v) => actorPatch({ musicId: (v as string) || undefined }),
+          },
+        ],
+      });
+      inspectorSections.push({
+        title: 'Script / Diálogo',
+        fields: [
+          {
+            label: 'Script', type: 'select', value: selectedActorObj.scriptId ?? '',
+            options: [{ value: '', label: '— Ninguno —' }, ...scripts.map((sc) => ({ value: String(sc.id), label: String(sc.name ?? sc.id) }))],
+            onChange: (v) => actorPatch({ scriptId: (v as string) || undefined }),
+          },
+          {
+            label: 'Diálogo', type: 'select', value: selectedActorObj.dialogueId ?? '',
+            options: [{ value: '', label: '— Ninguno —' }, ...dialogues.map((d) => ({ value: d.id, label: d.name }))],
+            onChange: (v) => actorPatch({ dialogueId: (v as string) || undefined }),
+          },
+        ],
+      });
+    }
     inspectorSections.push({
       title: 'Escena',
       fields: selectedScene.backgroundImage
@@ -2031,6 +2173,7 @@ export function MundoTab() {
   const handleSceneBoxClick = (sceneId: string) => {
     if (sceneId === splashScreen.id) {
       setSelectedNodeId(sceneId);
+      setSelectedActor(null);
       if (effectiveTool === 'connect') {
         if (connectFrom === null) {
           setConnectFrom(sceneId);
@@ -2062,6 +2205,7 @@ export function MundoTab() {
       if (selectedNodeId === sceneId) setSelectedNodeId('');
     } else {
       setSelectedNodeId(sceneId);
+      setSelectedActor(null);
     }
   };
 
@@ -2070,6 +2214,11 @@ export function MundoTab() {
     removeScene(id);
     setHighlightedConnId(null);
     if (selectedNodeId === id) setSelectedNodeId('');
+  };
+
+  const parseActorId = (id: string) => {
+    const m = /^actor:(.+):(.+)$/.exec(id);
+    return m ? { sceneId: m[1], actorId: m[2] } : null;
   };
 
   return (
@@ -2084,26 +2233,53 @@ export function MundoTab() {
       left={
         <HierarchyPanel
           sections={hierarchySections}
-          selectedId={highlightedConnId || selectedNodeId}
+          selectedId={highlightedConnId || (selectedActor ? `actor:${selectedActor.sceneId}:${selectedActor.actorId}` : selectedNodeId)}
           editingId={editingId}
-          onRename={(id, name) => updateScene(id, { name })}
+          onRename={(id, name) => {
+            const a = parseActorId(id);
+            if (a) updateActor(a.sceneId, a.actorId, { name });
+            else updateScene(id, { name });
+          }}
           onEditingChange={setEditingId}
           onDoubleClick={(id) => {
-            const isScene = scenes.some((s) => s.id === id);
-            if (isScene) setEditingId(id);
+            const a = parseActorId(id);
+            if (a) setEditingId(id);
+            else {
+              const isScene = scenes.some((s) => s.id === id);
+              if (isScene) setEditingId(id);
+            }
+          }}
+          onRemove={(id) => {
+            const a = parseActorId(id);
+            if (a) {
+              removeActor(a.sceneId, a.actorId);
+              if (selectedActor?.sceneId === a.sceneId && selectedActor.actorId === a.actorId) setSelectedActor(null);
+            } else {
+              handleRemove(id);
+            }
           }}
           onSelect={(id) => {
             setEditingId(null);
+            const a = parseActorId(id);
+            if (a) {
+              setSelectedActor(a);
+              setSelectedNodeId(a.sceneId);
+              setHighlightedConnId(null);
+              return;
+            }
             const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
             if (isConn) {
               setHighlightedConnId((prev) => prev === id ? null : id);
             } else {
               setSelectedNodeId(id);
               setHighlightedConnId(null);
+              setSelectedActor(null);
             }
           }}
           onContextMenu={(id, x, y) => {
             if (id === splashScreen.id) return;
+            const a = parseActorId(id);
+            if (a) return;
             const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
             if (isConn) {
               if (id !== '__splash_conn__') setCtxMenu({ x, y, connectionId: id });
@@ -2130,7 +2306,7 @@ export function MundoTab() {
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'add'} onClick={() => { setTool('add'); setConnectFrom(null); }} title="Agregar escena">+</ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
-              <ToolBtn active={tool === 'actor'} onClick={() => { setTool('actor'); setConnectFrom(null); }} title="Actor"><User size={14} /></ToolBtn>
+              <ToolBtn active={tool === 'actor'} onClick={() => { const placed = placeActorInSelectedScene(); setConnectFrom(null); setTool('move'); if (!placed) setRadialPick('Selecciona una escena primero'); window.clearTimeout(radialTimer.current); radialTimer.current = window.setTimeout(() => setRadialPick(''), 2200); }} title="Agregar actor al centro de la escena seleccionada"><User size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'connect'} onClick={() => { setTool('connect'); setConnectFrom(null); }} title="Conectar escenas">
                 {connectFrom ? '→' : '🔗'}
@@ -2412,6 +2588,12 @@ export function MundoTab() {
                       tool={effectiveTool}
                       connectFrom={connectFrom}
                       onSelect={(id) => { if (!hasMoved.current) handleSceneBoxClick(id); }}
+                      onSelectActor={(actorId) => {
+                        setSelectedActor({ sceneId: sc.id, actorId });
+                        setSelectedNodeId(sc.id);
+                      }}
+                      selectedActorId={selectedActor?.sceneId === sc.id ? selectedActor.actorId : null}
+                      updateActor={updateActor}
                       onContextMenu={(e, id) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -2678,10 +2860,13 @@ function ToolBtn({ children, active, onClick, title, style }: { children: React.
   );
 }
 
-function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onContextMenu, updateScene, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor, animPaused, collisionPaintValue, collisionBrush, collisionBlockSize, setCollisionTile }: {
+function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onSelectActor, selectedActorId, updateActor, onContextMenu, updateScene, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor, animPaused, collisionPaintValue, collisionBrush, collisionBlockSize, setCollisionTile }: {
   scene: Scene; selected: boolean; isConnecting: boolean;
   tool: string; connectFrom: string | null;
   onSelect: (id: string) => void;
+  onSelectActor?: (actorId: string) => void;
+  selectedActorId?: string | null;
+  updateActor?: (sceneId: string, actorId: string, patch: Partial<Actor>) => void;
   onContextMenu?: (e: React.MouseEvent, id: string) => void;
   updateScene: (id: string, patch: Partial<Scene>) => void;
   dragZoom: number;
@@ -2698,6 +2883,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
 }) {
   const backgrounds = useAppStore((s) => s.backgrounds);
   const songs = useAppStore((s) => s.songs);
+  const spriteSheets = useAppStore((s) => s.spriteSheets);
   const clickAnimation = useAppStore((s) => s.clickAnimation);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef({ startX: 0, startY: 0, origX: 0, origY: 0 });
@@ -2705,6 +2891,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   const [animFrame, setAnimFrame] = useState(0);
   const animDirRef = useRef(1);
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
+  const [spriteUrls, setSpriteUrls] = useState<Record<string, string>>({});
   const [paintRect, setPaintRect] = useState<{x1: number; y1: number; x2: number; y2: number} | null>(null);
   const paintStartRef = useRef<{x: number; y: number} | null>(null);
 
@@ -2721,6 +2908,28 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     })();
     return () => { cancelled = true; };
   }, [scene.backgroundImage]);
+
+  // Cargar imágenes de los spritesheets referenciados por los actores
+  const neededSheets = useMemo(() => {
+    const ids = new Set(scene.actors.map((a) => a.spriteId).filter(Boolean));
+    return spriteSheets.filter((sp) => ids.has(sp.id));
+  }, [scene.actors, spriteSheets]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const api = window.advanceAPI;
+      if (!api) return;
+      const urls: Record<string, string> = {};
+      for (const sp of neededSheets) {
+        if (!sp.tilesetPath) continue;
+        const result = await api.file.readImage(sp.tilesetPath);
+        if (!cancelled && result.success && result.dataUrl) urls[sp.id] = result.dataUrl;
+      }
+      if (!cancelled) setSpriteUrls((prev) => ({ ...prev, ...urls }));
+    })();
+    return () => { cancelled = true; };
+  }, [neededSheets]);
 
   // Find matching layer to check rescale setting
   const matchingLayer = useMemo(() => {
@@ -3226,6 +3435,88 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
               border: '2px solid rgba(255,255,255,0.15)',
               pointerEvents: 'none',
             }} />
+          )}
+          {/* Actores */}
+          {(scene.actors?.length ?? 0) > 0 && (
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+              {scene.actors.map((a) => {
+                const sheet = spriteSheets.find((sp) => sp.id === a.spriteId);
+                const isSel = selectedActorId === a.id;
+                const actorZ = a.z ?? 0;
+                let tileIndex: number | null = null;
+                let sheetCols = 0, sheetRows = 0;
+                if (sheet) {
+                  sheetCols = sheet.cols || 1;
+                  sheetRows = sheet.rows || 1;
+                  const anim = sheet.animations.find((an) => an.id === a.animId);
+                  tileIndex = (anim && anim.frames.length ? anim.frames[0].tileIndex : 0) ?? 0;
+                }
+                const col = sheet ? (tileIndex ?? 0) % sheetCols : 0;
+                const row = sheet ? Math.floor((tileIndex ?? 0) / sheetCols) : 0;
+                return (
+                  <div
+                    key={a.id}
+                    data-actor-card
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      if (tool !== 'move' || !onSelectActor || !updateActor) return;
+                      onSelectActor(a.id);
+                      const container = imageContainerRef.current;
+                      if (!container) return;
+                      const startX = e.clientX, startY = e.clientY;
+                      const origX = a.x, origY = a.y;
+                      const handleMove = (ev: MouseEvent) => {
+                        const dx = (ev.clientX - startX) / dragZoom;
+                        const dy = (ev.clientY - startY) / dragZoom;
+                        updateActor(scene.id, a.id, {
+                          x: Math.round(Math.max(0, Math.min(origX + dx, scene.width - a.width))),
+                          y: Math.round(Math.max(0, Math.min(origY + dy, scene.height - a.height))),
+                        });
+                      };
+                      const handleUp = () => {
+                        document.removeEventListener('mousemove', handleMove);
+                        document.removeEventListener('mouseup', handleUp);
+                      };
+                      document.addEventListener('mousemove', handleMove);
+                      document.addEventListener('mouseup', handleUp);
+                    }}
+                    onClick={(e) => { e.stopPropagation(); onSelectActor?.(a.id); }}
+                    title={a.name}
+                    style={{
+                      position: 'absolute',
+                      left: a.x, top: a.y,
+                      width: a.width, height: a.height,
+                      zIndex: 5 + actorZ,
+                      pointerEvents: tool === 'move' ? 'auto' : 'none',
+                      cursor: 'move',
+                      outline: isSel ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.4)',
+                      outlineOffset: -1,
+                      boxSizing: 'border-box',
+                      imageRendering: 'pixelated',
+                      backgroundImage: sheet && spriteUrls[sheet.id] ? `url(${spriteUrls[sheet.id]})` : undefined,
+                      backgroundSize: sheet ? `${sheetCols * a.width}px ${sheetRows * a.height}px` : undefined,
+                      backgroundPosition: sheet ? `-${col * a.width}px -${row * a.height}px` : undefined,
+                      backgroundRepeat: 'no-repeat',
+                      background: sheet && spriteUrls[sheet.id] ? undefined : 'rgba(255,255,255,0.15)',
+                    }}
+                  >
+                    {a.collider && (
+                      <div style={{
+                        position: 'absolute',
+                        border: '1px dashed rgba(255,80,80,0.9)',
+                        boxSizing: 'border-box',
+                        left: (a.width - a.colliderWidth) / 2,
+                        top: (a.height - a.colliderHeight) / 2,
+                        width: a.colliderWidth,
+                        height: a.colliderHeight,
+                        pointerEvents: 'none',
+                      }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>

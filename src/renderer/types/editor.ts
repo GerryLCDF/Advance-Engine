@@ -42,12 +42,21 @@ export function createCollisionMap(sceneWidth: number, sceneHeight: number, tile
 export interface Actor {
   id: string;
   name: string;
-  type: 'character' | 'collision' | 'trigger' | 'prop';
+  type: 'estatico' | 'interactuable' | 'objeto';
   x: number;
   y: number;
   width: number;
   height: number;
+  z: number;
   spriteId: string;
+  animId: string;
+  collider: boolean;
+  colliderWidth: number;
+  colliderHeight: number;
+  soundId?: string;
+  musicId?: string;
+  scriptId?: string;
+  dialogueId?: string;
   properties: Record<string, string>;
 }
 

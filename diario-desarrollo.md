@@ -607,3 +607,17 @@ Terminé de darle forma al menú radial y conectarlo con el mundo:
 - Tipos de colisión extraídos a constante `COLLISION_TYPES` compartida entre toolbar y panel radial.
 
 `src/version.ts`: 0.49.12 -> 0.49.13
+
+## 23 Septiembre 2026 — v0.49.14 Actores: colocación, edición completa y preview en escena
+
+¡Los actores dejan de ser un botón muerto! Ahora se pueden crear, mover y editar desde la ventana Mundo (ramas formales en `actores`, commit separado).
+
+- **Tipo `Actor` ampliado**: comportamiento (`estático`/`interactuable`/`objeto`, reemplazando el `type` viejo sin uso), **capa Z** (orden de dibujo; en GBA se mapeará a prioridad OAM cuando haya sprites), `animId` (animación idle), collider con ancho/alto, `soundId` (SFX), `musicId` (canción del secuenciador), `scriptId` y `dialogueId`.
+- **`addActor` ahora acepta `overrides` y devuelve el id** para poder seleccionar al actor recién creado.
+- **Colocación al centro**: clic en el botón Actor de la toolbar o en la opción Actor del menú radial → crea el actor en el centro de la escena seleccionada y lo selecciona. Si no hay escena seleccionada, aviso en el toast.
+- **Render en el mini-map de la escena**: cada actor se dibuja con su **sprite real** (recorte del tile del frame idle del spritesheet, con `backgroundSize/Position`, sin resample). Collider rojo punteado cuando está activo; borde destacado cuando está seleccionado.
+- **Arrastrar**: con el menú cerrado (modo Mover), hacer clic y arrastrar sobre un actor lo mueve (`updateActor`) sin arrastrar la escena.
+- **Inspector**: al seleccionar un actor aparecen las secciones *Actor* (nombre, comportamiento, X/Y/Z, ancho/alto), *Sprite* (spritesheet + animación idle, auto-tamaño desde el tile), *Colisión* (toggle + dimensiones), *Audio* (SFX + Música) y *Script/Diálogo*.
+- **Jerarquía**: cada escena lista sus actores como hijos (🤖), seleccionables, renombrables y eliminables (✕).
+
+`src/version.ts`: 0.49.13 -> 0.49.14

@@ -43,8 +43,11 @@ const defaultSplashScreen = (): SplashScreen => ({
 });
 
 const defaultActor = (): Actor => ({
-  id: uid(), name: 'Nuevo actor', type: 'character',
-  x: 0, y: 0, width: 16, height: 16, spriteId: '', properties: {},
+  id: uid(), name: 'Nuevo actor', type: 'estatico',
+  x: 0, y: 0, width: 16, height: 16, z: 0,
+  spriteId: '', animId: '',
+  collider: false, colliderWidth: 16, colliderHeight: 16,
+  properties: {},
 });
 
 const defaultSpriteSheet = (): SpriteSheet => ({
@@ -374,7 +377,7 @@ interface AppState {
   setCollisionTile: (sceneId: string, col: number, row: number, value: number) => void;
   batchCollisionTiles: (sceneId: string, tiles: [number, number, number][]) => void;
   clearCollisionMap: (sceneId: string) => void;
-  addActor: (sceneId: string) => void;
+  addActor: (sceneId: string, overrides?: Partial<Actor>) => string;
   updateActor: (sceneId: string, actorId: string, patch: Partial<Actor>) => void;
   removeActor: (sceneId: string, actorId: string) => void;
   sceneConnections: SceneConnection[];
@@ -1578,14 +1581,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
   },
-  addActor: (sceneId) => {
-    get()._snapshotMundo();
-    set((s) => ({
-      scenes: s.scenes.map((sc) =>
-        sc.id === sceneId ? { ...sc, actors: [...sc.actors, defaultActor()] } : sc
-      ),
-    }));
-  },
+addActor: (sceneId, overrides) => {
+  get()._snapshotMundo();
+  const actor = { ...defaultActor(), ...(overrides ?? {}) };
+  set((s) => ({
+    scenes: s.scenes.map((sc) =>
+      sc.id === sceneId ? { ...sc, actors: [...sc.actors, actor] } : sc
+    ),
+  }));
+  return actor.id;
+},
   updateActor: (sceneId, actorId, patch) => {
     get()._snapshotMundo();
     set((s) => ({
