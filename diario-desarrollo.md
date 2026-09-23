@@ -571,3 +571,39 @@ En la pantalla inicial agregué el botón **"Opciones"** en la fila de pills (Do
 - **Escala** — sin funcionalidad por ahora (etiqueta "próximamente").
 
 El menú cierra con clic fuera o al elegir una opción. Renderer-only (HMR). `src/version.ts`: 0.49.9 -> 0.49.10
+
+## 21 Septiembre 2026 — v0.49.11 Menú radial +/X en la ventana Mundo
+
+Agregué el componente **`RadialMenu`** de la librería **Kukul** (instalada desde local `file:../animaciones`, v1.1.0, ya que el npm sigue en 1.0.0 sin las props `items`/`onPick`) flotando en la esquina inferior derecha del canvas de escenas de la ventana Mundo.
+
+- **+ que rota a X** al pulsarlo; las opciones salen una por una (procencia).
+- **3 opciones**: `Opcion1`, `Opcion2`, `Opcion3` con iconos de lucide-react (MapPin, ListChecks, Zap).
+- **Color igual al resto de la interfaz**: los items y el centro usan `themeAccent` del store (`--accent`), así sigue el tema configurable de la app.
+- `onPick` muestra un toast temporal "X seleccionado" (2.2s) centrado en el canvas.
+- El menú no escala con el zoom/pan del canvas (anchor absoluto `right:16 bottom:16`).
+
+Kukul quedó instalada como `@gerardolcdf/kukul: file:../animaciones` y añadí `lucide-react` como dependencia directa. Renderer-only (HMR). `src/version.ts`: 0.49.10 -> 0.49.11
+
+## 22 Septiembre 2026 — v0.49.12 RadialMenu copiado al proyecto (sin dep kukul)
+
+Como vamos a modificar el menú a nuestro gusto, dejé de usar el paquete `@gerardolcdf/kukul` y **copié el componente dentro del proyecto**: `src/renderer/components/editor/tabs/RadialMenu.tsx`.
+
+- Copiado **sin la capa de settings genéricos** de kukul: props planas (`count`, `centerColor`, `glow`, `solid`, `noShadow`, `wobble`, `items`, `onPick`, `open`, `onOpenChange`) — más fácil de modificar.
+- `MundoTab.tsx` ahora importa `./RadialMenu` (relativo) y pasa `count={3}` + `centerColor={themeAccent}`.
+- Desinstalé `@gerardolcdf/kukul` de package.json; el bundle ya no lo contiene (tamaño bajó). Siguen `framer-motion` y `lucide-react` como dependencias directas.
+- Build renderer OK, kukul 0 referencias en dist. `src/version.ts`: 0.49.11 -> 0.49.12
+
+## 23 Septiembre 2026 — v0.49.13 RadialMenu funcional (Escena/Actor/Link/Colisiones) + zoom al cursor
+
+Terminé de darle forma al menú radial y conectarlo con el mundo:
+
+- **4 opciones**: Escena (MapPin), Actor (User), Link (Link2), Colisiones (Shield), del color de la interfaz (`themeAccent`).
+- **Fan configurable**: prop `fan: [number,number]` en radianes; abanico por defecto hacia arriba-derecha (`[-π/2, 0]`). Quité el glOF del círculo central (solo sombra suave), las opciones sin brillo (`noShadow`) y sin temblor (`wobble={false}`).
+- **Escena**: clic → crea una escena vacía en el centro del canvas. **Link**: activa el modo conectar (clic origen → destino); al completar la conexión vuelve a Mover.
+- **Colisiones**: abre un renglón horizontal (igual que la toolbar superior) con las 4 herramientas (bote ▤, varita ⌾, lápiz ✎, cuadrado ▢) + los 10 tipos de colisión, con animación de entrada/salida (spring, desde la izquierda). Al reabrir el menú radial se cierra.
+- **Toolbar del canvas**: agregado botón Actor (icono User). Eliminado el botón "Eliminar escena" (tool `remove` inerte).
+- **Comportamiento Mover por defecto**: con el menú cerrado y sin operación activa, clic izquierdo sobre una escena la arrastra y clic en el vacío panea la vista (sin usar la rueda). `data-scene-card` marca las tarjetas para no paneear sobre ellas.
+- **Zoom al cursor**: refactorizado el zoom Ctrl+rueda con refs (`zoomRef/panXRef/panYRef`) sincronizados; ahora mantiene fijo el punto del mundo bajo el ratón (antes el pan se desincronizaba).
+- Tipos de colisión extraídos a constante `COLLISION_TYPES` compartida entre toolbar y panel radial.
+
+`src/version.ts`: 0.49.12 -> 0.49.13

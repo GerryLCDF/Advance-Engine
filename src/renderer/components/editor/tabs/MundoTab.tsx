@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
@@ -8,6 +9,8 @@ import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV,
 import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
 import { imageDataUrlToGradientHeader } from '../../../utils/transitionGradientHeader';
 import { MoveIcon, PlusIcon, MinusIcon, Link2Icon, Grid3x3Icon, Grid2x2Icon, PencilIcon, SquareIcon, WandIcon, HomeIcon, GlobeIcon, MoreVerticalIcon, ArrowRightIcon, PaintBucketIcon } from './icons';
+import RadialMenu, { type RadialMenuItem } from './RadialMenu';
+import { MapPin, User, Link2, Shield } from 'lucide-react';
 
 // ── Slope helpers ──────────────────────────────────────────────────────
 const SLOPE_DEFS: Record<number, number[]> = {
@@ -18,6 +21,20 @@ const SLOPE_DEFS: Record<number, number[]> = {
   [COLLISION_SLOPE_INV_MIRROR]: [8,7,6,5,4,3,2,1],
 };
 const SLOPE_ENCODE_BASE = 100;
+
+// ── Collision type swatches (shared by toolbar + radial sub-panel) ─────
+const COLLISION_TYPES = [
+  { value: 1, color: '#ff4444', icon: <rect x={0} y={0} width={16} height={16} fill="#ff4444" rx={1} />, title: 'Sólido' },
+  { value: 2, color: '#ffdd44', icon: <><rect x={0} y={0} width={16} height={8} fill="#ffdd44" rx={1} /><rect x={0} y={8} width={16} height={8} fill="#ffdd4444" rx={1} /></>, title: 'One-way ↑' },
+  { value: 3, color: '#ff8844', icon: <><rect x={0} y={8} width={16} height={8} fill="#ff8844" rx={1} /><rect x={0} y={0} width={16} height={8} fill="#ff884444" rx={1} /></>, title: 'One-way ↓' },
+  { value: 4, color: '#4488ff', icon: <><rect x={0} y={0} width={8} height={16} fill="#4488ff" rx={1} /><rect x={8} y={0} width={8} height={16} fill="#4488ff44" rx={1} /></>, title: 'One-way ←' },
+  { value: 5, color: '#44ddff', icon: <><rect x={8} y={0} width={8} height={16} fill="#44ddff" rx={1} /><rect x={0} y={0} width={8} height={16} fill="#44ddff44" rx={1} /></>, title: 'One-way →' },
+  { value: 6, color: '#44cc44', icon: <><rect x={0} y={0} width={16} height={16} fill="#44cc44" rx={1} /><line x1={3} y1={4} x2={13} y2={4} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={8} x2={13} y2={8} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={12} x2={13} y2={12} stroke="#fff" strokeWidth={1.5} /></>, title: 'Escalera' },
+  { value: 7, color: '#ff66bb', icon: <polygon points="0,16 16,16 16,0" fill="#ff66bb" />, title: 'Rampa ↘' },
+  { value: 10, color: '#66ffbb', icon: <polygon points="0,0 16,16 0,16" fill="#66ffbb" />, title: 'Rampa ↙' },
+  { value: 11, color: '#ffbb66', icon: <polygon points="0,0 16,16 16,0" fill="#ffbb66" />, title: 'Rampa ↗' },
+  { value: 8, color: '#bb66ff', icon: <polygon points="0,0 16,0 0,16" fill="#bb66ff" />, title: 'Rampa ↖' },
+];
 
 function decodeSlope(value: number): { counts: number[]; forward: boolean; mirror: boolean } | null {
   if (value < SLOPE_ENCODE_BASE) return null;
@@ -854,10 +871,57 @@ export function MundoTab() {
   const splashScreen = useAppStore((s) => s.splashScreen);
   const updateSplashScreen = useAppStore((s) => s.updateSplashScreen);
 
-  const [tool, setTool] = useState<'select' | 'add' | 'connect' | 'remove' | 'collision' | 'move'>('move');
+  const [tool, setTool] = useState<'select' | 'add' | 'connect' | 'remove' | 'collision' | 'move' | 'actor'>('move');
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [splashImgSize, setSplashImgSize] = useState<{w: number, h: number} | null>(null);
   const [sceneAnimPaused, setSceneAnimPaused] = useState<Record<string, boolean>>({});
+  const themeAccent = useAppStore((s) => s.themeAccent);
+  const [radialPick, setRadialPick] = useState('');
+  const [radialOpen, setRadialOpen] = useState(false);
+  const [radialCollisionsOpen, setRadialCollisionsOpen] = useState(false);
+  const radialTimer = useRef<number>(0);
+  useEffect(() => () => window.clearTimeout(radialTimer.current), []);
+
+  const radialItems = useMemo<RadialMenuItem[]>(() => [
+    { label: 'Escena', Icon: MapPin, iconName: 'MapPin', color: themeAccent },
+    { label: 'Actor', Icon: User, iconName: 'User', color: themeAccent },
+    { label: 'Link', Icon: Link2, iconName: 'Link2', color: themeAccent },
+    { label: 'Colisiones', Icon: Shield, iconName: 'Shield', color: themeAccent },
+  ], [themeAccent]);
+
+  const onRadialPick = (item: RadialMenuItem) => {
+    setRadialCollisionsOpen(false);
+    if (item.iconName === 'Shield') {
+      setCollisionBrush('draw');
+      setTool('collision');
+      setRadialPick('');
+      setRadialCollisionsOpen(true);
+      return;
+    }
+    if (item.iconName === 'MapPin') {
+      const el = canvasContainerRef.current;
+      const wX = el ? (el.clientWidth / 2 - panX) / zoom : 240;
+      const wY = el ? (el.clientHeight / 2 - panY) / zoom : 80;
+      addScene(wX, wY);
+      setRadialPick('Escena creada');
+    } else if (item.iconName === 'Link2') {
+      setTool('connect');
+      setConnectFrom(null);
+      setRadialPick('Selecciona dos escenas para conectar');
+    } else {
+      setRadialPick(`${item.label} seleccionado`);
+    }
+    window.clearTimeout(radialTimer.current);
+    radialTimer.current = window.setTimeout(() => setRadialPick(''), 2200);
+  };
+
+  // Menú cerrado sin operación activa → se comporta como "Mover"
+  const effectiveTool: 'select' | 'add' | 'connect' | 'remove' | 'collision' | 'move' | 'actor' =
+    (tool === 'add' || tool === 'connect' || tool === 'collision' || tool === 'actor')
+      ? tool
+      : radialOpen
+        ? tool
+        : 'move';
 
   // ── Context menu ──
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sceneId?: string; connectionId?: string } | null>(null);
@@ -975,6 +1039,9 @@ export function MundoTab() {
   const [zoom, setZoom] = useState(1);
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
+  const zoomRef = useRef(1);
+  const panXRef = useRef(0);
+  const panYRef = useRef(0);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -1043,6 +1110,13 @@ export function MundoTab() {
     });
   }, [panX, panY, zoom]);
 
+  // Keep refs in sync with state for the wheel handler
+  useEffect(() => {
+    zoomRef.current = zoom;
+    panXRef.current = panX;
+    panYRef.current = panY;
+  }, [zoom, panX, panY]);
+
   // ── Panel resize is managed by ResizableEditorLayout ────────────────────
 
   // Keep latest scene list and selection for wheel handler
@@ -1058,13 +1132,16 @@ export function MundoTab() {
         const rect = el.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
-        const delta = -e.deltaY * 0.001;
-        setZoom((z) => {
-          const newZ = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z + delta));
-          setPanX((px) => mx - (mx - px) * (newZ / z));
-          setPanY((py) => my - (my - py) * (newZ / z));
-          return newZ;
-        });
+        const z = zoomRef.current;
+        const newZ = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z - e.deltaY * 0.001));
+        const k = newZ / z;
+        // Mantener el punto del mundo bajo el cursor fijo
+        panXRef.current = mx - (mx - panXRef.current) * k;
+        panYRef.current = my - (my - panYRef.current) * k;
+        zoomRef.current = newZ;
+        setZoom(newZ);
+        setPanX(panXRef.current);
+        setPanY(panYRef.current);
       } else if (e.shiftKey) {
         e.preventDefault();
         setPanX((px) => px - e.deltaY);
@@ -1954,7 +2031,7 @@ export function MundoTab() {
   const handleSceneBoxClick = (sceneId: string) => {
     if (sceneId === splashScreen.id) {
       setSelectedNodeId(sceneId);
-      if (tool === 'connect') {
+      if (effectiveTool === 'connect') {
         if (connectFrom === null) {
           setConnectFrom(sceneId);
         } else if (connectFrom !== sceneId) {
@@ -1964,7 +2041,7 @@ export function MundoTab() {
       }
       return;
     }
-    if (tool === 'connect') {
+    if (effectiveTool === 'connect') {
       if (connectFrom === null) {
         setConnectFrom(sceneId);
       } else if (connectFrom !== sceneId) {
@@ -1973,12 +2050,14 @@ export function MundoTab() {
           connections.filter((c) => c.fromSceneId === splashScreen.id).forEach((c) => removeConnection(c.id));
           updateSplashScreen({ nextSceneId: sceneId });
           setConnectFrom(null);
+          setTool('move');
         } else {
           addConnection(connectFrom, sceneId);
           setConnectFrom(null);
+          setTool('move');
         }
       }
-    } else if (tool === 'remove') {
+    } else if (effectiveTool === 'remove') {
       removeScene(sceneId);
       if (selectedNodeId === sceneId) setSelectedNodeId('');
     } else {
@@ -2051,7 +2130,7 @@ export function MundoTab() {
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'add'} onClick={() => { setTool('add'); setConnectFrom(null); }} title="Agregar escena">+</ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
-              <ToolBtn active={tool === 'remove'} onClick={() => { setTool('remove'); setConnectFrom(null); }} title="Eliminar escena">−</ToolBtn>
+              <ToolBtn active={tool === 'actor'} onClick={() => { setTool('actor'); setConnectFrom(null); }} title="Actor"><User size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'connect'} onClick={() => { setTool('connect'); setConnectFrom(null); }} title="Conectar escenas">
                 {connectFrom ? '→' : '🔗'}
@@ -2120,7 +2199,10 @@ export function MundoTab() {
                 setConnectFrom(null);
                 return;
               }
+              const onScene = (e.target as HTMLElement).closest('[data-scene-card]') !== null;
               if (e.button === 1 || tool === 'select' || tool === 'add') {
+                handleMouseDownCanvas(e);
+              } else if (e.button === 0 && effectiveTool === 'move' && !onScene) {
                 handleMouseDownCanvas(e);
               }
             }}
@@ -2181,18 +2263,7 @@ export function MundoTab() {
                 </div>
                 <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 4px' }} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  {[
-                    { value: 1, color: '#ff4444', icon: <rect x={0} y={0} width={16} height={16} fill="#ff4444" rx={1} />, title: 'Sólido' },
-                    { value: 2, color: '#ffdd44', icon: <><rect x={0} y={0} width={16} height={8} fill="#ffdd44" rx={1} /><rect x={0} y={8} width={16} height={8} fill="#ffdd4444" rx={1} /></>, title: 'One-way ↑' },
-                    { value: 3, color: '#ff8844', icon: <><rect x={0} y={8} width={16} height={8} fill="#ff8844" rx={1} /><rect x={0} y={0} width={16} height={8} fill="#ff884444" rx={1} /></>, title: 'One-way ↓' },
-                    { value: 4, color: '#4488ff', icon: <><rect x={0} y={0} width={8} height={16} fill="#4488ff" rx={1} /><rect x={8} y={0} width={8} height={16} fill="#4488ff44" rx={1} /></>, title: 'One-way ←' },
-                    { value: 5, color: '#44ddff', icon: <><rect x={8} y={0} width={8} height={16} fill="#44ddff" rx={1} /><rect x={0} y={0} width={8} height={16} fill="#44ddff44" rx={1} /></>, title: 'One-way →' },
-                    { value: 6, color: '#44cc44', icon: <><rect x={0} y={0} width={16} height={16} fill="#44cc44" rx={1} /><line x1={3} y1={4} x2={13} y2={4} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={8} x2={13} y2={8} stroke="#fff" strokeWidth={1.5} /><line x1={3} y1={12} x2={13} y2={12} stroke="#fff" strokeWidth={1.5} /></>, title: 'Escalera' },
-                    { value: 7, color: '#ff66bb', icon: <polygon points="0,16 16,16 16,0" fill="#ff66bb" />, title: 'Rampa ↘' },
-                    { value: 10, color: '#66ffbb', icon: <polygon points="0,0 16,16 0,16" fill="#66ffbb" />, title: 'Rampa ↙' },
-                    { value: 11, color: '#ffbb66', icon: <polygon points="0,0 16,16 16,0" fill="#ffbb66" />, title: 'Rampa ↗' },
-                    { value: 8, color: '#bb66ff', icon: <polygon points="0,0 16,0 0,16" fill="#bb66ff" />, title: 'Rampa ↖' },
-                  ].map((p) => (
+                  {COLLISION_TYPES.map((p) => (
                     <div key={p.value}
                       onClick={() => {
                         setCollisionPaintValue(p.value);
@@ -2338,7 +2409,7 @@ export function MundoTab() {
                       scene={sc}
                       selected={selectedNodeId === sc.id}
                       isConnecting={isConnecting}
-                      tool={tool}
+                      tool={effectiveTool}
                       connectFrom={connectFrom}
                       onSelect={(id) => { if (!hasMoved.current) handleSceneBoxClick(id); }}
                       onContextMenu={(e, id) => {
@@ -2372,8 +2443,104 @@ export function MundoTab() {
               pointerEvents: 'none',
               zIndex: 10,
             }}>
-              {Math.round(zoom * 100)}%
+{Math.round(zoom * 100)}%
             </div>
+
+            {/* Menú radial +/X anclado al canvas de escenas */}
+            <div style={{ position: 'absolute', left: 45, bottom: -285, zIndex: 300, pointerEvents: 'auto' }}>
+              <div style={{ width: 340, height: 340, transform: 'translate(-50%, -50%)' }}>
+                <RadialMenu
+                  count={4}
+                  wobble={false}
+                  noShadow
+                  centerColor={themeAccent}
+                  fan={[-Math.PI / 2, 0]}
+                  items={radialItems}
+                  onPick={onRadialPick}
+                  onOpenChange={(next) => { if (next) setRadialCollisionsOpen(false); }}
+                />
+                <AnimatePresence>
+                  {radialCollisionsOpen && (
+                    <motion.div
+                      key="radial-collisions-panel"
+                      initial={{ opacity: 0, x: -24, scale: 0.9 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -12, scale: 0.95 }}
+                      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                      style={{
+                        position: 'absolute',
+                        left: 208,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        display: 'flex', alignItems: 'center', gap: 2,
+                        padding: '4px 10px',
+                        background: 'rgba(45,45,51,0.95)',
+                        borderRadius: 20,
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
+                        backdropFilter: 'blur(6px)',
+                        border: '1px solid var(--border-color)',
+                        zIndex: 320,
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 2,
+                        background: 'var(--bg-canvas)', borderRadius: 20, padding: '3px 4px',
+                      }}>
+                        <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
+                        <ToolBtn active={false} title="Varita (seleccionar) — pronto">⌾</ToolBtn>
+                        <ToolBtn active={collisionBrush === 'draw'}
+                          onClick={() => setCollisionBrush('draw')}
+                          title="Lápiz (arrastra para pintar, clic derecho para borrar)"
+                        >✎</ToolBtn>
+                        <ToolBtn active={collisionBrush === 'rectangle'}
+                          onClick={() => setCollisionBrush('rectangle')}
+                          title="Cuadro (arrastra para dibujar un rectángulo, clic derecho para borrar)"
+                        >▢</ToolBtn>
+                      </div>
+                      <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 4px' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        {COLLISION_TYPES.map((p) => (
+                          <div key={p.value}
+                            onClick={() => setCollisionPaintValue(p.value)}
+                            style={{
+                              width: 20, height: 20, cursor: 'pointer',
+                              border: collisionPaintValue === p.value ? '2px solid #fff' : '2px solid transparent',
+                              outline: collisionPaintValue === p.value ? '1px solid var(--accent)' : 'none',
+                              outlineOffset: 1, borderRadius: 3,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: 'rgba(0,0,0,0.3)',
+                            }}
+                            title={p.title}
+                          >
+                            <svg width={16} height={16} viewBox="0 0 16 16">{p.icon}</svg>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setRadialCollisionsOpen(false)}
+                        title="Cerrar panel de colisiones"
+                        style={{
+                          marginLeft: 2, background: 'transparent', border: 'none',
+                          color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14,
+                          lineHeight: 1, padding: 4,
+                        }}
+                      >×</button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+            {radialPick && (
+              <div style={{
+                position: 'absolute', bottom: 40, left: 64,
+                background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+                borderRadius: 999, padding: '6px 14px', fontSize: 12,
+                color: 'var(--text)', zIndex: 310, boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                pointerEvents: 'none',
+              }}>
+                {radialPick}
+              </div>
+            )}
           </div>
         </>
       }
@@ -2485,7 +2652,7 @@ export function MundoTab() {
             </div>
           )}
         </div>
-      </>
+</>
     )}
   </>
   );
@@ -2817,6 +2984,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
 
   return (
     <div
+      data-scene-card
       style={{
         position: 'absolute',
         left: 0, top: 0,
@@ -3193,6 +3361,7 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom, 
 
   return (
     <div
+      data-scene-card
       style={{
         position: 'absolute',
         left: 0, top: 0,
