@@ -6,6 +6,7 @@ import type {
   BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset, SoundEffect,
 } from '../types/editor';
 import { createCollisionMap, makeDefaultConnection, defaultSoundEffect } from '../types/editor';
+import type { GBAExportedActor, GBAExportedActorFrame } from '../utils/gba_export';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
   { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
@@ -791,6 +792,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let sceneCollisionMap: number[][] | undefined;
       let sceneCollisionTileSize: number | undefined;
       let sceneSong: Song | undefined;
+      let actorsExport: GBAExportedActor[] = [];
       if (state.splashScreen?.nextSceneId) {
         const targetScene = state.scenes.find((s) => s.id === state.splashScreen.nextSceneId);
         if (targetScene) {
@@ -850,6 +852,91 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (targetScene.backgroundSoundId) {
             const found = state.sounds.find((s) => s.id === targetScene.backgroundSoundId);
             log.add(`[WARN] Sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
+          }
+
+          // ── Actores de la escena (sprites software OVERLAY) ────────────
+          actorsExport = [];
+          if (targetScene.actors?.length) {
+            const camX = targetScene.cameraX || 0;
+            const camY = targetScene.cameraY || 0;
+            const sheetCache = new Map<string, { base64: string; width: number; height: number }>();
+            for (const actor of targetScene.actors) {
+              if (!actor.spriteId) {
+                log.add(`[WARN] Actor "${actor.name}" sin spritesheet: omitido en export GBA`);
+                continue;
+              }
+              const sheet = (state.spriteSheets ?? []).find((s) => s.id === actor.spriteId);
+              if (!sheet) {
+                log.add(`[WARN] Actor "${actor.name}": spritesheet "${actor.spriteId}" no encontrado`);
+                continue;
+              }
+              const api = window.advanceAPI;
+              let raw = sheetCache.get(sheet.tilesetPath);
+              if (!raw) {
+                const gbaResult = await api.file.convertImageToGbaBase64Exact(sheet.tilesetPath);
+                if (gbaResult.success && gbaResult.base64 && gbaResult.width && gbaResult.height) {
+                  raw = { base64: gbaResult.base64, width: gbaResult.width, height: gbaResult.height };
+                  sheetCache.set(sheet.tilesetPath, raw);
+                } else {
+                  log.add(`[WARN] Actor "${actor.name}": no se pudo leer tileset "${sheet.name}" — ${gbaResult.reason || 'desconocido'}`);
+                  continue;
+                }
+              }
+              const binaryStr = atob(raw.base64);
+              const imgW = raw.width;
+              const cols = sheet.cols || 1;
+              const tw = sheet.tileWidth || 8;
+              const th = sheet.tileHeight || 8;
+              let anim = sheet.animations.find((an) => an.id === actor.animId);
+              if (!anim) anim = sheet.animations[0];
+              if (!anim) {
+                log.add(`[WARN] Actor "${actor.name}": spritesheet "${sheet.name}" sin animaciones`);
+                continue;
+              }
+              const frameList = anim.frames.length ? anim.frames.slice(0, 32) : [anim.frames[0]].filter(Boolean);
+              if (!frameList.length) {
+                log.add(`[WARN] Actor "${actor.name}": animación "${anim.name}" sin frames`);
+                continue;
+              }
+              if (anim.frames.length > 32) {
+                log.add(`[WARN] Actor "${actor.name}": animación "${anim.name}" tiene ${anim.frames.length} frames, se exportan los primeros 32 (MAX_ACTOR_FRAMES)`);
+              }
+              const speedFac = anim.speed && anim.speed > 0 ? anim.speed : 1;
+              const frames: GBAExportedActorFrame[] = frameList.map((f) => {
+                const ti = f.tileIndex || 0;
+                const tc = ti % cols;
+                const tr = Math.floor(ti / cols);
+                const pixels: number[] = [];
+                for (let py = 0; py < th; py++) {
+                  for (let px = 0; px < tw; px++) {
+                    const srcIdx = ((tr * th + py) * imgW + (tc * tw + px)) * 2;
+                    if (srcIdx + 1 >= binaryStr.length) { pixels.push(0x8000); continue; }
+                    const lo = binaryStr.charCodeAt(srcIdx);
+                    const hi = binaryStr.charCodeAt(srcIdx + 1);
+                    const val = (hi << 8) | lo;
+                    const r5 = val & 0x1F;
+                    const g5 = (val >> 5) & 0x1F;
+                    const b5 = (val >> 10) & 0x1F;
+                    if ((r5 + g5 + b5) * 8 >= 384) pixels.push(0x8000); // transparency
+                    else pixels.push(val & 0x7FFF);
+                  }
+                }
+                return { w: tw, h: th, pixels };
+              });
+              const delays = frameList.map((f) => Math.max(1, Math.round((f.duration || 100) * 60 / 1000 / speedFac)));
+              actorsExport.push({
+                name: actor.name,
+                x: Math.round(actor.x - camX),
+                y: Math.round(actor.y - camY),
+                z: actor.z || 0,
+                w: tw,
+                h: th,
+                mode: anim.mode || 'loop',
+                frames,
+                delays,
+              });
+              log.add(`Actor "${actor.name}": ${tw}x${th}, ${frames.length} frames (${anim.name}), z=${actor.z || 0}`);
+            }
           }
         } else {
           log.add(`[WARN] nextSceneId "${state.splashScreen.nextSceneId}" no coincide con ninguna escena`);
@@ -1350,7 +1437,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
         entryGradientCArray, entryGradientW, entryGradientH,
         entryTransitionType, exitTransitionType,
-        sceneCollisionMap, sceneCollisionTileSize);
+        sceneCollisionMap, sceneCollisionTileSize,
+        actorsExport);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;

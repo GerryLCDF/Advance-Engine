@@ -621,3 +621,22 @@ Terminé de darle forma al menú radial y conectarlo con el mundo:
 - **Jerarquía**: cada escena lista sus actores como hijos (🤖), seleccionables, renombrables y eliminables (✕).
 
 `src/version.ts`: 0.49.13 -> 0.49.14
+
+## 23 Septiembre 2026 — v0.49.15 Actores exportados a GBA (sprites software sobre MODE 3)
+
+Primer paso real de actores → ROM: los actores de la escena objetivo del splash ahora se exportan como **sprites renderizados por software sobre el framebuffer** (MODE 3 sigue siendo el modo, sin OAM todavía). También corregí la escala 1:1 del sprite al elegir spritesheet (antes el actor medía 2× el tile).
+
+- **`gba_export.ts`**: nuevo tipo `GBAExportedActor` + `generateActorsData()` → genera en C la pool de sprites únicos (arrays `u16` planos, bit15 = transparente), la tabla `GBAFrame`, y la lógica de runtime completa:
+  - `initActors()` construye cada actor (x/y/z, tamaño, frames, delays vsync, modo once/loop/pingpong);
+  - `restoreActorRect()` restaura el fondo desde un snapshot `gActorBack` (porque MODE 3 no tiene hardware de sprites);
+  - `drawActorRect()` pinta cada frame con transparencia por píxel (`0x8000`);
+  - `advanceAllActors()` avanza las animaciones (solo si `frameCount` > 1);
+  - `drawAllActors()` ordena por z (insertion sort) y dibuja en orden.
+- **Integración en el runtime**: `generateGBAProject` acepta `actors?`; al haberlos, tras `fillScene()` se hace `sceneInit()` (snapshot del fondo + init + primer draw) y el `while(1)` del bucle de escena pasa a `restoreAllActors → advanceAllActors → drawAllActors` cada vsync, compatible con la música (sceneLoop con/Sin).
+- **`useAppStore.ts`**: en el export, tras resolver la escena objetivo, recolecta `targetScene.actors`, lee cada spritesheet con `convertImageToGbaBase64Exact`, extrae los tiles por `tileIndex` (grid cols×rows), marca transparente todo píxel con brillo ≥ 384 (misma convención white→transparent), y arma frames/delays desde la animación idle (velocidad respetada, máx 32 frames por anim).
+- **Posición relativa a cámara**: `x - cameraX`, `y - cameraY`. Orden de dibujo = z del actor.
+- **Escala 1:1**: el inspector al elegir spritesheet fija `width=height=tileWidth/tileHeight` (antes `*2`), así 1 píxel del sprite = 1 píxel de escena.
+
+Pendiente: colisiones/interacción runtime, y migrar a sprites OAM (tiles 4bpp + paletas) cuando haya gameplay.
+
+`src/version.ts`: 0.49.14 -> 0.49.15

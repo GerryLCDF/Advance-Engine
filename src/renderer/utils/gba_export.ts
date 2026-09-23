@@ -458,6 +458,7 @@ export function generateGBAProject(
   exitTransitionType?: string,
   collisionMap?: number[][],
   collisionTileSize?: number,
+  actors?: GBAExportedActor[],
 ): string {
   log.add(`Generando proyecto GBA: ${name}`);
   log.add(`Autor: ${author}`);
@@ -465,6 +466,7 @@ export function generateGBAProject(
   const hasSplash = splashImageCArray && splashDuration && splashDuration > 0;
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
   const hasSceneMusic = sceneSong && sceneSong.patterns.length > 0 && sceneSong.patterns.some((p) => p.rows.length > 0);
+  const hasActors = !!(actors && actors.length > 0);
   const sceneSongSuffix = (hasSceneMusic && hasMusic && splashSong!.id !== sceneSong!.id) ? '_Scene' : '';
   const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
   const entryType = entryTransitionType || 'fade';
@@ -523,6 +525,25 @@ export function generateGBAProject(
   }`;
   }
 
+  function sceneInit(): string {
+    if (!hasActors) return '';
+    return `
+  {
+    int i;
+    for (i = 0; i < PIXEL_COUNT; i++) gActorBack[i] = screen[i];
+  }
+  initActors();
+  drawAllActors(screen);`;
+  }
+
+  function actorLoopBody(): string {
+    if (!hasActors) return '';
+    return `      restoreAllActors(screen);
+      advanceAllActors();
+      drawAllActors(screen);
+`;
+  }
+
   function sceneLoop(suffix: string = sceneSongSuffix): string {
     if (hasSceneMusic) {
       return `  initSound();
@@ -539,16 +560,23 @@ export function generateGBAProject(
         step++;
         if (step >= SONG_STEPS${suffix}) step = 0;
       }
+      ${actorLoopBody().trimEnd()}
     }
   }
 `;
     }
-    return `  while (1) waitVSync();
+    return hasActors
+      ? `  while (1) {
+    waitVSync();
+${actorLoopBody().replace(/^      /gm, '    ').trimEnd()}
+  }
+`
+      : `  while (1) waitVSync();
 `;
   }
 
   function renderScene(): string {
-    return fillScene() + '\n' + sceneLoop(sceneSongSuffix);
+    return fillScene() + '\n' + sceneInit() + '\n' + sceneLoop(sceneSongSuffix);
   }
 
   let cCode = `/*
@@ -706,6 +734,10 @@ ${lines.join(',\n')}
     if (exitType === 'instant') log.add('Transicion de salida: instantanea');
   }
 
+  if (hasActors) {
+    cCode += generateActorsData(actors!, log);
+  }
+
   cCode += `
 // ── Entry Point ─────────────────────────────────────────────────────────
 int main() {
@@ -746,7 +778,7 @@ int main() {
 
   ${getRevealCall()};
 
-` + fillScene() + '\n' + sceneLoop() : renderScene();
+` + fillScene() + '\n' + sceneInit() + '\n' + sceneLoop() : renderScene();
     } else {
       cCode += `
   {
@@ -759,7 +791,7 @@ int main() {
 
   ${getRevealCall()};
 
-` + fillScene() + '\n' + sceneLoop() : renderScene();
+` + fillScene() + '\n' + sceneInit() + '\n' + sceneLoop() : renderScene();
     }
   } else {
     cCode += `
@@ -777,13 +809,13 @@ int main() {
 
   ${getRevealCall()};
 
-` + fillScene() + '\n' + sceneLoop() : sceneLoop();
+` + fillScene() + '\n' + sceneInit() + '\n' + sceneLoop() : (hasActors ? fillScene() + '\n' + sceneInit() + '\n' + sceneLoop() : sceneLoop());
     } else {
       cCode += hasTransition ? `  ${getCoverCall()};
 
   ${getRevealCall()};
 
-` + fillScene() + '\n' + sceneLoop() : sceneLoop();
+` + fillScene() + '\n' + sceneInit() + '\n' + sceneLoop() : (hasActors ? fillScene() + '\n' + sceneInit() + '\n' + sceneLoop() : sceneLoop());
     }
   }
 
@@ -806,6 +838,184 @@ int main() {
   log.add('Codigo fuente C generado correctamente');
 
   return cCode;
+}
+
+export interface GBAExportedActorFrame {
+  w: number;
+  h: number;
+  pixels: number[]; // u16 por píxel; bit15 (0x8000) = transparente
+}
+
+export interface GBAExportedActor {
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  h: number;
+  mode: 'once' | 'loop' | 'pingpong';
+  frames: GBAExportedActorFrame[];
+  delays: number[]; // vsyncs por frame (0.25–4x speed aplicado)
+}
+
+// MAX_ACTORS límite a 64 (software render, orden z asc)
+function cHexList(vals: number[], perLine = 8): string {
+  const chunks: string[] = [];
+  for (let i = 0; i < vals.length; i += perLine) {
+    chunks.push(vals.slice(i, i + perLine).map((v) => `0x${v.toString(16).padStart(4, '0')}`).join(', '));
+  }
+  return chunks.join(',\n  ');
+}
+
+function generateActorsData(actors: GBAExportedActor[], log: ExportLog): string {
+  const frames = actors.flatMap((a) => a.frames);
+
+  // Pool de imágenes únicas compartidas
+  const images: GBAExportedActorFrame[] = [];
+  const imageIdx = new Map<string, number>();
+  frames.forEach((f) => {
+    const key = `${f.w}x${f.h}:${f.pixels.join(',')}`;
+    if (!imageIdx.has(key)) {
+      imageIdx.set(key, images.length);
+      images.push(f);
+    }
+  });
+
+  const imageArr = images.map((img, i) => `static const u16 gSprImg${i}[${img.w * img.h}] = {\n  ${cHexList(img.pixels)},\n};`);
+
+  const poolArr = images.map((img, i) => `    { gSprImg${i}, ${img.w}, ${img.h} }`);
+
+  // Código generado: construcción con loops para tablas de punteros
+  const perActorCode = actors.slice(0, 64).map((a, ai) => {
+    const animFrames = a.frames.map((f) => imageIdx.get(`${f.w}x${f.h}:${f.pixels.join(',')}`)!);
+    const delaysArr = a.delays.map((d) => String(Math.max(1, Math.round(d))));
+    const mode = a.mode === 'once' ? 0 : a.mode === 'pingpong' ? 2 : 1;
+    return `  gActors[${ai}].x = ${a.x};
+  gActors[${ai}].y = ${a.y};
+  gActors[${ai}].z = ${Math.max(0, a.z)};
+  gActors[${ai}].w = ${a.w};
+  gActors[${ai}].h = ${a.h};
+  gActors[${ai}].frameCount = ${a.frames.length};
+  gActors[${ai}].mode = ${mode};
+  gActors[${ai}].frame = 0;
+  gActors[${ai}].timer = 0;
+  gActors[${ai}].dir = 1;
+  {
+    int fi;
+    u16 srcDelays[${a.frames.length}] = { ${delaysArr.join(', ')} };
+    u16 srcFrames[${a.frames.length}] = { ${animFrames.join(', ')} };
+    for (fi = 0; fi < ${a.frames.length}; fi++) {
+      gActors[${ai}].frames[fi] = &gFrames[srcFrames[fi]];
+      gActors[${ai}].delays[fi] = srcDelays[fi];
+    }
+  }`;
+  });
+
+  log.add(`Actores exportados: ${actors.length} (${images.length} imágenes de sprite únicas)`);
+  if (actors.length > 64) log.add(`[WARN] ${actors.length} actores, el render por software soporta hasta 64 — se exportan los primeros 64`);
+
+  return images.length === 0 ? '' : `
+// ── Actores (sprites software sobre MODE 3) ─────────────────────────────
+#define MAX_ACTOR_FRAMES 32
+#define ACTOR_COUNT ${Math.min(actors.length, 64)}
+
+typedef struct {
+  const u16* img;
+  u16 w, h;
+} GBAFrame;
+
+typedef struct {
+  s16 x, y;         // posición top-left (relativa a cámara)
+  s16 z;            // orden de dibujo (asc)
+  u16 w, h;         // tamaño del sprite
+  const GBAFrame* frames[MAX_ACTOR_FRAMES];
+  u16 delays[MAX_ACTOR_FRAMES];
+  u8 frameCount;
+  u8 mode;          // 0 once, 1 loop, 2 pingpong
+  u8 frame;
+  s8 dir;
+  u16 timer;
+} GBAActor;
+
+${imageArr.join('\n')}
+
+static const GBAFrame gFrames[${images.length}] = {
+${poolArr.join(',\n')}
+};
+
+static GBAActor gActors[ACTOR_COUNT];
+static u16 gActorBack[PIXEL_COUNT];
+
+static void restoreActorRect(const GBAActor* a, u16* screen) {
+  int y, x;
+  for (y = 0; y < a->h; y++) {
+    int sy = a->y + y;
+    if (sy < 0 || sy >= SCREEN_H) continue;
+    for (x = 0; x < a->w; x++) {
+      int sx = a->x + x;
+      if (sx < 0 || sx >= SCREEN_W) continue;
+      screen[sy * SCREEN_W + sx] = gActorBack[sy * SCREEN_W + sx];
+    }
+  }
+}
+
+static void drawActorRect(const GBAActor* a, u16* screen) {
+  const GBAFrame* f = a->frames[a->frame];
+  int y, x;
+  for (y = 0; y < f->h; y++) {
+    int sy = a->y + y;
+    if (sy < 0 || sy >= SCREEN_H) continue;
+    for (x = 0; x < f->w; x++) {
+      int sx = a->x + x;
+      if (sx < 0 || sx >= SCREEN_W) continue;
+      u16 px = f->img[y * f->w + x];
+      if (px & 0x8000) continue; // transparente
+      screen[sy * SCREEN_W + sx] = px;
+    }
+  }
+}
+
+static void restoreAllActors(u16* screen) {
+  int i;
+  for (i = 0; i < ACTOR_COUNT; i++) restoreActorRect(&gActors[i], screen);
+}
+
+static void advanceAllActors(void) {
+  int i;
+  for (i = 0; i < ACTOR_COUNT; i++) {
+    GBAActor* a = &gActors[i];
+    if (a->frameCount <= 1) continue;
+    if (++a->timer < a->delays[a->frame]) continue;
+    a->timer = 0;
+    if (a->mode == 0) {
+      if (a->frame < a->frameCount - 1) a->frame++;
+    } else if (a->mode == 1) {
+      a->frame = (a->frame + 1) % a->frameCount;
+    } else {
+      a->frame += a->dir;
+      if (a->frame <= 0) { a->frame = 0; a->dir = 1; }
+      if (a->frame >= a->frameCount - 1) { a->frame = a->frameCount - 1; a->dir = -1; }
+    }
+  }
+}
+
+static void drawAllActors(u16* screen) {
+  int order[ACTOR_COUNT];
+  int i, j;
+  for (i = 0; i < ACTOR_COUNT; i++) order[i] = i;
+  for (i = 1; i < ACTOR_COUNT; i++) {
+    int key = order[i];
+    int zkey = gActors[key].z;
+    for (j = i - 1; j >= 0 && gActors[order[j]].z > zkey; j--) order[j + 1] = order[j];
+    order[j + 1] = key;
+  }
+  for (i = 0; i < ACTOR_COUNT; i++) drawActorRect(&gActors[order[i]], screen);
+}
+
+static void initActors(void) {
+${perActorCode.join('\n')}
+}
+`;
 }
 
 export function generateMakefile(name: string, log: ExportLog): string {

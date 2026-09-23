@@ -1460,7 +1460,7 @@ export function MundoTab() {
                   actorPatch({
                     spriteId: e.target.value,
                     animId: '',
-                    ...(sp ? { width: sp.tileWidth * 2, height: sp.tileHeight * 2 } : {}),
+                    ...(sp ? { width: sp.tileWidth, height: sp.tileHeight } : {}),
                   });
                 }}
                 style={{ width: '100%', background: 'var(--bg-canvas)', color: '#fff', border: '1px solid var(--border-color)', borderRadius: 4, padding: '4px 6px', fontSize: 11 }}
@@ -3494,11 +3494,11 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                       outlineOffset: -1,
                       boxSizing: 'border-box',
                       imageRendering: 'pixelated',
+                      backgroundColor: sheet && spriteUrls[sheet.id] ? 'transparent' : 'rgba(255,255,255,0.15)',
                       backgroundImage: sheet && spriteUrls[sheet.id] ? `url(${spriteUrls[sheet.id]})` : undefined,
                       backgroundSize: sheet ? `${sheetCols * a.width}px ${sheetRows * a.height}px` : undefined,
                       backgroundPosition: sheet ? `-${col * a.width}px -${row * a.height}px` : undefined,
                       backgroundRepeat: 'no-repeat',
-                      background: sheet && spriteUrls[sheet.id] ? undefined : 'rgba(255,255,255,0.15)',
                     }}
                   >
                     {a.collider && (
