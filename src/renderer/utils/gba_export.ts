@@ -1029,7 +1029,9 @@ static void updatePlayer(void) {
 // ── Actores (sprites software sobre MODE 3) ─────────────────────────────
 #define MAX_ACTOR_FRAMES 32
 #define ACTOR_COUNT ${Math.min(actors.length, 64)}
+#ifndef REG_KEYINPUT
 #define REG_KEYINPUT (*(volatile u16*)0x04000130)
+#endif
 #ifndef CAM_X
 #define CAM_X 0
 #endif
@@ -1065,7 +1067,8 @@ ${poolArr.join(',\n')}
 };
 
 static GBAActor gActors[ACTOR_COUNT];
-static u16 gActorBack[PIXEL_COUNT];
+// Snapshot del fondo en EWRAM (256KB) — no cabe en IWRAM (32KB)
+static u16 gActorBack[PIXEL_COUNT] __attribute__((section(".ewram"), aligned(4)));
 
 static void restoreActorRect(const GBAActor* a, u16* screen) {
   int y, x;

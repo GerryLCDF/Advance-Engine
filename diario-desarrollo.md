@@ -655,3 +655,15 @@ Los actores ahora chocan de verdad en la GBA. Antes la `collisionMap` era solo d
 Soporta escenas con o sin `collisionMap` (sin mapa el jugador se mueve libre; el empuje actor-actor sigue activo). Pendiente: gravedad/plataformas, y migrar a OAM cuando haya gameplay.
 
 `src/version.ts`: 0.49.15 -> 0.49.16
+
+## 23 Septiembre 2026 — v0.49.17 Fix linker ROM: gActorBack a EWRAM + REG_KEYINPUT
+
+Al exporta la escena con colision angió el linker de devkitARM: `gActorBack[PIXEL_COUNT]` (76 KB) es una variable de escritura y el layout básico la pone en **IWRAM (32 KB)**, desbordando (`address 0x3012d00 of `.init_array` is not within region 'iwram'`).
+
+- `gActorBack` ahora se declara con `__attribute__((section(".ewram"), aligned(4)))` → va a la EWRAM de 256 KB (dirección `0x02000000`), donde hay espacio de sobra. Verificado con `arm-none-eabi-size`/`objdump`: sección `.ewram` 0x12c00 bytes.
+- `REG_KEYINPUT` ya lo define `libgba/gba_input.h`; ahora el define generado va dentro de `#ifndef` para evitar el warning de redefinición (usamos el registro real de libgba).
+- Warnings `runToBlack_Exit`/`runToScene_Entry` sin uso: preexistentes e inofensivos.
+
+Código validado compilando + linkeando con la toolchain real devkitARM (`arm-none-eabi-gcc` + `gba.specs`).
+
+`src/version.ts`: 0.49.16 -> 0.49.17
