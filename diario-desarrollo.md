@@ -691,3 +691,20 @@ La transparencia de los tilesets/gradientes de transición NO se tocó (`convert
 Validado: `npx tsc --noEmit`, `npm run build:renderer`, y generación de C con actor+custom transition y con fade+actor compilando/ linkeando con devkitARM real.
 
 `src/version.ts`: 0.49.17 -> 0.49.18
+
+## 0.49.19 — Fix exportación: "make: No se hace nada para 'all'" (Electron desactualizado)
+
+Bug reportado: tras exportar, la app decía `[OK] ROM compilada` pero el log terminaba en `make: No se hace nada para 'all'` — la ROM no se regeneraba.
+
+Causa raíz: el binario de Electron que correba el usuario estaba compilado el 22 sep (antes del IPC `file:convertImageToGbaBase64ExactAlpha` de la 0.49.18). En `generateBuildFiles` se llamaba `api.file.convertImageToGbaBase64ExactAlpha(...)` → método inexistente → TypeError → el `catch { return false; }` tragaba el error en silencio → NO se reescribía `main.c` (su mtime quedaba más viejo que `main.o`/`.gba`) → make no tenía nada que recompilar.
+
+Fix:
+- Reconstruido `dist/electron/` (`npm run build:electron`): ahora `main.js` y `preload.js` exponen el IPC nuevo (verificado con grep).
+- `generateBuildFiles` ya no traga errores: el `catch` final ahora reporta `[ERROR] generateBuildFiles: <mensaje>` en el log de exportación.
+- `exportGBA` y `playEmulator` ahora comprueban el retorno de `generateBuildFiles()` y abortan antes de `make` si falló, con un mensaje claro indicando que puede ser un Electron desactualizado (reiniciar la app).
+
+Validado: `npx tsc --noEmit`, `npm run build:renderer`, `npm run build:electron` (IPC presente en ambos dist).
+
+Nota para el usuario: reiniciar la app para tomar el Electron nuevo; el export regenera main.c y make recompila.
+
+`src/version.ts`: 0.49.18 -> 0.49.19

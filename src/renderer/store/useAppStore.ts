@@ -1452,7 +1452,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Publish log to the terminal
       set((s) => ({ exportLog: [...s.exportLog, ...log.messages] }));
       return true;
-    } catch { return false; }
+    } catch (err: any) {
+      set((s) => ({ exportLog: [...s.exportLog, `[ERROR] generateBuildFiles: ${String(err)}`] }));
+      return false;
+    }
   },
   saveProject: async () => {
     try {
@@ -1531,7 +1534,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         set((s) => ({ exportLog: [...s.exportLog, '[ERROR] Guarda el proyecto antes de exportar'] }));
         return false;
       }
-      await get().generateBuildFiles();
+      const filesOk = await get().generateBuildFiles();
+      if (!filesOk) {
+        set((s) => ({ exportLog: [...s.exportLog, '[ERROR] Falló la generación de los build files — no se compila la ROM. Revisa los mensajes anteriores (¿Electron desactualizado? Reinicia la app).'] }));
+        return false;
+      }
       const { createLog } = await import('../utils/gba_export');
       const log = createLog();
       log.add('=== INICIANDO EXPORTACIÓN GBA ===');
@@ -1570,7 +1577,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Compile
       set((s) => ({ exportLog: [...s.exportLog, '[INFO] Generando build files…'] }));
-      await get().generateBuildFiles();
+      const filesOk = await get().generateBuildFiles();
+      if (!filesOk) {
+        set((s) => ({ exportLog: [...s.exportLog, '[ERROR] Falló la generación de los build files — no se compila la ROM. Revisa los mensajes anteriores (¿Electron desactualizado? Reinicia la app).'] }));
+        return false;
+      }
       set((s) => ({ exportLog: [...s.exportLog, '[INFO] Compilando ROM…'] }));
       const result = await api.system.runCommand('make -j4', buildDir);
       if (!result.success) {
