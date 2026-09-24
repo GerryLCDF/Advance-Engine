@@ -667,3 +667,27 @@ Al exporta la escena con colision angió el linker de devkitARM: `gActorBack[PIX
 Código validado compilando + linkeando con la toolchain real devkitARM (`arm-none-eabi-gcc` + `gba.specs`).
 
 `src/version.ts`: 0.49.16 -> 0.49.17
+
+## 23 Septiembre 2026 — v0.49.18 Fixes transición: sprite visible + transparencia por canal alpha
+
+Problemas reportados probando la v0.49.17: (1) durante la transición de entrada el sprite del jugador no se veía (nunca aparecía hasta terminar la transición completa), y (2) al aparecer el jugador la transparencia estaba invertida: lo que debía ser transparente salía negro y los grises/blancos del sprite salían transparentes.
+
+Causa raíz de (1): los actores solo se dibujan en `sceneInit()` que corre DESPUÉS de `cover`+`reveal`+`fillScene`. Durante la animación del tileset no se dibujaba ningún actor.
+
+Fix (1):
+- `runToScene_*`/`fadeToScene` ahora llaman `initActors()` + `drawAllActors(screen)` al inicio y `drawAllActors(screen)` tras detectar cada grupo de tiles, así el sprite queda visible y por encima de la escena mientras se revela.
+- Forward declarations `static void initActors(void);` y `static void drawAllActors(u16* screen);` antes de las transiciones (los actores se definen más abajo en el archivo).
+- Solo se inyectan cuando `hasActors && hasTransition`; sin actores el C generado no cambia (verificado).
+
+Causa raíz de (2): el export de sprites usaba una heurística de brillo (`r+g+b*8 >= 384 → transparente`), pero el sprite del usuario tiene transparencia real por canal alpha del PNG. El píxel transparente → negro opaco en ROM, y los píxeles claros del cuerpo → transparentes.
+
+Fix (2):
+- Nuevo IPC `file:convertImageToGbaBase64ExactAlpha` (electron/main.ts + preload + global.d.ts) que convierte BGRA→RGB555 preservando el alpha: si `alpha < 128` escribe `0x8000` (bit de transparencia igual al runtime de actores), si no el color `0x0000..0x7FFF`.
+- `useAppStore.ts` usa el nuevo IPC para tilesets de actor y la extracción de frames pasa a `val & 0x8000 → transparente` (ya no heurística de brillo).
+- El preview del editor ya mostraba el alpha real del PNG (`drawImage`/`url()`), así que ahora el editor y la ROM coinciden. El preview de tilesets de transición sigue con blanco→transparente (correcto para el sistema de transición).
+
+La transparencia de los tilesets/gradientes de transición NO se tocó (`convertImageToGbaBase64Exact` intacto, `valToMask` en low 15 bits).
+
+Validado: `npx tsc --noEmit`, `npm run build:renderer`, y generación de C con actor+custom transition y con fade+actor compilando/ linkeando con devkitARM real.
+
+`src/version.ts`: 0.49.17 -> 0.49.18

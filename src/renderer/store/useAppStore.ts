@@ -877,7 +877,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               const api = window.advanceAPI;
               let raw = sheetCache.get(sheet.tilesetPath);
               if (!raw) {
-                const gbaResult = await api.file.convertImageToGbaBase64Exact(sheet.tilesetPath);
+                const gbaResult = await api.file.convertImageToGbaBase64ExactAlpha(sheet.tilesetPath);
                 if (gbaResult.success && gbaResult.base64 && gbaResult.width && gbaResult.height) {
                   raw = { base64: gbaResult.base64, width: gbaResult.width, height: gbaResult.height };
                   sheetCache.set(sheet.tilesetPath, raw);
@@ -918,10 +918,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                     const lo = binaryStr.charCodeAt(srcIdx);
                     const hi = binaryStr.charCodeAt(srcIdx + 1);
                     const val = (hi << 8) | lo;
-                    const r5 = val & 0x1F;
-                    const g5 = (val >> 5) & 0x1F;
-                    const b5 = (val >> 10) & 0x1F;
-                    if ((r5 + g5 + b5) * 8 >= 384) pixels.push(0x8000); // transparency
+                    if (val & 0x8000) pixels.push(0x8000); // transparencia via canal alpha del PNG
                     else pixels.push(val & 0x7FFF);
                   }
                 }

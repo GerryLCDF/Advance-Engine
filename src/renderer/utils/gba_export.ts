@@ -236,6 +236,7 @@ function generateTransitionData(
   gradientCArray: string | null,
   gradientW: number,
   gradientH: number,
+  drawActors: boolean,
 ): string {
 
   const tilesX = Math.ceil(240 / tileSize);
@@ -362,13 +363,13 @@ function generateTransitionData(
   const seqSceneForce = 'scene[py * 240 + px]';
   const exitTag = tag === 'Exit';
 
-  const seqFn = (fnName: string, cmp: string, val: string, forceVal: string, clearBeforeFrame: boolean, reverseFrames: boolean) => `
+  const seqFn = (fnName: string, cmp: string, val: string, forceVal: string, clearBeforeFrame: boolean, reverseFrames: boolean, drawActors: boolean) => `
 static void ${fnName}(const u16* scene, int totalFrames) {
   u16* screen = (u16*)VRAM;
   const int gGroupOffsets_${tag}[${finalNumGroups + 1}] = ${finalGroupOffsetsStr};
   const int gTileOrder_${tag}[${tileCount}] = ${finalFlatOrderStr};
   int g;
-  for (g = 0; g < ${finalNumGroups}; g++) {
+${drawActors ? '  initActors();\n  drawAllActors(screen);\n' : ''}  for (g = 0; g < ${finalNumGroups}; g++) {
     ${reverseFrames ? `int f = ${tilesetFrames};
     while (f-- > 0) {` : `int f;
     for (f = 0; f < ${tilesetFrames}; f++) {`}
@@ -404,12 +405,12 @@ ${clearBeforeFrame ? `        {
 ${forceTile(forceVal, 'tx2', 'ty2')}
       }
     }
-  }
+${drawActors ? '    drawAllActors(screen);\n' : ''}  }
 }
 `;
 
-  const runToBlackCode = seqFn(`runToBlack_${tag}`, seqBlackCmp, '0', seqBlackForce, false, false);
-  const runToSceneCode = seqFn(`runToScene_${tag}`, seqSceneCmp, seqSceneVal, seqSceneForce, exitTag, exitTag);
+  const runToBlackCode = seqFn(`runToBlack_${tag}`, seqBlackCmp, '0', seqBlackForce, false, false, false);
+  const runToSceneCode = seqFn(`runToScene_${tag}`, seqSceneCmp, seqSceneVal, seqSceneForce, exitTag, exitTag, drawActors);
 
   return `
 // ── Gradient (${tag}) ──────────────────────────────────────────────
@@ -602,12 +603,19 @@ static void waitVSync(void) {
 }
 `;
 
+  if (hasActors && hasTransition) {
+    cCode += `
+static void initActors(void);
+static void drawAllActors(u16* screen);
+`;
+  }
+
   if (hasTransition && (entryType === 'fade' || exitType === 'fade')) {
     cCode += `
 // ── Fade Transition ──────────────────────────────────────────────────────
 static void fadeToScene(const u16* scene, int totalFrames) {
   u16* screen = (u16*)VRAM;
-  int i, p;
+  ${hasActors ? '  initActors();\n' : ''}int i, p;
   for (i = 0; i < totalFrames; i++) {
     int t = i + 1;
     for (p = 0; p < PIXEL_COUNT; p++) {
@@ -617,7 +625,7 @@ static void fadeToScene(const u16* scene, int totalFrames) {
       int b = ((s >> 10) & 0x1F) * t / totalFrames;
       screen[p] = r | (g << 5) | (b << 10);
     }
-    waitVSync();
+    ${hasActors ? '    drawAllActors(screen);\n' : ''}waitVSync();
   }
 }
 
@@ -724,6 +732,7 @@ ${lines.join(',\n')}
       entryTilesetFw!, entryTilesetFh!,
       'Entry',
       entryGradientCArray ?? null, entryGradientW ?? 0, entryGradientH ?? 0,
+      hasActors,
     );
     log.add(`Transicion de entrada (cover): ${entryTilesetFrames} frames, tile ${entryTileSize}px`);
   }
@@ -734,6 +743,7 @@ ${lines.join(',\n')}
       exitTilesetFw!, exitTilesetFh!,
       'Exit',
       exitGradientCArray ?? null, exitGradientW ?? tilesForGradW, exitGradientH ?? tilesForGradH,
+      hasActors,
     );
     log.add(`Transicion de salida (reveal): ${exitTilesetFrames} frames, tile ${exitTileSize}px`);
   }

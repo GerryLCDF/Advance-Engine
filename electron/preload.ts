@@ -76,6 +76,7 @@ export interface AdvanceAPI {
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => Promise<{ success: boolean; width?: number; height?: number; reason?: string }>;
     convertImageToGbaBase64: (imagePath: string) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
     convertImageToGbaBase64Exact: (imagePath: string) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
+    convertImageToGbaBase64ExactAlpha: (imagePath: string) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
     cropImageToGbaBase64: (imagePath: string, cropX: number, cropY: number) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
     delete: (filePath: string) => Promise<{ success: boolean; reason?: string }>;
   };
@@ -148,6 +149,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => ipcRenderer.invoke('file:convertImageToGbaBitmap', imagePath, outputPath),
     convertImageToGbaBase64: (imagePath: string) => ipcRenderer.invoke('file:convertImageToGbaBase64', imagePath),
     convertImageToGbaBase64Exact: (imagePath: string) => ipcRenderer.invoke('file:convertImageToGbaBase64Exact', imagePath),
+    convertImageToGbaBase64ExactAlpha: (imagePath: string) => ipcRenderer.invoke('file:convertImageToGbaBase64ExactAlpha', imagePath),
     cropImageToGbaBase64: (imagePath: string, cropX: number, cropY: number) => ipcRenderer.invoke('file:cropImageToGbaBase64', imagePath, cropX, cropY),
     delete: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
   },

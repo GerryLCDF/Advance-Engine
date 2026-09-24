@@ -58,6 +58,7 @@ interface AdvanceAPI {
     convertImageToGbaBitmap: (imagePath: string, outputPath: string) => Promise<{ success: boolean; width?: number; height?: number; reason?: string }>;
     convertImageToGbaBase64: (imagePath: string) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
     convertImageToGbaBase64Exact: (imagePath: string) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
+    convertImageToGbaBase64ExactAlpha: (imagePath: string) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
     cropImageToGbaBase64: (imagePath: string, cropX: number, cropY: number) => Promise<{ success: boolean; base64?: string; width?: number; height?: number; reason?: string }>;
     delete: (filePath: string) => Promise<{ success: boolean; reason?: string }>;
   };
