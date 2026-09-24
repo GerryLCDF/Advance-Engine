@@ -640,3 +640,18 @@ Primer paso real de actores → ROM: los actores de la escena objetivo del splas
 Pendiente: colisiones/interacción runtime, y migrar a sprites OAM (tiles 4bpp + paletas) cuando haya gameplay.
 
 `src/version.ts`: 0.49.14 -> 0.49.15
+
+## 23 Septiembre 2026 — v0.49.16 Colisiones runtime en la ROM (tiles + actor-actor + demo D-pad)
+
+Los actores ahora chocan de verdad en la GBA. Antes la `collisionMap` era solo datos estáticos en el C; hoy la integro en un runtime de física por software:
+
+- **Collider por actor exportado**: `GBAExportedActor` gana `collider/colliderW/colliderH`; el struct `GBAActor` incorpora `hasCollider`, `cw`, `ch` (tamaño del collider, centrado en el sprite) y `vx/vy`. El collider del inspector (toggle + ancho/alto) ahora viaja a la ROM.
+- **Física tile-map (C)**: bloques auxiliares `solidTile()` (sólido, one-way ↑/↓/←/→ según dirección de movimiento, escalera pasable), `rectHitsSolid()` (AABB contra el grid), `moveActorCollide()` (movimiento axial, resuelve X e Y por separado) y `actorBox()` (caja en coords mundo = posición relativa + `CAM_X/CAM_Y`).
+- **Actor-actor**: `rectsOverlap()` + `updatePlayer()` empujan al jugador por el eje de menor intrusión cuando toca otro actor con collider.
+- **Demo D-pad**: `PLAYER_INDEX 0` (el primer actor es el jugador de prueba) se mueve con le D-pad de la GBA (`REG_KEYINPUT`) a `PLAYER_SPEED 2` px/vsync, con colisiones tiles y entre actores activas en el mismo `while(1)` de la escena.
+- **Normalización del map**: los valores de rampas codificadas (>255, desbordarían `u8`) se reducen a sólido (1) al exportar; se conservan 0 vacío, 1 sólido, 2-5 one-ways y 6 escalera.
+- **Cámara exportada**: `CAM_X/CAM_Y` desde `targetScene.cameraX/Y` (o 0) para mapear posiciones relativas a tiles mundo.
+
+Soporta escenas con o sin `collisionMap` (sin mapa el jugador se mueve libre; el empuje actor-actor sigue activo). Pendiente: gravedad/plataformas, y migrar a OAM cuando haya gameplay.
+
+`src/version.ts`: 0.49.15 -> 0.49.16

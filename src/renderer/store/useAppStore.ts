@@ -791,12 +791,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       let sceneColor: string | undefined;
       let sceneCollisionMap: number[][] | undefined;
       let sceneCollisionTileSize: number | undefined;
+      let sceneCamX: number | undefined;
+      let sceneCamY: number | undefined;
       let sceneSong: Song | undefined;
       let actorsExport: GBAExportedActor[] = [];
       if (state.splashScreen?.nextSceneId) {
         const targetScene = state.scenes.find((s) => s.id === state.splashScreen.nextSceneId);
         if (targetScene) {
           sceneColor = targetScene.backgroundColor || '#000000';
+          sceneCamX = targetScene.cameraX || 0;
+          sceneCamY = targetScene.cameraY || 0;
           if (targetScene.collisionMap?.length && targetScene.collisionMap[0]?.length) {
             sceneCollisionMap = targetScene.collisionMap;
             sceneCollisionTileSize = targetScene.collisionTileSize || 8;
@@ -934,6 +938,9 @@ export const useAppStore = create<AppState>((set, get) => ({
                 mode: anim.mode || 'loop',
                 frames,
                 delays,
+                collider: !!actor.collider,
+                colliderW: actor.colliderWidth,
+                colliderH: actor.colliderHeight,
               });
               log.add(`Actor "${actor.name}": ${tw}x${th}, ${frames.length} frames (${anim.name}), z=${actor.z || 0}`);
             }
@@ -1437,8 +1444,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
         entryGradientCArray, entryGradientW, entryGradientH,
         entryTransitionType, exitTransitionType,
-        sceneCollisionMap, sceneCollisionTileSize,
-        actorsExport);
+        sceneCollisionMap, sceneCollisionTileSize, sceneCamX, sceneCamY, actorsExport);
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;

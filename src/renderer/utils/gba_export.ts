@@ -458,6 +458,8 @@ export function generateGBAProject(
   exitTransitionType?: string,
   collisionMap?: number[][],
   collisionTileSize?: number,
+  sceneCamX?: number,
+  sceneCamY?: number,
   actors?: GBAExportedActor[],
 ): string {
   log.add(`Generando proyecto GBA: ${name}`);
@@ -467,6 +469,7 @@ export function generateGBAProject(
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
   const hasSceneMusic = sceneSong && sceneSong.patterns.length > 0 && sceneSong.patterns.some((p) => p.rows.length > 0);
   const hasActors = !!(actors && actors.length > 0);
+  const hasCollisionMap = !!(collisionMap && collisionMap.length > 0 && collisionMap[0].length > 0);
   const sceneSongSuffix = (hasSceneMusic && hasMusic && splashSong!.id !== sceneSong!.id) ? '_Scene' : '';
   const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
   const entryType = entryTransitionType || 'fade';
@@ -540,6 +543,7 @@ export function generateGBAProject(
     if (!hasActors) return '';
     return `      restoreAllActors(screen);
       advanceAllActors();
+      updatePlayer();
       drawAllActors(screen);
 `;
   }
@@ -671,14 +675,21 @@ const u16 sceneData[PIXEL_COUNT] = { [0 ... PIXEL_COUNT-1] = ${fallbackHex} };
     const ts = collisionTileSize ?? 8;
     const rows = collisionMap.length;
     const cols = collisionMap[0].length;
+    // Normaliza valores: 0 vacío, 1-6 tipos, 7-11 rampas/encoded (>u8) → sólido (1)
+    const normalize = (v: number) =>
+      (v === 0 || v === 6) ? v :                     // vacío / escalera pasable
+      (v === 1 || v === 2 || v === 3 || v === 4 || v === 5) ? v : // sólido y one-ways
+      1;                                             // rampas codificadas/estáticas → sólido
     const lines = collisionMap.map((row) =>
-      '  {' + row.join(',') + '}'
+      '  {' + row.map(normalize).join(',') + '}'
     );
     cCode += `
 // ── Collision Map ─────────────────────────────────────────────────────
 #define COLLISION_COLS ${cols}
 #define COLLISION_ROWS ${rows}
 #define COLLISION_TILE_SIZE ${ts}
+#define CAM_X ${Math.round(sceneCamX ?? 0)}
+#define CAM_Y ${Math.round(sceneCamY ?? 0)}
 
 const u8 collisionMap[COLLISION_ROWS][COLLISION_COLS] = {
 ${lines.join(',\n')}
@@ -735,7 +746,7 @@ ${lines.join(',\n')}
   }
 
   if (hasActors) {
-    cCode += generateActorsData(actors!, log);
+    cCode += generateActorsData(actors!, log, hasCollisionMap);
   }
 
   cCode += `
@@ -856,6 +867,9 @@ export interface GBAExportedActor {
   mode: 'once' | 'loop' | 'pingpong';
   frames: GBAExportedActorFrame[];
   delays: number[]; // vsyncs por frame (0.25–4x speed aplicado)
+  collider?: boolean;
+  colliderW?: number;
+  colliderH?: number;
 }
 
 // MAX_ACTORS límite a 64 (software render, orden z asc)
@@ -867,7 +881,7 @@ function cHexList(vals: number[], perLine = 8): string {
   return chunks.join(',\n  ');
 }
 
-function generateActorsData(actors: GBAExportedActor[], log: ExportLog): string {
+function generateActorsData(actors: GBAExportedActor[], log: ExportLog, hasCollisionMap: boolean): string {
   const frames = actors.flatMap((a) => a.frames);
 
   // Pool de imágenes únicas compartidas
@@ -895,6 +909,9 @@ function generateActorsData(actors: GBAExportedActor[], log: ExportLog): string 
   gActors[${ai}].z = ${Math.max(0, a.z)};
   gActors[${ai}].w = ${a.w};
   gActors[${ai}].h = ${a.h};
+  gActors[${ai}].hasCollider = ${a.collider ? 1 : 0};
+  gActors[${ai}].cw = ${a.collider ? Math.max(1, Math.round(a.colliderW ?? a.w)) : 0};
+  gActors[${ai}].ch = ${a.collider ? Math.max(1, Math.round(a.colliderH ?? a.h)) : 0};
   gActors[${ai}].frameCount = ${a.frames.length};
   gActors[${ai}].mode = ${mode};
   gActors[${ai}].frame = 0;
@@ -914,10 +931,111 @@ function generateActorsData(actors: GBAExportedActor[], log: ExportLog): string 
   log.add(`Actores exportados: ${actors.length} (${images.length} imágenes de sprite únicas)`);
   if (actors.length > 64) log.add(`[WARN] ${actors.length} actores, el render por software soporta hasta 64 — se exportan los primeros 64`);
 
+const playerDemo = `
+// ── Physica runtime (colisiones tiles + actor-actor) ─────────────────────
+#define PLAYER_INDEX 0
+#define PLAYER_SPEED 2
+
+// AABB del actor en píxeles (posición relativa a cámara + cam offset)
+static inline void actorBox(const GBAActor* a, s16* bx, s16* by, s16* bw, s16* bh) {
+  *bw = a->cw ? a->cw : a->w;
+  *bh = a->ch ? a->ch : a->h;
+  *bx = a->x + CAM_X + (a->w - *bw) / 2;
+  *by = a->y + CAM_Y + (a->h - *bh) / 2;
+}
+
+// actor-actor AABB
+static inline int rectsOverlap(s16 ax, s16 ay, s16 aw, s16 ah, s16 bx, s16 by, s16 bw, s16 bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+${hasCollisionMap ? `
+static inline u8 solidTile(u8 v, int dirX, int dirY) {
+  if (v == 1) return 1;                    // sólido
+  if (v == 2) return dirY > 0;             // one-way ↑: bloquea cayendo
+  if (v == 3) return dirY < 0;             // one-way ↓: bloquea saltando
+  if (v == 4) return dirX > 0;             // one-way ←: bloquea yendo derecha
+  if (v == 5) return dirX < 0;             // one-way →: bloquea yendo izquierda
+  return 0;                                // 0 vacío, 6 escalera (pasable)
+}
+
+// true si el rect en coords mundo toca algún tile sólido para dir (dx,dy)
+static inline int rectHitsSolid(s16 bx, s16 by, s16 bw, s16 bh, s16 dx, s16 dy) {
+  int x0 = bx, y0 = by, x1 = bx + bw - 1, y1 = by + bh - 1;
+  int tx0 = x0 / COLLISION_TILE_SIZE, ty0 = y0 / COLLISION_TILE_SIZE;
+  int tx1 = x1 / COLLISION_TILE_SIZE, ty1 = y1 / COLLISION_TILE_SIZE;
+  int cx, cy;
+  for (cy = ty0; cy <= ty1; cy++) {
+    for (cx = tx0; cx <= tx1; cx++) {
+      if (cx < 0 || cy < 0 || cx >= COLLISION_COLS || cy >= COLLISION_ROWS) continue;
+      if (solidTile(collisionMap[cy][cx], dx, dy)) return 1;
+    }
+  }
+  return 0;
+}
+
+// mover con resolución axial (X e Y por separado)
+static void moveActorCollide(GBAActor* a, s16 dx, s16 dy) {
+  s16 bx, by, bw, bh;
+  actorBox(a, &bx, &by, &bw, &bh);
+  if (dx != 0) {
+    a->x += dx;
+    actorBox(a, &bx, &by, &bw, &bh);
+    if (rectHitsSolid(bx, by, bw, bh, dx, 0)) a->x -= dx;
+  }
+  if (dy != 0) {
+    a->y += dy;
+    actorBox(a, &bx, &by, &bw, &bh);
+    if (rectHitsSolid(bx, by, bw, bh, 0, dy)) a->y -= dy;
+  }
+}
+` : ''}
+// Input demo: D-pad mueve al actor 0 (jugador)
+static void movePlayer(u16 keys, GBAActor* p) {
+${hasCollisionMap ? `  if (keys & (1 << 5)) moveActorCollide(p, -PLAYER_SPEED, 0); // left
+  if (keys & (1 << 4)) moveActorCollide(p, PLAYER_SPEED, 0);  // right
+  if (keys & (1 << 6)) moveActorCollide(p, 0, -PLAYER_SPEED); // up
+  if (keys & (1 << 7)) moveActorCollide(p, 0, PLAYER_SPEED);  // down` : `  if (keys & (1 << 5)) p->x -= PLAYER_SPEED;
+  if (keys & (1 << 4)) p->x += PLAYER_SPEED;
+  if (keys & (1 << 6)) p->y -= PLAYER_SPEED;
+  if (keys & (1 << 7)) p->y += PLAYER_SPEED;`}
+}
+
+static void updatePlayer(void) {
+  GBAActor* p = &gActors[PLAYER_INDEX];
+  u16 keys;
+  int i;
+  if (!p->hasCollider) return;
+  keys = ~REG_KEYINPUT & 0x3FF;
+  movePlayer(keys, p);
+  // empuje actor-actor: el jugador resbala por el eje de menor intrusión
+  for (i = 0; i < ACTOR_COUNT; i++) {
+    GBAActor* b = &gActors[i];
+    s16 ax, ay, aw, ah, bx, by, bw, bh;
+    s16 pushX, pushY;
+    if (b == p || !b->hasCollider) continue;
+    actorBox(p, &ax, &ay, &aw, &ah);
+    actorBox(b, &bx, &by, &bw, &bh);
+    if (!rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh)) continue;
+    pushX = ax < bx ? ax + aw - bx : bx + bw - ax;
+    pushY = ay < by ? ay + ah - by : by + bh - ay;
+    if (pushX < pushY) p->x += (ax < bx) ? -pushX : pushX;
+    else p->y += (ay < by) ? -pushY : pushY;
+  }
+}
+`;
+
   return images.length === 0 ? '' : `
 // ── Actores (sprites software sobre MODE 3) ─────────────────────────────
 #define MAX_ACTOR_FRAMES 32
 #define ACTOR_COUNT ${Math.min(actors.length, 64)}
+#define REG_KEYINPUT (*(volatile u16*)0x04000130)
+#ifndef CAM_X
+#define CAM_X 0
+#endif
+#ifndef CAM_Y
+#define CAM_Y 0
+#endif
 
 typedef struct {
   const u16* img;
@@ -928,6 +1046,9 @@ typedef struct {
   s16 x, y;         // posición top-left (relativa a cámara)
   s16 z;            // orden de dibujo (asc)
   u16 w, h;         // tamaño del sprite
+  u8 hasCollider;   // 1 si usa colisiones
+  u16 cw, ch;       // tamaño del collider (centrado en el sprite)
+  s16 vx, vy;       // velocidad (px/vsync) usada por física
   const GBAFrame* frames[MAX_ACTOR_FRAMES];
   u16 delays[MAX_ACTOR_FRAMES];
   u8 frameCount;
@@ -1015,6 +1136,7 @@ static void drawAllActors(u16* screen) {
 static void initActors(void) {
 ${perActorCode.join('\n')}
 }
+${playerDemo}
 `;
 }
 
