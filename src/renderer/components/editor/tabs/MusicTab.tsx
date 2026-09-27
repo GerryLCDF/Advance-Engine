@@ -3,6 +3,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import { EmptyState } from '../EmptyState';
 import { SaveIcon, PlayIcon, StopIcon, Pencil2Icon, MousePointerIcon, EraserIcon, MusicIcon, ActivityIcon, WaveIcon, NoiseIcon, EyeIcon } from './icons';
 import type { InstrumentType, NoteRow } from '../../../types/editor';
 import { playGBASound } from '../../../utils/gba_audio';
@@ -183,6 +184,7 @@ export function MusicTab() {
 
   // Zoom con Ctrl+Wheel, scroll horizontal con Shift+Wheel (como las otras pestañas)
   const pianoRollRef = useRef<HTMLDivElement>(null);
+  const gridMounted = songs.some((so) => so.patterns.some((p) => p.id === (activePattern ?? '')));
   useEffect(() => {
     const el = pianoRollRef.current;
     if (!el) return;
@@ -224,7 +226,7 @@ export function MusicTab() {
       window.removeEventListener('mousemove', onMidMove);
       window.removeEventListener('mouseup', onMidUp);
     };
-  }, []);
+  }, [gridMounted]);
   const [channelStates, setChannelStates] = useState<Record<string, { visible: boolean; solo: boolean; muted: boolean }>>(() => {
     const m: Record<string, { visible: boolean; solo: boolean; muted: boolean }> = {};
     CHANNELS.forEach((ch) => { m[ch.id] = { visible: true, solo: false, muted: false }; });
@@ -890,7 +892,13 @@ export function MusicTab() {
             </div>
           </div>
 
-          {viewMode === 'tracker' ? (
+          {!selectedPattern ? (
+            <EmptyState
+              icon={<MusicIcon size={40} />}
+              title={songs.length === 0 ? 'Sin canciones' : 'Sin patrón seleccionado'}
+              hint="Elige un patrón en la lista para editar sus notas."
+            />
+          ) : viewMode === 'tracker' ? (
             /* ── Tracker View ── */
             <div ref={pianoRollRef} className="music-piano-roll" style={{ flex: 1, overflow: 'auto', position: 'relative', fontFamily: 'monospace', fontSize: 11 }}>
               <div style={{ position: 'relative', width: 'fit-content' }}>

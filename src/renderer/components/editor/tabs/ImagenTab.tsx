@@ -3,7 +3,8 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
-import { EyeIcon, EyeOffIcon } from './icons';
+import { EmptyState } from '../EmptyState';
+import { EyeIcon, EyeOffIcon, Grid3x3Icon } from './icons';
 import type { AnimationLoop } from '../../../types/editor';
 
 const PREVIEW_W = 320;
@@ -351,7 +352,7 @@ export function ImagenTab() {
           <div
             ref={canvasContainerRef}
             style={{
-              flex: 1, position: 'relative', overflow: 'hidden',
+              flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--bg-canvas)',
               cursor: isPanning ? 'grabbing' : 'grab',
               outline: dragOver ? '2px dashed var(--accent-light)' : 'none',
               outlineOffset: -2,
@@ -437,15 +438,13 @@ export function ImagenTab() {
                 </div>
               </div>
             ) : (
-              <div style={{
-                position: 'absolute', inset: 0,
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: 8,
-                color: 'var(--text-muted)', fontSize: 13,
-              }}>
-                <span style={{ fontSize: 32, opacity: 0.5 }}>🖼</span>
-                <span>Arrastra una imagen aquí</span>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+                <EmptyState
+                  background="transparent"
+                  icon={<Grid3x3Icon size={40} />}
+                  title="Sin imagen seleccionada"
+                  hint={dragOver ? 'Suelta la imagen aquí' : 'Selecciona una imagen de la lista o arrastra una aquí.'}
+                />
               </div>
             )}
 

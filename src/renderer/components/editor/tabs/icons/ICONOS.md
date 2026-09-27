@@ -1,97 +1,90 @@
-# Inventario de iconos del editor
+# Iconos de la aplicación
 
-Aca voy llevando registro de todos los iconos que tiene el editor.
-Cuando los vaya reemplazando por SVGs personalizados o Lucide, los marco.
-**Mientras no tenga los iconos personalizados, uso emojis/Unicode como temporales.**
+Lista simple: `glifo` nombre {} — dónde se usa.
+En el `{}` pega solo el nombre del componente de tabler.io (ej. `IconPlus`), NO la línea del `import`: el import lo pongo yo centralizado en `tabs/icons/index.tsx`, con un wrapper que traduce `size`/`strokeWidth` a los props de Tabler, así los call sites no cambian. Cuando elijas uno, borro el SVG viejo y dejo solo el wrapper.
+`①` = hoy es un SVG propio en `icons/index.tsx` y se migra a ese link.
 
-https://tabler.io/icons
+## Interfaz
 
-La libreria que pienso usar es `lucide-react` (instalar con `npm install lucide-react`).
-Tamaño: `size={14}`, `strokeWidth={1.5}` para que se vea consistente con MusicTab.
+- `✕` x {IconXFilled} — cerrar ventana/modal, eliminar ítem, escena, bloque o frame (AppHeader, EditorTopBar, ThemeModal, HierarchyPanel, MundoTab, DialogoTab, SpriteTab, ScriptingTab, SetupCheckModal)
+- `✓` check {IconCheck} — tile elegido, devkitARM instalado (SpriteTab, SetupCheckModal)
+- `⏳` loader {} — comprobando devkitARM (SetupCheckModal)
+- `＋` plus {IconPlus} — agregar (SoundTab, MundoTab, ScriptingTab)
+- `↩` rotate-ccw {IconArrowBack} — restablecer valor, slider o knob (SettingsModal, SoundTab)
+- `⚙` settings {IconSettingsFilled} — ajustes (RecientesScreen, TodosProyectosScreen, SettingsModal)
+- `←` arrow-left {IconArrowNarrowLeftDashed} — volver (EditarScreen, CreditosScreen, TodosProyectosScreen)
+- `─` minus {esl que esta} — minimizar ventana (EditorTopBar)
+- `□` maximize {el que esta} — maximizar ventana (EditorTopBar)
+- `▲` `▼` chevron-down {IconConeFilled} — desplegables y colapsar sección (MundoTab, HierarchyPanel, MusicTab)
+- `⚠` triangle-alert {IconAlertTriangleFilled} — aviso de tamaño, advertencia del inspector (MundoTab)
 
-## Como nombrar los archivos
+## Mundo
 
-Pon el SVG en la carpeta `icons/` con el nombre que aparece en **`<nombre>.svg`**.
-Puedes hacerlos en cualquier orden, yo los voy integrando cuando los vea.
+- `✥` move {IconDirectionArrows} — mover o arrastrar escenas (MundoTab) ①
+- `▦` grid-3x3 {IconGrid3x3} — pintar colisión (MundoTab) ①
+- `▢` square {IconSquare} — cuadro de colisión (MundoTab) ①
+- `▤` paint-bucket {IconBucketDroplet} — bote de relleno (MundoTab) ①
+- `⌾` wand-sparkles {IconWand} — barita y estado vacío de Sprite (MundoTab, SpriteTab) ①
+- `🌍` globe {IconSquareRotatedFilled} — escena (MundoTab, SettingsModal) ①
+- `🏠` home {IconHome2Filled} — splash (MundoTab) ①
+- `🤖` bot {IconUserFilled} — actor (MundoTab)
+- `→` `🔗` link-2 {IconPlug} — conectar escenas (MundoTab); en Tabler: plug-connected {IconPlugConnected}
+- `🎬` clapperboard {} — badge de video del splash (MundoTab)
+- `🎵` music {} — música de escena y splash, canción (MundoTab, MusicTab, SettingsModal) ①
 
----
+## Sprite
 
-## MundoTab
+- `🎨` palette {} — sprite (SpriteTab, SettingsModal, ModificarPortadaScreen)
+- `✎` pencil {} — renombrar, dibujar colisión, editar notas (SpriteTab, MundoTab, DialogoTab, MusicTab) ①
 
-- [x] `move.svg` — ✥ Mano o flechas cruzadas (4 direcciones) para mover/arrastrar escenas
-- [x] `plus.svg` — + Signo + para agregar escena nueva
-- [x] `minus.svg` — - Signo - para eliminar escena seleccionada
-- [x] `link2.svg` — 🔗 Dos circulos unidos por una linea (conexion entre escenas)
-- [x] `arrow-right.svg` — → Flecha hacia la derecha (se muestra mientras conectas escenas).
-- [x] `grid3x3.svg` — ▦ Grid/cuadricula 4x4 para pintar colisiones
-- [x] `grid2x2.svg` — # Grid/cuadricula 2x2 para mostrar/ocultar el grid
-- [x] `more-vertical.svg` — ⋮ Tres puntos verticales para menu de tamaño del grid
-- [x] `paint-bucket.svg` — ▤ Cubeta de pintura para relleno (proximamente)
-- [x] `wand.svg` — ⌾ Varita magica para seleccion (proximamente)
-- [x] `pencil.svg` — ✎ Lapiz para dibujar tiles de colision. Nota: tu SVG era filled (edit), lo converti a outline.
-- [x] `square.svg` — ▢ Cuadrado con esquinas redondeadas para dibujar rectangulos
-- [x] `globe.svg` — 🌍 Puse un globo generico de mi parte porque el SVG que pusiste era un iMac. Si quieres cambiar el globo por otro diseño, solo reemplaza el archivo.
-- [x] `home.svg` — 🏠 Casita para el icono de SplashScreen en la jerarquia. Nota: tu SVG era filled, lo converti a outline para consistencia.
-- [ ] Triangulos de rampas — SVG inline (pendiente)
+## Imagen
 
-## MusicTab
+- `🖼` image {} — estado vacío, pestaña Imagen, portada (ImagenTab, SettingsModal, ModificarPortadaScreen)
+- `👁` eye {} — capa visible, instrumento visible (ImagenTab, MusicTab) ①
+- `👁🗨` eye-off {} — capa oculta (ImagenTab) ①
+- `📄` file-text {} — nombre de capa y página de diálogo (ImagenTab, DialogoTab)
 
-- [x] `save.svg` — Disquete para guardar la cancion
-- [x] `play.svg` — ▶ Triangulo hacia la derecha para reproducir
-- [x] `stop.svg` — ■ Cuadrado para detener
-- [x] `pencil2.svg` — ✎ Lapiz para modo dibujo (editar notas), filled (Tabler pencil)
-- [x] `mouse-pointer.svg` — Flecha de cursor para modo seleccion
-- [x] `eraser.svg` — Goma/borrador para borrar notas
-- [x] `music.svg` — 🎵 Nota musical para el icono de cancion en jerarquia
-- [x] `activity.svg` — ◻ Linea de pulso/cardiaco para canal Pulse
-- [x] `wave.svg` — 〰 Onda sinusoidal para canal Wave
-- [ ] `volume.svg` — (actualmente es wave-sine, necesito un SVG de onda de ruido/estatica para canal Noise) ← REEMPLAZAR
-- [x] `noise.svg` — Onda de ruido/estatica para canal Noise (inline por ahora, reemplazar cuando tengas el SVG)
+## Music
 
-## SpriteTab
+- `💾` save {} — guardar patrón (MusicTab) ①
+- `▶` play {} — reproducir animación, transporte o preview (MundoTab, MusicTab, SpriteTab, SoundTab, EditorTopBar)
+- `■` square {} — detener (MusicTab, SoundTab, EditorTopBar)
+- `⏸` pause {} — pausar animación (MundoTab)
+- `✎` pencil {} — modo dibujo de notas (MusicTab) ①
+- `⌖` mouse-pointer {} — modo selección (MusicTab) ①
+- `▨` eraser {} — borrador (MusicTab) ①
+- `◻` activity {} — canal Pulse, patrón activo (MusicTab) ①
+- `〰` audio-waveform {} — canal Wave, forma de onda (MusicTab, SoundTab) ①
+- `≋` waves {} — canal Noise, forma de ruido (MusicTab, SoundTab) ①
+- `👁` eye {} — instrumento visible (MusicTab) ①
 
-- [ ] `skip-back.svg` — ⏮ Triangulo izquierdo + barra vertical para frame anterior
-- [ ] `play.svg` — ▶ Triangulo derecha para reproducir animacion
-- [ ] `pause.svg` — ⏸ Dos barras verticales para pausar
-- [ ] `skip-forward.svg` — ⏭ Triangulo derecho + barra vertical para frame siguiente
-- [ ] `onion-skin.svg` — (SVG propio) Tres cuadros concentricos (papel cebolla)
-- [ ] `grid.svg` — (SVG propio) Cuadricula para mostrar/ocultar el grid
-- [ ] `pencil.svg` — ✎ Lapiz para renombrar
-- [ ] `trash.svg` — 🗑 Bote de basura para eliminar
-- [ ] `palette.svg` — 🎨 Paleta de pintor para icono de Sprite en jerarquia
-- [ ] `fast-forward.svg` — ▶▶ Dos triangulos a la derecha para animaciones en jerarquia
-- [ ] `zoom-out.svg` — − Lupa con signo - para alejar
-- [ ] `zoom-in.svg` — + Lupa con signo + para acercar
-- [ ] `x.svg` — ✕ Equis para cerrar/eliminar
-- [ ] `check.svg` — ✓ Palomita para indicar tile seleccionado
+## Sound
 
-## ImagenTab
+- `🔊` volume-2 {} — estado vacío, pestaña Sound (SoundTab, SettingsModal) ①
+- `＋` plus {} — importar sonido (SoundTab)
+- `▶` play {} — previsualizar (SoundTab)
+- `■` square {} — detener preview (SoundTab)
+- `↩` rotate-ccw {} — restablecer knob (SoundTab)
 
-- [ ] `zoom-out.svg` — − Lupa con signo - para alejar
-- [ ] `zoom-in.svg` — + Lupa con signo + para acercar
-- [x] `eye.svg` — 👁 Ojo para capa visible
-- [x] `eye-off.svg` — 👁‍🗨 Ojo tachado para capa oculta
-- [ ] `image.svg` — 🖼 Cuadro con paisaje para estado vacio
+## Dialogo
 
-## DialogoTab
+- `💬` message-square {} — diálogo y estado vacío (DialogoTab, SettingsModal)
+- `📄` file-text {} — página de diálogo (DialogoTab)
 
-- [ ] `message-square.svg` — 💬 Burbuja de texto para item de dialogo
-- [ ] `file-text.svg` — 📄 Hoja con texto para pagina de dialogo
-- [ ] `x.svg` — ✕ Equis para quitar opcion
-- [ ] `plus.svg` — + Signo + para agregar opcion
+## Scripting
 
-## EditorTopBar
+- `💻` code-2 {} — estado vacío, pestaña Scripting (ScriptingTab, SettingsModal) ①
 
-- [ ] `minus.svg` — ─ Signo - para minimizar ventana
-- [ ] `maximize.svg` — □ Cuadrado para maximizar ventana
-- [ ] `x.svg` — ✕ Equis para cerrar ventana
-- [ ] `play.svg` + texto PLAY — ▶ Triangulo para iniciar emulador
-- [ ] `square.svg` + texto STOP — ■ Cuadrado para detener emulador
+## Portada
 
-## ComingSoonTab
+- `📐` ruler {} — requisito de dimensiones (ModificarPortadaScreen)
+- `🗂` file-archive {} — requisito de formato PNG (ModificarPortadaScreen)
 
-- [ ] `construction.svg` — 🚧 Casco/llave inglesa para pestana proximamente
+## Ajustes
 
-## App (icono de la aplicacion)
+- `🌐` languages {} — sección idioma (SettingsModal)
+- `🎨` brush {} — sección apariencia (SettingsModal)
 
-- [ ] Cambiar el icono `.ico` / `.png` de la app (actualmente el default de Electron)
+## Importados y sin uso (se pueden borrar)
+
+- `Link2Icon`, `ArrowRightIcon` (conexión), `MinusIcon` (borrar escena, ya se usa `✕`), `Grid2x2Icon`, `MoreVerticalIcon`, `ConstructionIcon`

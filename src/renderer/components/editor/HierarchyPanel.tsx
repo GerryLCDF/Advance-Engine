@@ -121,7 +121,14 @@ export function HierarchyPanel({
             if (selectedId !== node.id && !isEditing) e.currentTarget.style.background = 'transparent';
           }}
         >
-          {node.icon && (typeof node.icon === 'string' ? <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{node.icon}</span> : <span style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{node.icon}</span>)}
+          {node.icon && (
+            <span style={{
+              width: 16, flexShrink: 0, fontSize: 12, lineHeight: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {node.icon}
+            </span>
+          )}
           {node.color && !node.icon && (
             <span style={{
               width: 8, height: 8, borderRadius: '50%',

@@ -8,7 +8,7 @@ import { ImagenTab } from '../components/editor/tabs/ImagenTab';
 import { MusicTab } from '../components/editor/tabs/MusicTab';
 import { DialogoTab } from '../components/editor/tabs/DialogoTab';
 import { SoundTab } from '../components/editor/tabs/SoundTab';
-import { ComingSoonTab } from '../components/editor/tabs/ComingSoonTab';
+import { ScriptingTab } from '../components/editor/tabs/ScriptingTab';
 
 interface EditorScreenProps {
   projectId: string;
@@ -36,7 +36,7 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
   const renderTab = () => {
     switch (editorTab) {
       case 'mundo':     return <MundoTab />;
-      case 'scripting': return <ComingSoonTab label="Scripting" />;
+      case 'scripting': return <ScriptingTab />;
       case 'sprite':    return <SpriteTab />;
       case 'imagen':    return <ImagenTab />;
       case 'music':     return <MusicTab />;

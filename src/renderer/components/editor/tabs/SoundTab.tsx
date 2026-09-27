@@ -3,6 +3,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import { EmptyState } from '../EmptyState';
 import { VolumeIcon, PlusIcon, PlayIcon, StopIcon, WaveIcon, NoiseIcon } from './icons';
 import { playGBASound, getAudioContext, loadAudioFileBuffer } from '../../../utils/gba_audio';
 import type { SoundEffect } from '../../../types/editor';
@@ -723,31 +724,32 @@ export function SoundTab() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             style={{
-              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', gap: 12, background: 'var(--bg-canvas)', color: 'var(--text-muted)',
+              flex: 1, display: 'flex', background: 'var(--bg-canvas)', minHeight: 0,
               outline: dragOver ? '2px dashed var(--accent-light)' : 'none',
               outlineOffset: -2,
             }}
           >
-            <VolumeIcon size={48} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-              {sounds.length === 0 ? 'Sin efectos de sonido' : `${sounds.length} efecto(s)`}
-            </span>
-            <span style={{ fontSize: 11 }}>
-              Arrastra archivos de audio aqui o importalos manualmente
-            </span>
-            <button onClick={handleImport} disabled={isImporting}
-              style={{
-                background: dragOver ? 'var(--accent)' : 'transparent',
-                border: dragOver ? 'none' : '1px dashed var(--border-light)',
-                borderRadius: 4,
-                color: dragOver ? '#fff' : 'var(--text-muted)',
-                fontSize: 11, padding: '8px 16px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              {isImporting ? 'Importando...' : '+ Cargar WAV/MP3'}
-            </button>
+            <EmptyState
+              background="transparent"
+              icon={<VolumeIcon size={40} />}
+              title={sounds.length === 0 ? 'Sin efectos de sonido' : 'Sin sonido seleccionado'}
+              hint="Arrastra archivos de audio aquí o impórtalos manualmente."
+              action={
+                <button onClick={handleImport} disabled={isImporting}
+                  style={{
+                    marginTop: 2,
+                    background: dragOver ? 'var(--accent)' : 'transparent',
+                    border: dragOver ? 'none' : '1px dashed var(--border-light)',
+                    borderRadius: 4,
+                    color: dragOver ? '#fff' : 'var(--text-muted)',
+                    fontSize: 11, padding: '8px 16px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  {isImporting ? 'Importando...' : '+ Cargar WAV/MP3'}
+                </button>
+              }
+            />
           </div>
         )
       }

@@ -3,6 +3,8 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import { EmptyState } from '../EmptyState';
+import { WandIcon, PaletteIcon } from './icons';
 
 export function SpriteTab() {
   const spriteSheets = useAppStore((s) => s.spriteSheets);
@@ -393,7 +395,7 @@ export function SpriteTab() {
       id: 'sprites',
       title: 'Sprites',
       items: spriteSheets.map((sp) => ({
-        id: sp.id, label: sp.name, icon: '🎨',
+        id: sp.id, label: sp.name, icon: <PaletteIcon size={13} />,
         subtitle: `${sp.cols}x${sp.rows}`,
       })),
       onAdd: addSpriteSheet,
@@ -404,7 +406,9 @@ export function SpriteTab() {
       collapsed: !selectedSprite,
       items: (selectedSprite ? selectedSprite.animations : []).map((anim) => ({
         id: anim.id, label: anim.name,
-        icon: previewAnimId === anim.id ? '▶▶' : '▶',
+        icon: previewAnimId === anim.id
+          ? <span style={{ display: 'flex' }}><PlayIcon size={11} /><PlayIcon size={11} /></span>
+          : <PlayIcon size={12} />,
         subtitle: `${anim.frames.length}f`,
       })),
       onAdd: handleAddAnimation,
@@ -682,7 +686,7 @@ export function SpriteTab() {
           <div
             ref={canvasContainerRef}
             style={{
-              flex: 1, position: 'relative', overflow: 'hidden',
+              flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--bg-canvas)',
               cursor: isPanning ? 'grabbing' : 'grab',
               outline: dragOver ? '2px dashed var(--accent-light)' : 'none',
             }}
@@ -793,10 +797,17 @@ export function SpriteTab() {
                 </div>
               </div>
               );
-            })() : (
-              <span style={{ color: 'var(--text-muted)', fontSize: 13, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', lineHeight: 1.6 }}>
-                {dragOver ? 'Suelta la imagen aquí' : 'Selecciona un sprite o arrastra una imagen'}
-              </span>
+            })(            ) : (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+                <EmptyState
+                  background="transparent"
+                  icon={<WandIcon size={40} />}
+                  title="Sin sprite seleccionado"
+                  hint={dragOver
+                    ? 'Suelta la imagen aquí'
+                    : 'Selecciona un sprite de la lista o arrastra una imagen para empezar.'}
+                />
+              </div>
             )}
 
             {/* Zoom controls */}

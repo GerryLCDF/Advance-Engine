@@ -189,7 +189,12 @@ Advance Engine puede generar una ROM `.gba` directamente desde el editor:
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.43.0**
+Definida en `src/version.ts` — semver. Actual: **0.50.0**
+
+### v0.50.0 — Scripting y estados vacíos unificados
+- **Pestaña Scripting**: sistema de código con tres modos (Bloques / Mi Lenguaje / C Directo). C Directo es el único funcional por ahora: editor con gutter, auto-indent, autocierre de delimitadores y snippets; los scripts se asignan a actores (escena → actor) desde el inspector y solo se exportan si están asignados.
+- **Estados vacíos unificados**: componente compartido `EmptyState` (icono gris + título + hint + acción opcional, fondo `--bg-canvas`) en Sprite, Imagen, Music, Sound y Dialogo, igual que Scripting. Los lienzos de Sprite/Imagen dejan de heredar el gris de la app y conservan pan/zoom y drag-and-drop.
+- Los iconos usados quedan documentados en `src/renderer/components/editor/tabs/icons/ICONOS.md` para la migración a Lucide.
 
 ### v0.40.0 — Transiciones entre escenas
 - Modelo de datos `TransitionConfig` + `FxAsset` (gradientes y tilesets)

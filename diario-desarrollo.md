@@ -708,3 +708,55 @@ Validado: `npx tsc --noEmit`, `npm run build:renderer`, `npm run build:electron`
 Nota para el usuario: reiniciar la app para tomar el Electron nuevo; el export regenera main.c y make recompila.
 
 `src/version.ts`: 0.49.18 -> 0.49.19
+
+## 26 Septiembre 2026 — v0.50.0 Scripting real + estados vacíos grises
+
+Volví al editor después de andar con el export GBA. Lo primero fue la pestaña **Scripting**, que era un `ComingSoon`:
+
+- Tipos `ScriptData` con tres modos (`blocks` / `language` / `cCode`) y store con `addScript(mode)`, `updateScript`, `removeScript`, `setScriptMode`. Al cargar proyecto migré el `code` viejo a `language`.
+- El editor de texto quedó con gutter numérico, Tab/Shift+Tab multilínea, Enter con indentación, `Ctrl+/`, autocierre de llaves/paréntesis y contador de delimitadores balanceados. Al principio el gutter quedaba muy espaciado (las líneas se veían doubles), así que el número va en un div por línea con altura fija de 16px, igual que el `lineHeight` del textarea.
+- La asignación de scripts se hace desde la pestaña, no en el Mundo: primero `@ todos` en checkbox (se veía mal), luego dos `<select>` (escena y actor) con la lista de asignados debajo y un ✕ para quitar. Al borrar un script limpio los `scriptId` que queden colgados en cualquier actor.
+- En el export, un script C solo entra al C final si está asignado a un actor; los que no, se avisan por log. `gSelf` apunta al actor de cada llamada, así que un mismo script mueve varios actores.
+
+Después me fijé en que **todas las pestañas se veían con fondo gris cuando no había nada seleccionado**, y que cada una tenía su propio texto suelto. Hice un componente compartido `EmptyState` (`src/renderer/components/editor/EmptyState.tsx`): icono, título, hint y acción opcional, con fondo `var(--bg-canvas)`. Lo metí en Sprite, Imagen, Music, Sound y Dialogo.
+
+- Los lienzos de Sprite e Imagen ahora fijan su propio fondo (antes heredaban el `#1e1e24` de `EditorScreen`) y el `EmptyState` va en `position:absolute; inset:0` para no romper ni el pan/zoom ni el drag-and-drop; el hint cambia a "Suelta la imagen aquí" cuando hay `dragOver`.
+- Sound conserva su drop-zone (los handlers y el outline dashed) y pasa el botón "+ Cargar WAV/MP3" como `action`.
+- Music solo muestra el estado vacío cuando no hay patrón seleccionado, porque el grid ya era inerte (`if (!patternSong || !selectedPattern) return;`). Como eso desmonta el piano roll, el efecto de scroll con Ctrl+Wheel pasó a depender de `gridMounted` para enganchar los listeners cuando el grid vuelve.
+- Dialogo alterna `display: block` con padding cuando hay página (para no romper el `maxWidth: 520` centrado) y `flex` sin padding cuando está vacío.
+
+El usuario pidió que los iconos quedaran **grises como los de Scripting**: en vez de `var(--accent)` usan `currentColor` heredando `--text-muted`, que es lo que ya hacía el `CodeIcon` de Scripting. Los cinco iconos quedaron anotados en `ICONOS.md` (sección "Estados vacíos") con su link de Lucide propuesto, porque varios de ellos seguro cambian al migrar: el de Imagen debería ser `image` (no `grid-3x3`) y el de Dialogo `message-square` (no `pencil`). También corregí las filas de `WandIcon` y `Grid3x3Icon`, que ya no están huérfanos.
+
+Tests: `npx tsc --noEmit -p tsconfig.json` y `npm run build:renderer` sin errores ni warnings nuevos.
+
+`src/version.ts`: 0.49.19 -> 0.50.0
+
+## 26 Septiembre 2026 — v0.50.1 Migración a iconos de tabler.io
+
+Decidí cambiar de librería: en vez de `lucide-react` vamos a usar `@tabler/icons-react` (la web de tabler.io deja copiar el código de cada icono).
+
+- Instalé `@tabler/icons-react@3.48.0` (ESM, `sideEffects: false`, así que Vite hace tree-shaking de lo que no usemos).
+- Dejé el adaptador `tabs/icons/tabler.tsx`: `tabler(Icono, 'Nombre')` devuelve un componente con la MISMA firma que los SVG nuestros (`size`, `strokeWidth`), y por dentro traduce a los props de Tabler (`size`, `stroke`). Así ningún call site cambia: cuando aprobemos un icono, en `tabs/icons/index.tsx` borro el SVG viejo y dejo una línea `export const PlusIcon = tabler(TablerIconPlus, 'IconPlus')`.
+- Dejé el ejemplo comentado en la cabecera de `index.tsx` y un probe temporal para comprobar que compila (import directo de `@tabler/icons-react` + wrapper); tsc y build limpios.
+- `ICONOS.md` ahora es una lista corta (`glifo` nombre `{}` — dónde se usa) y entre las llaves va SOLO el nombre del componente (`IconPlus`); el `import` no lo escribe nadie porque lo tengo centralizado.
+
+Tests: `npx tsc --noEmit -p tsconfig.json`, `npm run build:renderer` y el probe de tipos con iconos de Tabler.
+
+`src/version.ts`: 0.50.0 -> 0.50.1
+
+## 26 Septiembre 2026 — v0.50.2 Árbol de jerarquía con iconos componentizados
+
+Mientras el usuario anda buscando los iconos en tabler.io, adelanté la parte que no dependía de esa decisión: el árbol de jerarquía.
+
+Antes, varias filas del árbol seguían siendo emoji sueltos (strings) mientras otras ya usaban componentes SVG, y el `HierarchyPanel` los renderizaba de dos formas distintas (`textAlign: center` para strings vs `flex` para nodos), así que no quedaban alineados.
+
+Qué hice:
+- `HierarchyPanel`: un solo slot de icono (16px, `display: flex`, centrado, `lineHeight: 1`) para strings y para nodos. Sigue aceptando `string`, así que los marcadores `◧`/`◱` de ScriptingTab no se rompen.
+- Reemplacé los emoji por componentes en las jerarquías: splash `🏠` → `HomeIcon`, escena `🌍` → `GlobeIcon`, actor `🤖` → `BotIcon`, diálogo `💬` → `MessageSquareIcon`, página `📄` → `FileTextIcon`, sprite `🎨` → `PaletteIcon`, y el preview de animación `▶`/`▶▶` → `PlayIcon` (doble cuando está sonando).
+- `BotIcon`, `MessageSquareIcon`, `FileTextIcon` y `PaletteIcon` ya nacieron como wrappers de Tabler (`IconRobot`, `IconMessage`, `IconFileText`, `IconPalette`) en `tabs/icons/index.tsx`, para no escribir SVGs nuevos que vamos a borrar. Si el usuario prefiere otro icono de tabler, es cambiar una línea por icono.
+
+Las 4 elegidas son provisionales: en `ICONOS.md` dejé los `{}` vacíos (los va llenando el usuario) y anoté acá cuáles usé de andamiaje.
+
+Tests: `npx tsc --noEmit -p tsconfig.json` y `npm run build:renderer` limpios.
+
+`src/version.ts`: 0.50.1 -> 0.50.2

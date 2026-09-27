@@ -337,3 +337,25 @@ export interface DialogueEntry {
   sceneId: string;
   pages: DialoguePage[];
 }
+
+// ── Scripting ────────────────────────────────────────────────────────────
+export type ScriptMode = 'blocks' | 'language' | 'c';
+export const SCRIPT_MODES: { value: ScriptMode; label: string }[] = [
+  { value: 'blocks', label: 'Bloques' },
+  { value: 'language', label: 'AdvanceCode' },
+  { value: 'c', label: 'C Directo' },
+];
+
+export interface BlockData {
+  id: string;
+  type: string;
+}
+
+export interface ScriptData {
+  id: string;
+  name: string;
+  mode: ScriptMode;
+  blocks: BlockData[];
+  language: string;
+  cCode: string;
+}

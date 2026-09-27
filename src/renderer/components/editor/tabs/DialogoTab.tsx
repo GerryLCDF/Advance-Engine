@@ -3,6 +3,8 @@ import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import { EmptyState } from '../EmptyState';
+import { PencilIcon, MessageSquareIcon, FileTextIcon } from './icons';
 
 export function DialogoTab() {
   const dialogues = useAppStore((s) => s.dialogues);
@@ -34,12 +36,12 @@ export function DialogoTab() {
       items: filteredDialogues.map((d) => {
         const linkedScene = scenes.find((sc) => sc.id === d.sceneId);
         return {
-          id: d.id, label: d.name, icon: '💬',
+          id: d.id, label: d.name, icon: <MessageSquareIcon size={13} />,
           subtitle: linkedScene ? linkedScene.name : '(sin escena)',
           children: d.pages.map((p, i) => ({
             id: p.id,
             label: p.text ? p.text.slice(0, 28) + (p.text.length > 28 ? '…' : '') : `Pág ${i + 1}`,
-            icon: '📄',
+            icon: <FileTextIcon size={13} />,
           })),
         };
       }),
@@ -172,7 +174,7 @@ export function DialogoTab() {
           </div>
 
           {/* Editor */}
-          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+          <div style={{ flex: 1, overflow: 'auto', padding: selectedPage ? 16 : 0, background: 'var(--bg-canvas)', display: selectedPage ? 'block' : 'flex' }}>
             {selectedPage ? (
               <div style={{ maxWidth: 520, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {/* Dialogue bubble preview */}
@@ -260,13 +262,17 @@ export function DialogoTab() {
                 </div>
               </div>
             ) : selectedDialogue ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: 13 }}>
-                Selecciona una página para editar
-              </div>
+              <EmptyState
+                icon={<PencilIcon size={40} />}
+                title="Sin página seleccionada"
+                hint="Elige una página del diálogo para editarla."
+              />
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: 13 }}>
-                Crea o selecciona un diálogo
-              </div>
+              <EmptyState
+                icon={<PencilIcon size={40} />}
+                title={dialogues.length === 0 ? 'Sin diálogos' : 'Sin diálogo seleccionado'}
+                hint="Crea un diálogo desde el botón + o selecciona uno de la lista."
+              />
             )}
           </div>
         </>

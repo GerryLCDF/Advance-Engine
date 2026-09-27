@@ -3,7 +3,7 @@ import type { Project, ActiveScreen, LauncherTab, CreditEntry, TemplateId } from
 import type {
   EditorTab, Scene, SceneConnection, SpriteSheet, Background,
   Song, DialogueEntry, Actor, Animation, AnimationFrame,
-  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset, SoundEffect,
+  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset, SoundEffect, ScriptMode, ScriptData,
 } from '../types/editor';
 import { createCollisionMap, makeDefaultConnection, defaultSoundEffect } from '../types/editor';
 import type { GBAExportedActor, GBAExportedActorFrame } from '../utils/gba_export';
@@ -12,6 +12,7 @@ const DEFAULT_CREDITS: CreditEntry[] = [
   { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
   { id: '2', name: 'Naomi rodiges', role: 'Design Consultant ', url: 'https://github.com', linkEnabled: false },
   { id: '3', name: 'Ian Tapia', role: 'Asistente de desarrollo', url: '', linkEnabled: false },
+  { id: '4', name: 'Lucide Icons', role: 'Iconos UI (ISC License, © 2026 Lucide Icons and Contributors)', url: 'https://lucide.dev', linkEnabled: true },
 ];
 
 const DEMO_PROJECTS: Project[] = [
@@ -483,8 +484,11 @@ interface AppState {
   addSound: (overrides?: Partial<SoundEffect>) => string;
   updateSound: (id: string, patch: Partial<SoundEffect>) => void;
   removeSound: (id: string) => void;
-  scripts: any[];
-  addScript: () => void;
+  scripts: ScriptData[];
+  addScript: (mode?: ScriptMode) => string;
+  updateScript: (id: string, patch: Partial<ScriptData>) => void;
+  removeScript: (id: string) => void;
+  setScriptMode: (id: string, mode: ScriptMode) => void;
   fxAssets: FxAsset[];
   addFxAsset: (asset: FxAsset) => void;
   removeFxAsset: (id: string) => void;
@@ -938,6 +942,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 collider: !!actor.collider,
                 colliderW: actor.colliderWidth,
                 colliderH: actor.colliderHeight,
+                scriptId: actor.scriptId || undefined,
               });
               log.add(`Actor "${actor.name}": ${tw}x${th}, ${frames.length} frames (${anim.name}), z=${actor.z || 0}`);
             }
@@ -1515,7 +1520,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         sounds: result.state.sounds ?? [],
         fxAssets: result.state.fxAssets ?? [],
         dialogues: result.state.dialogues ?? [],
-        scripts: result.state.scripts ?? [],
+        scripts: (result.state.scripts ?? []).map((sc: any) => ({
+          id: sc.id ?? '',
+          name: sc.name ?? 'Nuevo script',
+          mode: sc.mode ?? 'blocks',
+          blocks: sc.blocks ?? [],
+          language: sc.language ?? sc.code ?? '',
+          cCode: sc.cCode ?? '',
+        })),
         dirty: false,
         exportLog: [...get().exportLog, `[OK] Proyecto cargado: ${result.manifest?.name ?? 'Sin nombre'}`],
       });
@@ -2213,7 +2225,32 @@ addActor: (sceneId, overrides) => {
   })),
   removeSound: (id) => set((s) => ({ sounds: s.sounds.filter((sd) => sd.id !== id) })),
   scripts: [],
-  addScript: () => set((s) => ({ scripts: [...s.scripts, { id: Date.now().toString(), name: 'Nuevo script', code: '' }] })),
+  addScript: (mode = 'blocks') => {
+    const id = Date.now().toString();
+const skeletonC = `void script_update(void) {
+  GBAActor* p = gSelf;
+  u16 keys = ~REG_KEYINPUT & 0x3FF;
+  if (keys & (1 << 4)) moveActorCollide(p, 2, 0);   // Right
+  if (keys & (1 << 5)) moveActorCollide(p, -2, 0);  // Left
+  if (keys & (1 << 6)) moveActorCollide(p, 0, -2);  // Up
+  if (keys & (1 << 7)) moveActorCollide(p, 0, 2);   // Down
+}`;
+    set((s) => ({ scripts: [...s.scripts, { id, name: 'Nuevo script', mode, blocks: [], language: '', cCode: mode === 'c' ? skeletonC : '' }], selectedNodeId: id }));
+    return id;
+  },
+  updateScript: (id, patch) => set((s) => ({
+    scripts: s.scripts.map((sc) => sc.id === id ? { ...sc, ...patch } : sc),
+  })),
+  removeScript: (id) => set((s) => ({
+    scripts: s.scripts.filter((sc) => sc.id !== id),
+    scenes: s.scenes.map((scene) => ({
+      ...scene,
+      actors: scene.actors.map((a) => (a.scriptId === id ? { ...a, scriptId: undefined } : a)),
+    })),
+  })),
+  setScriptMode: (id, mode) => set((s) => ({
+    scripts: s.scripts.map((sc) => sc.id === id ? { ...sc, mode } : sc),
+  })),
   fxAssets: [],
   addFxAsset: (asset) => set((s) => ({ fxAssets: [...s.fxAssets, asset] })),
   removeFxAsset: (id) => set((s) => ({ fxAssets: s.fxAssets.filter((a) => a.id !== id) })),

@@ -1,6 +1,26 @@
 import React from 'react';
+import {
+  IconFileText as TablerIconFileText,
+  IconMessage as TablerIconMessage,
+  IconPalette as TablerIconPalette,
+  IconRobot as TablerIconRobot,
+} from '@tabler/icons-react';
+import { tabler } from './tabler';
 
 type IconProps = { size?: number; strokeWidth?: number };
+
+// Migración a Tabler: cuando elijas el icono de tabler.io, quitamos el SVG de
+// abajo y dejamos solo la línea del wrapper. Los call sites no cambian
+// (siguen usando size/strokeWidth).
+//   import { IconPlus as TablerIconPlus } from '@tabler/icons-react';
+//   export const PlusIcon = tabler(TablerIconPlus, 'IconPlus');
+
+// Iconos del árbol de jerarquía (andamiaje con Tabler, pendientes de que los
+// apruebes en ICONOS.md)
+export const BotIcon = tabler(TablerIconRobot, 'IconRobot');
+export const MessageSquareIcon = tabler(TablerIconMessage, 'IconMessage');
+export const FileTextIcon = tabler(TablerIconFileText, 'IconFileText');
+export const PaletteIcon = tabler(TablerIconPalette, 'IconPalette');
 
 export function WandIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   return (
@@ -254,6 +274,16 @@ export function ConstructionIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
       <path d="M15 21a1 1 0 0 1 0 -2h1v-2h-8v2h1a1 1 0 0 1 0 2h-4a1 1 0 0 1 0 -2h1v-2h-1a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2h1v-1a1 1 0 1 1 2 0v1h8v-1a1 1 0 0 1 2 0v1h1a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-1v2h1a1 1 0 0 1 0 2zm-2.086 -13l-7 7h4.17l6.916 -7zm6.086 2.914l-4.086 4.086h4.086zm-10.916 -2.914h-3.084v3.084z" />
+    </svg>
+  );
+}
+
+export function CodeIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+      <path d="m8 6 -6 6 6 6" />
+      <path d="m16 6 6 6 -6 6" />
+      <path d="m13 5 -2 14" />
     </svg>
   );
 }

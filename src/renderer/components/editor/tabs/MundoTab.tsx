@@ -8,7 +8,7 @@ import type { Scene, Actor, SplashScreen, SceneConnection, TransitionConfig, FxA
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
 import { imageDataUrlToGradientHeader } from '../../../utils/transitionGradientHeader';
-import { MoveIcon, PlusIcon, MinusIcon, Link2Icon, Grid3x3Icon, Grid2x2Icon, PencilIcon, SquareIcon, WandIcon, HomeIcon, GlobeIcon, MoreVerticalIcon, ArrowRightIcon, PaintBucketIcon } from './icons';
+import { MoveIcon, PlusIcon, MinusIcon, Link2Icon, Grid3x3Icon, Grid2x2Icon, PencilIcon, SquareIcon, WandIcon, HomeIcon, GlobeIcon, MoreVerticalIcon, ArrowRightIcon, PaintBucketIcon, BotIcon } from './icons';
 import RadialMenu, { type RadialMenuItem } from './RadialMenu';
 import { MapPin, User, Link2, Shield } from 'lucide-react';
 
@@ -1238,7 +1238,7 @@ export function MundoTab() {
       id: 'splashScreen',
       title: 'SplashScreen',
       items: [{
-        id: splashScreen.id, label: splashScreen.name, icon: '🏠',
+        id: splashScreen.id, label: splashScreen.name, icon: <HomeIcon size={13} />,
         subtitle: `${splashScreen.duration}s`,
         actions: isSplashLargeImage ? (
           <span
@@ -1255,12 +1255,12 @@ export function MundoTab() {
       id: 'scenes',
       title: 'Escenas',
       items: scenes.map((sc) => ({
-        id: sc.id, label: sc.name, icon: '🌍',
+        id: sc.id, label: sc.name, icon: <GlobeIcon size={13} />,
         subtitle: `${sc.width}x${sc.height}`,
         children: (sc.actors ?? []).map((a) => ({
           id: `actor:${sc.id}:${a.id}`,
           label: a.name,
-          icon: '🤖',
+          icon: <BotIcon size={13} />,
           subtitle: a.spriteId ? spriteSheets.find((sp) => sp.id === a.spriteId)?.name : undefined,
         })),
       })),
