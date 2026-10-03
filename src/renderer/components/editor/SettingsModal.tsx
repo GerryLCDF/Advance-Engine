@@ -1,6 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import type { EditorTab } from '../../types/editor';
+import {
+  CodeIcon,
+  GlobeIcon,
+  Grid3x3Icon,
+  MessageSquareIcon,
+  MusicIcon,
+  PaletteIcon,
+  RotateCcwIcon,
+  SettingsIcon,
+  VolumeIcon,
+} from './tabs/icons';
 
 interface Props {
   onClose: () => void;
@@ -30,6 +41,23 @@ const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'dialogo', label: 'Dialogo' },
   { key: 'general', label: 'General' },
 ];
+
+// Iconos reutilizados de las pestañas (mismo wrapper que su tab); los que no
+// tienen equivalente en ICONOS.md siguen con su emoji
+const SIDEBAR_ICON: Record<string, JSX.Element> = {
+  '⚙': <SettingsIcon size={14} />,
+  '🎨': <PaletteIcon size={14} />,
+  '🌍': <GlobeIcon size={14} />,
+};
+
+const PLACEHOLDER_ICON: Record<string, JSX.Element> = {
+  scripting: <CodeIcon size={32} />,
+  sprite: <PaletteIcon size={32} />,
+  imagen: <Grid3x3Icon size={32} />,
+  music: <MusicIcon size={32} />,
+  sound: <VolumeIcon size={32} />,
+  dialogo: <MessageSquareIcon size={32} />,
+};
 
 const SIDEBAR_ITEMS: { key: GeneralSection; label: string; icon: string }[] = [
   { key: 'general', label: 'General', icon: '⚙' },
@@ -73,6 +101,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const gridLineOpacity = useAppStore((s) => s.gridLineOpacity);
   const setGridLineOpacity = useAppStore((s) => s.setGridLineOpacity);
   const imageSmoothing = useAppStore((s) => s.imageSmoothing);
+  const flatColors = useAppStore((s) => s.flatColors);
+  const setFlatColors = useAppStore((s) => s.setFlatColors);
   const setImageSmoothing = useAppStore((s) => s.setImageSmoothing);
   const setMundoShowGrid = useAppStore((s) => s.setMundoShowGrid);
   const setMundoGridSize = useAppStore((s) => s.setMundoGridSize);
@@ -300,7 +330,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                       display: 'flex', alignItems: 'center', gap: 8,
                     }}
                   >
-                    <span style={{ fontSize: 14 }}>{item.icon}</span>
+                    <span style={{ fontSize: 14, display: 'grid', placeItems: 'center' }}>{SIDEBAR_ICON[item.icon] ?? item.icon}</span>
                     {item.label}
                   </button>
                 ))}
@@ -441,6 +471,25 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                           }} />
                         </button>
                         <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{localImageSmoothing ? 'Sí' : 'No'}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Colores planos (sin degradados)</label>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
+                        <button
+                          onClick={() => setFlatColors(!flatColors)}
+                          style={{
+                            width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
+                            background: flatColors ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                          }}
+                        >
+                          <div style={{
+                            position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
+                            background: '#fff', transition: 'left 0.15s',
+                            left: flatColors ? 24 : 2,
+                          }} />
+                        </button>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{flatColors ? 'Plano' : 'Degradado'}</span>
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -686,7 +735,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                           style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                           <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Tamaño de celda (px)</label>
                           <button onClick={() => setLocalMundoGridSize(16)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridSize' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridSize' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                         </div>
                         <input
                           type="number"
@@ -705,7 +754,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                           style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                           <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color de línea</label>
                           <button onClick={() => setLocalMundoColor('#4488ff')}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridColor' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridColor' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <input
@@ -731,7 +780,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                           style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                           <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Grosor de línea</label>
                           <button onClick={() => setLocalMundoStrokeWidth(0.5)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'strokeWidth' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'strokeWidth' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
                           <input
@@ -749,7 +798,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                           style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                           <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Opacidad</label>
                           <button onClick={() => setLocalMundoGridOpacity(0.15)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridOpacity' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'gridOpacity' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
                           <input
@@ -804,7 +853,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                         style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                         <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color salida</label>
                         <button onClick={() => setLocalConnColorOut('#3b82f6')}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connColorOut' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connColorOut' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <input type="color" value={localConnColorOut} onChange={(e) => setLocalConnColorOut(e.target.value)}
@@ -819,7 +868,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                         style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                         <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Color entrada</label>
                         <button onClick={() => setLocalConnColorIn('#f59e0b')}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connColorIn' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connColorIn' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <input type="color" value={localConnColorIn} onChange={(e) => setLocalConnColorIn(e.target.value)}
@@ -835,7 +884,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                       style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                       <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Grosor de línea</label>
                       <button onClick={() => setLocalConnStrokeWidth(2)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connStrokeWidth' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'connStrokeWidth' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28 }}>
                       <input type="range"
@@ -874,7 +923,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                     style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
                     <label style={{ color: 'var(--text-muted)', fontSize: 11 }}>Animación de clic</label>
                     <button onClick={() => setLocalClickAnimation(false)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'clickAnim' ? 1 : 0, transition: 'opacity 0.12s' }}>↩</button>
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 11, padding: 0, lineHeight: 1, opacity: hoveredReset === 'clickAnim' ? 1 : 0, transition: 'opacity 0.12s', display: 'grid', placeItems: 'center' }}><RotateCcwIcon size={12} /></button>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 28 }}>
                     <button
@@ -929,8 +978,8 @@ export function SettingsModal({ onClose, initialTab }: Props) {
               color: 'var(--text-muted)', fontSize: 14, fontWeight: 600,
               flexDirection: 'column', gap: 8,
             }}>
-              <span style={{ fontSize: 32, opacity: 0.3 }}>
-                {{ scripting: '💻', sprite: '🎨', imagen: '🖼', music: '🎵', sound: '🔊', dialogo: '💬' }[activeTab]}</span>
+              <span style={{ opacity: 0.3, display: 'grid', placeItems: 'center' }}>
+                {PLACEHOLDER_ICON[activeTab]}</span>
               <span>
                 {{ scripting: 'test Scripting', sprite: 'test Sprite', imagen: 'test Imagen', music: 'test Music', sound: 'test Sound', dialogo: 'test Dialogo' }[activeTab]}</span>
             </div>

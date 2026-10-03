@@ -4,7 +4,21 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import { EmptyState } from '../EmptyState';
-import { SaveIcon, PlayIcon, StopIcon, Pencil2Icon, MousePointerIcon, EraserIcon, MusicIcon, ActivityIcon, WaveIcon, NoiseIcon, EyeIcon } from './icons';
+import {
+  ActivityIcon,
+  ClefIcon,
+  EraserIcon,
+  MinusIcon,
+  MousePointerIcon,
+  MusicIcon,
+  NoiseIcon,
+  Pencil2Icon,
+  PlayIcon,
+  PlusIcon,
+  SaveIcon,
+  StopIcon,
+  WaveIcon,
+} from './icons';
 import type { InstrumentType, NoteRow } from '../../../types/editor';
 import { playGBASound } from '../../../utils/gba_audio';
 
@@ -270,46 +284,15 @@ export function MusicTab() {
       collapsed: false,
       items: CHANNELS.map((ch) => {
         const cs = channelStates[ch.id] ?? { visible: true, solo: false, muted: false };
+        const anySolo = Object.values(channelStates).some((s) => s.solo);
         return {
           id: ch.id, label: ch.name, icon: ch.icon, removable: false,
-          subtitle: '',
-          actions: (
-            <>
-              <span
-                onClick={() => toggleChannel(ch.id, 'visible')}
-                style={{
-                  cursor: 'pointer', display: 'flex', opacity: cs.visible ? 1 : 0.3,
-                }}
-                title={cs.visible ? 'Ocultar' : 'Mostrar'}
-              >
-                <EyeIcon />
-              </span>
-              <span
-                onClick={() => toggleChannel(ch.id, 'solo')}
-                style={{
-                  cursor: 'pointer', fontSize: 9, fontWeight: 700, padding: '0 2px',
-                  color: cs.solo ? '#fbbf24' : '#666',
-                  background: cs.solo ? 'rgba(251,191,36,0.15)' : 'transparent',
-                  borderRadius: 2,
-                }}
-                title={cs.solo ? 'Quitar Solo' : 'Solo'}
-              >
-                S
-              </span>
-              <span
-                onClick={() => toggleChannel(ch.id, 'muted')}
-                style={{
-                  cursor: 'pointer', fontSize: 9, fontWeight: 700, padding: '0 2px',
-                  color: cs.muted ? '#f87171' : '#666',
-                  background: cs.muted ? 'rgba(248,113,113,0.15)' : 'transparent',
-                  borderRadius: 2,
-                }}
-                title={cs.muted ? 'Quitar Mute' : 'Mute'}
-              >
-                M
-              </span>
-            </>
-          ),
+          dimmed: anySolo && !cs.solo,
+          toggles: {
+            eye: { on: cs.visible, onToggle: () => toggleChannel(ch.id, 'visible') },
+            solo: { on: cs.solo, onToggle: () => toggleChannel(ch.id, 'solo') },
+            mute: { on: cs.muted, onToggle: () => toggleChannel(ch.id, 'muted') },
+          },
         };
       }),
     },
@@ -886,15 +869,15 @@ export function MusicTab() {
                 }}
               >PNO</button>
               {/* Zoom controls */}
-              <button onClick={() => setMusicZoom((z) => Math.max(1, z - 0.5))} style={zoomBtnStyle}>−</button>
+              <button onClick={() => setMusicZoom((z) => Math.max(1, z - 0.5))} style={zoomBtnStyle}><MinusIcon size={11} /></button>
               <span style={{ color: 'var(--text-secondary)', fontSize: 10, minWidth: 24, textAlign: 'center' }}>{Number(musicZoom.toFixed(1))}x</span>
-              <button onClick={() => setMusicZoom((z) => Math.min(4, z + 0.5))} style={zoomBtnStyle}>+</button>
+              <button onClick={() => setMusicZoom((z) => Math.min(4, z + 0.5))} style={zoomBtnStyle}><PlusIcon size={11} /></button>
             </div>
           </div>
 
           {!selectedPattern ? (
             <EmptyState
-              icon={<MusicIcon size={40} />}
+              icon={<ClefIcon size={40} />}
               title={songs.length === 0 ? 'Sin canciones' : 'Sin patrón seleccionado'}
               hint="Elige un patrón en la lista para editar sus notas."
             />

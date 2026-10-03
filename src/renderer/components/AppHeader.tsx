@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { XIcon } from './editor/tabs/icons';
 import { useAppStore } from '../store/useAppStore';
 import { VERSION } from '../../version';
 import { ThemeModal } from './editor/ThemeModal';
@@ -117,7 +118,7 @@ export function AppHeader() {
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
-        <WinBtn label="✕" title="Cerrar" onClick={() => window_?.close()} danger />
+        <WinBtn label={<XIcon size={11} />} title="Cerrar" onClick={() => window_?.close()} danger />
       </div>
 
       {showThemeModal && <ThemeModal onClose={() => setShowThemeModal(false)} />}
@@ -179,7 +180,7 @@ function WinBtn({
   onClick,
   danger,
 }: {
-  label: string;
+  label: React.ReactNode;
   title: string;
   onClick?: () => void;
   danger?: boolean;

@@ -17,15 +17,16 @@
 7. [Tipos y convenciones del código generado](#107-tipos-y-convenciones-del-código-generado)
 8. [Sistema de actores (las entidades del juego)](#108-sistema-de-actores-las-entidades-del-juego)
 9. [Entrada: leer los botones](#109-entrada-leer-los-botones)
-10. [Movimiento y colisiones](#1010-movimiento-y-colisiones)
+10. [Movimiento y colisiones](#1010-movimiento-y-colisiones) — incluye las primitivas `movePlatformer` / `moveTopDown`
 11. [Sonido: la APU del GBA](#1011-sonido-la-apu-del-gba)
 12. [Frames, vsyncs y animación](#1012-frames-vsyncs-y-animación)
 13. [El C Directo de tus scripts: contrato y API](#1013-el-c-directo-de-tus-scripts-contrato-y-api)
 14. [Ejemplos de scripts listos para copiar](#1014-ejemplos-de-scripts-listos-para-copiar)
-15. [Optimización y reglas de oro](#1015-optimización-y-reglas-de-oro)
-16. [Depuración en la consola real vs. emuladores](#1016-depuración-en-la-consola-real-vs-emuladores)
-17. [Referencia rápida (cheat-sheet)](#1017-referencia-rápida-cheat-sheet)
-18. [Glosario](#1018-glosario)
+15. [Varias escenas en la ROM: `switchScene`, `near` y `gJp`](#1015-varias-escenas-en-la-rom-switchscene-near-y-gjp)
+16. [Optimización y reglas de oro](#1016-optimización-y-reglas-de-oro)
+17. [Depuración en la consola real vs. emuladores](#1017-depuración-en-la-consola-real-vs-emuladores)
+18. [Referencia rápida (cheat-sheet)](#1018-referencia-rápida-cheat-sheet)
+19. [Glosario](#1019-glosario)
 
 ---
 
@@ -44,7 +45,7 @@ La GBA es una consola portátil de Nintendo lanzada en 2001. Su corazón es un *
 | Rendimiento típico | ~16,8 MIPS (Thumb) / más con ARM |
 | Revisión | Numerosa; la mayoría de ROMs corren en cualquiera |
 
-La CPU tiene además un repertorio pequeño: registros R0-R15, CPSR/SPSR. No hay FPU: **todo punto flotante lo tienes que evitar** (ver [15](#1015-optimización-y-reglas-de-oro)).
+La CPU tiene además un repertorio pequeño: registros R0-R15, CPSR/SPSR. No hay FPU: **todo punto flotante lo tienes que evitar** (ver [16](#1016-optimización-y-reglas-de-oro)).
 
 La placa se divide conceptualmente en:
 
@@ -204,7 +205,7 @@ Si tu frame hace más trabajo del que cabe en VBLANK:
 2. Las animaciones (retardadas en vsyncs) se ralentizan.
 3. En consola real verás *parpadeos* en la zona inferior donde el LCD ya pilló el rect del último actor.
 
-El motor está optimizado para que esto no pase (ver [15](#1015-optimización-y-reglas-de-oro)):
+El motor está optimizado para que esto no pase (ver [16](#1016-optimización-y-reglas-de-oro)):
 
 - El render de actores cuesta **~15 ciclos por píxel opaco** (dibujado y borrado en una sola pasada).
 - Regla práctica: **~5.600 px de sprite en cámara por frame** caben holgados.
@@ -315,8 +316,13 @@ typedef struct {
   s16 z;            // orden de dibujo: menor z se dibuja primero (atrás)
   u16 w, h;         // tamaño del sprite
   u8 hasCollider;   // 1 = participa en colisiones (y hace que updatePlayer lo mueva)
-  u16 cw, ch;       // tamaño del collider, centrado en el sprite
-  s16 vx, vy;       // velocidad en px/vsync (campo libre para tu física)
+  u16 cw, ch;       // tamaño del collider (el editor lo centra en el sprite por defecto)
+  s16 cox, coy;     // desplazamiento px del collider respecto al centro del sprite (Offset X/Y del inspector)
+  s16 vx, vy;       // velocidad en px/vsync (la usan las primitivas de movimiento)
+  s8 face;          // 1 mira a la derecha, 0 a la izquierda (lo pone el D-pad)
+  u8 coyote;        // vsyncs desde el último suelo (salto con margen)
+  u8 jumpBuf;       // vsyncs que un salto queda pendiente de aterrizaje
+  u8 jumpHeld;      // A sigue pulsado (para armar el buffer solo al pulsar)
   const GBAFrame* frames[32];  // punteros a frames de la animación
   u16 delays[32];              // duración de cada frame EN VSYNCS
   u8 frameCount;               // nº de frames
@@ -324,6 +330,7 @@ typedef struct {
   u8 frame;                    // frame actual
   s8 dir;                      // +1/-1 (para pingpong)
   u16 timer;                   // contador interno de vsyncs de la animación
+  u8 animSpeed;                // paso por vsync del avance (0/1 = cadencia exacta, 2+ = más rápido)
 } GBAActor;
 ```
 
@@ -341,7 +348,6 @@ typedef struct {
 ```c
 #define ACTOR_COUNT  <n>        // 1..64
 #define PLAYER_INDEX 0          // el actor 0 es "el jugador"
-#define PLAYER_SPEED 2          // px por vsync del D-pad
 #define MAX_ACTOR_FRAMES 32
 #define CAM_X 0                 // offset de cámara (si lo configuraste)
 #define CAM_Y 0
@@ -358,6 +364,32 @@ static GBAActor gActors[ACTOR_COUNT];
    - `mode 2` (*pingpong*): sube/baja alternando según `dir`.
 3. **`updatePlayer()`** (cada frame, solo si `gActors[PLAYER_INDEX].hasCollider == 1`): mueve al jugador con colisiones **solo si no hay script C** (con script C lo mueve tu `script_update`) y empuja a otros actores. (ver seccion 9, 10 y 10.14).
 4. **`drawAllActors(screen)`** (cada frame): ordena por `z` y dibuja `drawActorRect` uno a uno.
+
+### La cadencia de la animación y `animSpeed`
+
+`advanceAllActors()` hace avanzar el `timer` de cada actor y pasa al siguiente `frame` cuando `timer >= delays[frame]`. Es decir:
+
+- **Velocidad base**: `delays[frame]` vsyncs por frame (el exportador lo calcula en el editor a partir de la duración de cada frame del sprite). Con `delays` de 6 vsyncs → 10 fps de animación.
+- **`animSpeed`** (campo del actor, `0/1` = normal): cada vsync el `timer` avanza `animSpeed` ticks en vez de 1. Lo escribe tu script y solo afecta al actor que lo toca.
+- **No hay aceleración automática**: el motor NO sube la velocidad de nadie por moverse (ni del que camina ni de los NPC). Toda velocidad distinta de la cadencia exacta sale de tu código.
+
+#### Acelerar la zancada solo al caminar
+
+El uso típico es que la animación del que camina acompañe el desplazamiento. En `script_update` sube `animSpeed` mientras mueves con `gSelf` y lo devuelves a `1` al soltar:
+
+```c
+static void script_update(void) {
+  u16 keys = ~REG_KEYINPUT & 0x3FF;
+  if (keys & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) {
+    moveTopDown(gSelf, keys);     // o moveActorCollide / movePlatformer
+    gSelf->animSpeed = 2;         // zancada ×2 SOLO mientras este actor camina
+  } else {
+    gSelf->animSpeed = 1;         // cadencia exacta al parar
+  }
+}
+```
+
+Solo cambia la animación del actor cuyo `animSpeed` tocas; el resto de la escena sigue con su cadencia exacta aunque el mundo se mueva.
 
 ### To-codigo ejemplo: leer el actor del jugador
 
@@ -406,17 +438,21 @@ if (keys & (1 << 0)) { /* A pulsado */ }
 if (keys & (1 << 4)) { /* derecha */ }
 ```
 
-`movePlayer()` del template ya hace esto por el jugador:
+El template trae los botones ya enmascarados con constantes, para no contar shifts a mano:
 
 ```c
-static void movePlayer(u16 keys, GBAActor* p) {
-  // con colisiones:
-  if (keys & (1 << 5)) moveActorCollide(p, -PLAYER_SPEED, 0); // left
-  if (keys & (1 << 4)) moveActorCollide(p,  PLAYER_SPEED, 0); // right
-  if (keys & (1 << 6)) moveActorCollide(p, 0, -PLAYER_SPEED); // up
-  if (keys & (1 << 7)) moveActorCollide(p, 0,  PLAYER_SPEED); // down
-}
+#define KEY_RIGHT 0x010
+#define KEY_LEFT  0x020
+#define KEY_UP    0x040
+#define KEY_DOWN  0x080
+#define KEY_A     0x001
+#define KEY_B     0x002
+#define KEY_SHOULDER 0x300   // R y L a la vez (correr)
+
+if (keys & KEY_RIGHT) { /* derecha */ }
 ```
+
+Y `movePlayer()` mueve al jugador con [`moveTopDown`](#primitivas-de-movimiento-listos-para-usar):
 
 ### Detectar "recién pulsado" (flancos: edge/rising)
 
@@ -522,7 +558,7 @@ static void updatePlayer(void) {
   GBAActor* p = &gActors[PLAYER_INDEX];
   if (!p->hasCollider) return;            // sin collider no mueve nada
   keys = ~REG_KEYINPUT & 0x3FF;
-  movePlayer(keys, p);
+  movePlayer(keys, p);                     // = moveTopDown(p, keys)
   // ... empuja a cualquier otro actor con collider usando el eje de
   // menor intrusión (AABB)
 }
@@ -549,7 +585,85 @@ void script_update(void) {
 }
 ```
 
-> Como las posiciones son enteros, la gravedad "1 px por frame al cuadrado" funciona fina a 60 fps. No clames duplicar con `/=2` si no es potencia de 2 (ver [15](#1015-optimización-y-reglas-de-oro)).
+> Como las posiciones son enteros, la gravedad "1 px por frame al cuadrado" funciona fina a 60 fps. No clames duplicar con `/=2` si no es potencia de 2 (ver [16](#1016-optimización-y-reglas-de-oro)).
+
+### Primitivas de movimiento (listos para usar)
+
+Escribir la física a mano para cada juego es repetitivo, así que el template trae **dos primitivas ya resueltas** que solo tienes que llamar. No son "bases" ni "niveles" prefabricados: el nivel ya es tu mapa de tiles, y lo único que cambia entre un plataformas y un laberinto topdown es qué primitiva llamas.
+
+**Todo se ajusta con `#define`s**, así que el comportamiento se cambia en un sitio y afecta a todos tus scripts:
+
+```c
+#define WALK_SPEED 2        // px/vsync horizontal máximo
+#define RUN_SPEED 3         // con R/L (shoulder)
+#define ACCEL 1             // aceleración horizontal (1 = respuesta inmediata)
+#define FRICTION 1          // frenada en suelo
+#define GRAVITY 1           // px/vsync² (entero: en GBA no hay floats)
+#define MAX_FALL 5          // velocidad máxima de caída
+#define JUMP_VEL -11        // impulso del salto (negativo = hacia arriba)
+#define COYOTE_FRAMES 5     // vsyncs de margen tras salir de la plataforma
+#define JUMP_BUFFER 5       // vsyncs que un salto espera a que haya suelo
+#define JUMP_CUT_VEL -3     // salto corto: soltar A corta la subida
+```
+
+#### `movePlatformer(actor, keys)` — plataformas
+
+```c
+static void movePlatformer(GBAActor* a, u16 keys);
+```
+
+Gravedad + salto "de Orphan Knife", con las tres ayudas que hacen que un salto se sienta bien:
+
+- **Coyote time**: si acabas de salir de una plataforma, aún puedes saltar durante `COYOTE_FRAMES`. Pulsa A medio frame después de abandonar el borde y el salto cuenta.
+- **Jump buffer**: si pulsas A hasta `JUMP_BUFFER` vsyncs *antes* de tocar suelo, el salto se guarda y se dispara al aterrizar. Evita el "pulsé tarde y no saltó".
+- **Salto variable**: soltar A mientras subes recorta la velocidad a `JUMP_CUT_VEL`. Mantenerlo pulsado = salto alto; un toque = salto corto.
+- Los tiles **one-way** solo bloquean si vienes cayendo, así que puedes subir atravesándolos.
+
+Tu script completo de plataformas es literalmente esto:
+
+```c
+void script_update(void) {
+  u16 keys = ~REG_KEYINPUT & 0x3FF;
+  movePlatformer(gSelf, keys);
+}
+```
+
+#### `moveTopDown(actor, keys)` — laberinto / RPG / menús
+
+```c
+static void moveTopDown(GBAActor* a, u16 keys);
+```
+
+Cuatro direcciones con aceleración y frenada, **sin gravedad**. Correr con `R`/`L`:
+
+```c
+void script_update(void) {
+  u16 keys = ~REG_KEYINPUT & 0x3FF;
+  moveTopDown(gSelf, keys);
+}
+```
+
+Si el actor choca contra un tile, esa velocidad se pone a 0 (para no quedarse "pegado" al muro con la velocidad máxima cargada).
+
+#### `onFloor(actor)` — ¿está en el suelo?
+
+```c
+static int onFloor(GBAActor* a);
+```
+
+Mira un tile por debajo del collider. Útil para tus propias decisiones (patrullas, enemigos que solo se mueven en suelo, animaciones de "en el aire"):
+
+```c
+void script_update(void) {
+  GBAActor* e = &gActors[1];
+  if (onFloor(e) && (REG_KEYINPUT & 0x200) == 0) {
+    // solo patrulla si toca suelo
+  }
+}
+```
+
+> **Nada te obliga a usarlas.** Si una primitiva no encaja con tu juego, ignórala y mueve `gSelf` a mano con `moveActorCollide` — la sección anterior. Están ahí para ahorrarte el 90% de la física, no para imponerte un género.
+
 
 ### Teletransporte y limites
 
@@ -757,8 +871,11 @@ void script_update(void) {
 
 Todo lo ya definido arriba en el archivo (estático si es `static`) es accesible:
 
-- `gActors[ACTOR_COUNT]`, `GBAActor`, `GBAFrame`, `PLAYER_INDEX`, `PLAYER_SPEED`, `CAM_X/CAM_Y`, `MAX_ACTOR_FRAMES`.
+- `gActors[ACTOR_COUNT]`, `GBAActor`, `GBAFrame`, `PLAYER_INDEX`, `CAM_X/CAM_Y` (single-scene; en multi-escena son `gCamX/gCamY`, ver [10.15](#1015-varias-escenas-en-la-rom-switchscene-near-y-gjp)), `MAX_ACTOR_FRAMES`.
 - `moveActorCollide(a, dx, dy)`, `movePlayer(u16 keys, GBAActor* p)`, `updatePlayer()`, `actorBox()`, `rectsOverlap()`, `rectHitsSolid()` (si hay mapa), `solidTile()`, `advanceAllActors()`, `initActors()`.
+- **Primitivas de movimiento:** `moveTopDown(a, keys)`, `movePlatformer(a, keys)`, `onFloor(a)`, `approach(&v, target, step)`.
+- **Múltiples escenas:** `switchScene(n)`, `near(a, b, dist)`, `gJp`, `gScene` (ver [10.15](#1015-varias-escenas-en-la-rom-switchscene-near-y-gjp)).
+- Botones: `KEY_A`, `KEY_B`, `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`, `KEY_SHOULDER`.
 - `REG_KEYINPUT` (`0x04000130`), mapa de bits correcto (ver [9](#109-entrada-leer-los-botones)).
 - `SCREEN_W=240`, `SCREEN_H=160`, `PIXEL_COUNT=38400`, `screen` **no** está como símbolo: usa `(u16*)VRAM` si quieres pintar.
 - `REG_SND1..4*`, `noteOn()`, `GBAInst`, `gNotePeriods` (si hay sonido en el proyecto).
@@ -771,7 +888,7 @@ Todo lo ya definido arriba en el archivo (estático si es `static`) es accesible
 | :--- | :--- |
 | **Sin `float`/`double`** | No hay FPU; el compilador simula con soft-float lentísimo. |
 | **Sin `malloc`/`free`** | No hay gestor de memoria; declara estáticos. |
-| **Sin `printf` a pantalla** | No hay consola. Para depurar, ver [16](#1016-depuración). |
+| **Sin `printf` a pantalla** | No hay consola. Para depurar, ver [17](#1017-depuración). |
 | **Sin bucles infinitos bloqueantes** | Congelan el render. Usa contadores por vsync. |
 | **No escribas VRAM fuera de VBLANK** | Tearing en consola real. |
 | **Código corto por frame** | Presupuesto VBLANK (~83.8K ciclos). |
@@ -783,7 +900,9 @@ Todo lo ya definido arriba en el archivo (estático si es `static`) es accesible
 
 ### 1. Mover a un actor con el D-pad (con y sin colisiones)
 
-**Jugador / actores:** un script SOLO se ejecuta si está **asignado a un actor** (Mundo → Inspector → Script). El motor llama al script **una vez por cada actor asignado**, con la variable global `GBAActor* gSelf` apuntando al actor en cuestión — usa `gSelf` para mover a ESE actor (no `gActors[PLAYER_INDEX]`, que siempre mueve al jugador). Si el proyecto tiene script C pero no le asignas ninguno al jugador, el jugador **no hace nada**. Si el proyecto no tiene NINGÚN script C, el motor mueve al jugador solo con el D-pad (2 px/frame, con colisiones de tiles) — cambia `PLAYER_SPEED` si quieres otra velocidad.
+**Jugador / actores:** un script SOLO se ejecuta si está **asignado a un actor** (Mundo → Inspector → Script). El motor llama al script **una vez por cada actor asignado**, con la variable global `GBAActor* gSelf` apuntando al actor en cuestión — usa `gSelf` para mover a ESE actor (no `gActors[PLAYER_INDEX]`, que siempre mueve al jugador). Si el proyecto tiene script C pero no le asignas ninguno al jugador, el jugador **no hace nada**. Si el proyecto no tiene NINGÚN script C, el motor mueve al jugador solo con el D-pad usando `moveTopDown` (2 px/frame, con colisiones de tiles) — cambia `WALK_SPEED` si quieres otra velocidad.
+
+> Atajo: si solo quieres moverte, no escribas la física. `movePlatformer(gSelf, keys)` te da plataformas completas y `moveTopDown(gSelf, keys)` un laberinto, ambos con colisiones. Ver [10.10](#primitivas-de-movimiento-listos-para-usar).
 
 El ejemplo sirve para **cualquier actor** (jugador o NPC) con mando. **Importante para que los tiles de colisión funcionen:** si mueves un actor `+= 2` a pelo, **ignora el mapa de colisiones** (no lo detecta → atraviesa o «se frena» por el empuje de otros actores). Para chocar con tiles usa `moveActorCollide()`:
 
@@ -872,21 +991,34 @@ void script_update(void) {
 }
 ```
 
-### 6. Gravedad + suelo (con colisiones del mapa)
+### 6. Plataformas completas (gravedad, salto, coyote y buffer)
 
 ```c
-static s16 vy = 0;
 void script_update(void) {
-  GBAActor* p = &gActors[0];
-  vy += 1;
-  if (vy > 5) vy = 5;
-  moveActorCollide(p, 0, vy);   // choca con el suelo y revierte vy implícitamente
-  // si el jugador 'toca' suelo lo detectamos recalculando:
-  if (vy > 0) p->vx = 0;        // (campo libre)
+  GBAActor* p = gSelf;
+  u16 keys = ~REG_KEYINPUT & 0x3FF;
+  movePlatformer(p, keys);   // todo el trabajo, una línea
 }
 ```
 
-> Nota: `moveActorCollide` revierte el movimiento pero no regresa `vy`. Para saltar bien necesitas una bandera `onGround` que detecte si tras `moveActorCollide(p,0,1)` el actor no se movió (`p->y` no varió). Puedes comprobarlo con `s16 before = p->y; moveActorCollide(p,0,1); if (p->y == before) onGround = 1;`
+Antes de que existieran las primitivas esto era ~20 líneas de `vy += GRAVITY`, saturar a `MAX_FALL`, detectar suelo a mano y vigilar `vy == 0` para saltar. Ya no hace falta: `movePlatformer` lo hace y además añade coyote time, jump buffer y salto variable. Ajusta el comportamiento tocando los `#define` de [10.10](#primitivas-de-movimiento-listos-para-usar).
+
+Si tu actor es un NPC con gravedad pero control manual (por ejemplo, una pelota o un enemigo que cae), usa `onFloor` para saber si tocó suelo:
+
+```c
+static u8 prevFloor = 0;
+void script_update(void) {
+  GBAActor* p = gSelf;
+  p->vy += 1;
+  if (p->vy > 5) p->vy = 5;
+  moveActorCollide(p, 0, p->vy);
+  u8 suelo = onFloor(p);
+  if (suelo && !prevFloor) p->vy = 0;   //acaba de tocar suelo: anula la caída
+  prevFloor = suelo;
+}
+```
+
+> `onFloor` mira un tile por debajo del collider en la dirección de caída, así que respeta los tiles one-way igual que el resto de la física.
 
 ### 7. Contador de frames y condición cada N segundos
 
@@ -903,7 +1035,62 @@ void script_update(void) {
 
 ---
 
-## 10.15. Optimización y reglas de oro
+## 10.15. Varias escenas en la ROM: `switchScene`, `near` y `gJp`
+
+El export **embebe TODAS las escenas del proyecto** en la ROM. La escena de inicio es la que el splash tiene definida como siguiente; cambiar de escena en mitad del juego es una llamada de script.
+
+### Cómo se numeran las escenas
+
+El índice de escena es el **orden en el editor** (la lista de escenas de Mundo, de arriba abajo): la escena 0 es la primera, la escena `N-1` la última (N = total). No depende del nombre. Las **conexiones** del editor sí se exportan: definen la transición que se reproduce al cambiar de escena (ver más abajo).
+
+- `gScene` — índice de la escena actual (lectura).
+- `switchScene(n)` — pide cambiar a la escena `n`. El motor reproduce la **transición de entrada de la conexión `gScene→n`** (fade, instantánea o cortinilla de tileset), carga la escena nueva (imagen, colisión, cámara, actores y sus scripts) y la revela. Si no hay conexión definida usa el fade por defecto (~1 s). Si `n` está fuera de rango no hace nada.
+- `switchScene(n, "nombre")` — igual, pero elige la conexión cuyo campo **Nombre** sea `"nombre"` (útil si hay varias conexiones al mismo destino). Si el nombre no coincide con ninguna, se usa el fade por defecto. En AdvanceCode se escribe igual.
+
+### Transición por conexión
+
+En Mundo, cada **conexión** entre escenas tiene una transición de **Entrada** (la que se ve al llegar a la escena destino) de tipo *instantánea*, *fade* o *cortinilla* (tileset animado + degradado). El export la compila a una pareja `runToBlack_CTi` / `runToScene_CTi` y `switchScene` la localiza por `(origen, destino)`:
+
+```c
+switchScene(1);            // primera conexión gScene→1
+switchScene(1, "puerta");  // la conexión llamada "puerta"
+```
+
+Por debajo hay una tabla `gTransFrom/gTransTo/gTransName/gTransKind/gTransFrames/gTransCover/gTransReveal` y `findTransition(from, to, name)`. Si una conexión se configuró como cortinilla pero no tiene tileset válido, se degrada a fade y se avisa en el log de exportación.
+
+### Proximidad: `near(a, b, dist)`
+
+Devuelve `1` si la caja de `dist` px alrededor del **centro** de `b` toca al actor `a` (`|centroX_a − centroX_b| ≤ dist` y lo mismo en Y). Pensada para «hablar» / «usar» pegado a un personaje:
+
+```c
+void script_update(void) {
+  // pegado al jugador + pulsas A → cambio a la escena 1
+  if (near(gSelf, &gActors[PLAYER_INDEX], 20) && (gJp & KEY_A)) {
+    switchScene(1);
+  }
+}
+```
+
+`dist` son píxeles de pantalla; 20 ≈ medio cuerpo del jugador. Ajusta a la escala de tu juego.
+
+### Flanco de teclas: `gJp`
+
+`REG_KEYINPUT` dice si una tecla está pulsada **ahora**; `gJp` (just-pressed) tiene **solo los bits que se pulsaron ESTE frame** (flanco de subida). Mismos bits que `REG_KEYINPUT` (0 = pulsado). Evita guardar a mano el estado anterior: `if (gJp & KEY_A)` se ejecuta una sola vez por pulsación, aunque mantengas la tecla.
+
+> El motor resetea el flanco al cambiar de escena para que no se cuele el botón que provocó el cambio.
+
+### Qué cambia al pasar de escena
+
+- **Imagen, colisión y cámara** son por escena: `gColMap`/`gColCols`/`gColRows`/`gColTile` y `gCamX`/`gCamY` se actualizan al cargar (ya no son macros `CAM_X`/`CAM_Y` en multi-escena; úsalos como variables).
+- **Actores**: cada escena configura las **suyas** en `gActors[0..count-1]`. `ACTOR_COUNT` es el máximo entre todas las escenas; los huecos sobrantes quedan a 0 (`frameCount == 0`) y no se dibujan ni colisionan.
+- **Scripts**: el script asignado a un actor se llama con `gSelf` apuntando a ESE actor (índice de su escena). Ponerle un script a un actor nuevo de otra escena = cambiar de escena al momento.
+- **Jugador**: `PLAYER_INDEX` siempre es `0`, así que en cada escena el actor en la posición 0 es el «jugador» de esa escena (los scripts lo mueven; si su actor no tiene collider, `updatePlayer` no hace nada).
+- **Música**: por ahora solo suena la canción de la **escena de inicio**; música por escena queda pendiente.
+- `sceneData` en el código generado es SIEMPRE la escena de inicio (tras el splash); las demás van `sceneData_1 … sceneData_{N-1}` (no las referencies con índices fijos: son nombres generados).
+
+---
+
+## 10.16. Optimización y reglas de oro
 
 ### Lo más importante: no romper el presupuesto del frame
 
@@ -952,7 +1139,7 @@ vx -= vx / 8;                  // o vx >>= 3 si no necesitas precisión
 
 ---
 
-## 10.16. Depuración en la consola real vs. emuladores
+## 10.17. Depuración en la consola real vs. emuladores
 
 | Entorno | Qué detecta | Qué oculta |
 | :--- | :--- | :--- |
@@ -990,7 +1177,7 @@ Los avisos del export (`[WARN]`, `[OK]`) los verás en el panel inferior del edi
 
 ---
 
-## 10.17. Referencia rápida (cheat-sheet)
+## 10.18. Referencia rápida (cheat-sheet)
 
 ### Constantes y símbolos del template
 
@@ -1001,9 +1188,15 @@ Los avisos del export (`[WARN]`, `[OK]`) los verás en el panel inferior del edi
 | `VRAM` | `0x06000000` | `screen = (u16*)VRAM` |
 | `ACTOR_COUNT` | 1-64 | segun actores exportados |
 | `PLAYER_INDEX` | 0 | el actor 0 |
-| `PLAYER_SPEED` | 2 | px/vsync del D-pad |
+| `WALK_SPEED` / `RUN_SPEED` | 2 / 3 | px/vsync (shoulder = correr) |
+| `ACCEL` / `FRICTION` | 1 / 1 | aceleración y frenada |
+| `GRAVITY` / `MAX_FALL` | 1 / 5 | px/vsync² y velocidad terminal |
+| `JUMP_VEL` / `JUMP_CUT_VEL` | -11 / -3 | impulso y corte del salto |
+| `COYOTE_FRAMES` / `JUMP_BUFFER` | 5 / 5 | margen tras el borde / antes de aterrizar |
 | `MAX_ACTOR_FRAMES` | 32 | frames por actor |
-| `CAM_X`, `CAM_Y` | 0 por defecto | offset de mundo |
+| `CAM_X`, `CAM_Y` | 0 por defecto | offset de mundo (single-scene); en multi-escena `gCamX`/`gCamY` |
+| `gScene` / `gSceneTarget` | — | escena actual / escena pedida (multi-escena) |
+| `gJp` | — | flanco de teclas: bits pulsados ESTE frame |
 | `gActorBack[]` | EWRAM | fondo de actores |
 | `gActors[]` | — | lista global |
 
@@ -1041,10 +1234,13 @@ u16 jp   = keys & ~prevKeys; prevKeys = keys; // flanco
 | `actorBox(a,&bx,&by,&bw,&bh)` | collider en coords mundo |
 | `rectHitsSolid(bx,by,bw,bh,dx,dy)` | ¿choca con tiles? |
 | `moveActorCollide(a,dx,dy)` | mueve con colision, por ejes |
+| `gSelf->animSpeed` | paso/vsync de la animación (2 = doble, ver [10.8](#108-sistema-de-actores-las-entidades-del-juego)) |
 | `movePlayer(keys,p)` | D-pad del jugador |
 | `updatePlayer()` | input + push actor-actor |
 | `initActors()` / `advanceAllActors()` | animación automática |
 | `drawAllActors(screen)` | z-sort + dibujado |
+| `near(a,b,dist)` | ¿±`dist` px entre centros? (proximidad) |
+| `switchScene(n[, "nombre"])` | cambia de escena con la transición de la conexión (multi-escena) |
 | `noteOn(ch,&inst,period)` | dispara una nota/SFX |
 
 ### Fórmulas
@@ -1058,7 +1254,7 @@ u16 jp   = keys & ~prevKeys; prevKeys = keys; // flanco
 
 ---
 
-## 10.18. Glosario
+## 10.19. Glosario
 
 - **AABB** — caja alineada a los ejes; el rect de colisión del actor.
 - **APU** — Audio Processing Unit (la parte de sonido del GBA).

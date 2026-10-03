@@ -53,6 +53,13 @@ export interface Actor {
   collider: boolean;
   colliderWidth: number;
   colliderHeight: number;
+  colliderOffsetX?: number; // desplazamiento px del collider respecto al centro del sprite
+  colliderOffsetY?: number;
+  hasArea?: boolean;        // zona de detección (sigue al actor, como el collider)
+  areaWidth?: number;
+  areaHeight?: number;
+  areaOffsetX?: number;
+  areaOffsetY?: number;
   soundId?: string;
   musicId?: string;
   scriptId?: string;
@@ -343,7 +350,7 @@ export type ScriptMode = 'blocks' | 'language' | 'c';
 export const SCRIPT_MODES: { value: ScriptMode; label: string }[] = [
   { value: 'blocks', label: 'Bloques' },
   { value: 'language', label: 'AdvanceCode' },
-  { value: 'c', label: 'C Directo' },
+  { value: 'c', label: 'C' },
 ];
 
 export interface BlockData {

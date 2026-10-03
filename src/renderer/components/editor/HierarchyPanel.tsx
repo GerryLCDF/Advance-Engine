@@ -1,4 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CheckIcon, ChevronDownIcon, EyeIcon, EyeOffIcon, FocusIcon, VolumeIcon, VolumeOffIcon, XIcon } from './tabs/icons';
+
+export interface HierarchyToggle {
+  on: boolean;
+  onToggle: () => void;
+  title?: string;
+  disabled?: boolean;
+}
 
 export interface HierarchyItem {
   id: string;
@@ -9,7 +18,11 @@ export interface HierarchyItem {
   isHeader?: boolean;
   removable?: boolean;
   actions?: React.ReactNode;
+  dimmed?: boolean;
+  toggles?: { eye?: HierarchyToggle; solo?: HierarchyToggle; mute?: HierarchyToggle };
   children?: HierarchyItem[];
+  /** Si es true, los hijos solo se despliegan cuando este nodo (o un descendiente) está seleccionado. */
+  expandWhenSelected?: boolean;
 }
 
 export interface HierarchySection {
@@ -19,6 +32,7 @@ export interface HierarchySection {
   items: HierarchyItem[];
   onAdd?: () => void;
   actions?: React.ReactNode;
+  subtitle?: string;
 }
 
 interface HierarchyPanelProps {
@@ -31,6 +45,87 @@ interface HierarchyPanelProps {
   onRename?: (id: string, name: string) => void;
   onEditingChange?: (id: string | null) => void;
   onDoubleClick?: (id: string) => void;
+}
+
+export function RowIconButton({
+  title, onClick, active, disabled, danger, children,
+}: {
+  title: string;
+  onClick: () => void;
+  active?: boolean;
+  disabled?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.button
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(); }}
+      onPointerDown={(e) => e.stopPropagation()}
+      whileHover={danger && !active ? { backgroundColor: '#e5484d', color: '#ffffff' } : { opacity: 0.75 }}
+      whileTap={{ scale: 0.9 }}
+      style={{
+        width: 22, height: 22, padding: 0, flexShrink: 0,
+        display: 'grid', placeItems: 'center',
+        borderRadius: 7, cursor: disabled ? 'default' : 'pointer',
+        border: '1px solid transparent',
+        background: active
+          ? 'var(--accent-fill, linear-gradient(135deg, var(--accent), var(--accent-light)))'
+          : 'transparent',
+        color: active ? '#0b110d' : disabled ? 'var(--text-muted)' : danger ? 'var(--text-muted)' : 'var(--text-secondary)',
+        opacity: disabled ? 0.55 : 1,
+        transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+      }}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
+/** True si algún descendiente del nodo está seleccionado (el padre se mantiene desplegado). */
+function hasDescendant(node: HierarchyItem, id: string): boolean {
+  if (!node.children) return false;
+  return node.children.some((c) => c.id === id || hasDescendant(c, id));
+}
+
+function ToggleButtons({ toggles }: { toggles: NonNullable<HierarchyItem['toggles']> }) {
+  return (
+    <>
+      {toggles.eye && (
+        <RowIconButton
+          title={toggles.eye.title ?? (toggles.eye.on ? 'Ocultar' : 'Mostrar')}
+          onClick={toggles.eye.onToggle}
+          active={toggles.eye.on}
+          disabled={toggles.eye.disabled}
+        >
+          {toggles.eye.on ? <EyeIcon size={13} /> : <EyeOffIcon size={13} />}
+        </RowIconButton>
+      )}
+      {toggles.solo && (
+        <RowIconButton
+          title={toggles.solo.title ?? (toggles.solo.on ? 'Quitar solo' : 'Solo')}
+          onClick={toggles.solo.onToggle}
+          active={toggles.solo.on}
+          disabled={toggles.solo.disabled}
+        >
+          <FocusIcon size={13} />
+        </RowIconButton>
+      )}
+      {toggles.mute && (
+        <RowIconButton
+          title={toggles.mute.title ?? (toggles.mute.on ? 'Activar sonido' : 'Mute')}
+          onClick={toggles.mute.onToggle}
+          active={toggles.mute.on}
+          disabled={toggles.mute.disabled}
+        >
+          {toggles.mute.on ? <VolumeOffIcon size={13} /> : <VolumeIcon size={13} />}
+        </RowIconButton>
+      )}
+    </>
+  );
 }
 
 export function HierarchyPanel({
@@ -47,7 +142,16 @@ export function HierarchyPanel({
   };
 
   const [collapsedItems, setCollapsedItems] = useState<Record<string, boolean>>({});
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const editingInputRef = useRef<HTMLInputElement>(null);
+
+  // Si el ítem confirmado desaparece (se borró en otro sitio), cerrar la pregunta
+  useEffect(() => {
+    if (!confirmId) return;
+    const exists = (items: HierarchyItem[]): boolean =>
+      items.some((it) => it.id === confirmId || (it.children ? exists(it.children) : false));
+    if (!sections.some((s) => exists(s.items))) setConfirmId(null);
+  }, [confirmId, sections]);
 
   useEffect(() => {
     if (editingId && editingInputRef.current) {
@@ -62,8 +166,12 @@ export function HierarchyPanel({
 
   const renderNode = (node: HierarchyItem, depth: number) => {
     const hasChildren = node.children && node.children.length > 0;
-    const isCollapsed = collapsedItems[node.id] ?? false;
+    const isCollapsed = node.expandWhenSelected
+      ? selectedId !== node.id && !hasDescendant(node, selectedId)
+      : (collapsedItems[node.id] ?? false);
     const isEditing = editingId === node.id;
+    const isSelected = selectedId === node.id;
+    const dim = node.dimmed ? 0.42 : 1;
 
     if (node.isHeader) {
       return (
@@ -71,20 +179,20 @@ export function HierarchyPanel({
           <div
             onClick={() => toggleItemCollapse(node.id)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 3,
-              padding: '3px 6px 3px 8px',
-              paddingLeft: 8 + depth * 14,
-              cursor: 'pointer', userSelect: 'none', marginTop: 4,
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '6px 6px 3px 8px',
+              paddingLeft: 8 + depth * 12,
+              cursor: 'pointer', userSelect: 'none',
             }}
           >
             {hasChildren && (
-              <span style={{ color: '#666', fontSize: 8, transition: 'transform 0.12s', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
-                ▼
+              <span style={{ color: 'var(--text-muted)', display: 'flex', transition: 'transform 0.12s', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+                <ChevronDownIcon size={11} />
               </span>
             )}
             <span style={{
-              color: '#888', fontSize: 9, fontWeight: 700,
-              textTransform: 'uppercase', letterSpacing: '0.5px',
+              color: 'var(--text-muted)', fontSize: 9, fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: '0.6px',
             }}>
               {node.label}
             </span>
@@ -97,44 +205,51 @@ export function HierarchyPanel({
     return (
       <div key={node.id}>
         <div
-          onClick={() => { if (!isEditing) onSelect(node.id); }}
+          className="hp-row"
+          data-selected={isSelected ? 'true' : undefined}
+          data-editing={isEditing ? 'true' : undefined}
+          onClick={() => { if (isEditing) return; if (confirmId && confirmId !== node.id) setConfirmId(null); onSelect(node.id); }}
           onDoubleClick={() => { onDoubleClick?.(node.id); }}
           onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(node.id, e.clientX, e.clientY); }}
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 5,
-            padding: '5px 8px 5px 8px',
-            paddingLeft: 8 + depth * 14,
+            gap: 6,
+            height: 34,
+            marginBottom: 2,
+            padding: '0 6px 0 6px',
+            paddingLeft: 8 + depth * 12,
             cursor: isEditing ? 'default' : 'pointer',
-            background: selectedId === node.id ? 'var(--bg-raised)' : 'transparent',
-            borderRadius: 4,
-            fontSize: 12,
-            color: selectedId === node.id ? '#c4a0f0' : 'var(--text-secondary)',
-            marginBottom: 1,
+            borderRadius: 8,
+            opacity: dim,
+            color: isSelected ? 'var(--text)' : 'var(--text-secondary)',
             userSelect: 'none',
-          }}
-          onMouseEnter={(e) => {
-            if (selectedId !== node.id && !isEditing) e.currentTarget.style.background = '#2a2a30';
-          }}
-          onMouseLeave={(e) => {
-            if (selectedId !== node.id && !isEditing) e.currentTarget.style.background = 'transparent';
+            transition: 'background 0.12s, border-color 0.12s',
           }}
         >
-          {node.icon && (
-            <span style={{
-              width: 16, flexShrink: 0, fontSize: 12, lineHeight: 1,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {node.icon}
+          {node.icon ? (
+            <span
+              style={{
+                width: 22, height: 22, flexShrink: 0,
+                display: 'grid', placeItems: 'center',
+                borderRadius: 7,
+                background: isSelected
+                  ? 'var(--accent-fill, linear-gradient(135deg, var(--accent), var(--accent-light)))'
+                  : 'var(--bg-splitter)',
+                color: isSelected ? '#0b110d' : 'var(--text-secondary)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <span style={{ width: 14, height: 14, display: 'grid', placeItems: 'center', fontSize: 12, lineHeight: 1 }}>
+                {node.icon}
+              </span>
             </span>
-          )}
-          {node.color && !node.icon && (
+          ) : node.color ? (
             <span style={{
-              width: 8, height: 8, borderRadius: '50%',
+              width: 8, height: 8, borderRadius: '50%', marginLeft: 7, marginRight: 7,
               background: node.color, flexShrink: 0, display: 'inline-block',
             }} />
-          )}
+          ) : null}
           {isEditing ? (
             <input
               ref={editingInputRef}
@@ -156,52 +271,79 @@ export function HierarchyPanel({
               onClick={(e) => e.stopPropagation()}
               style={{
                 flex: 1,
-                background: '#1a1a22',
+                background: 'var(--bg-dark)',
                 border: '1px solid var(--accent)',
-                borderRadius: 3,
+                borderRadius: 4,
                 color: '#fff',
                 fontSize: 12,
-                padding: '2px 4px',
+                padding: '2px 5px',
                 outline: 'none',
                 minWidth: 0,
               }}
             />
           ) : (
-            <span
-              style={{
-                flex: 1,
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
-              }}
-            >
+            <span style={{
+              flex: 1, minWidth: 0,
+              fontSize: 12, fontWeight: isSelected ? 600 : 400,
+              overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+            }}>
               {node.label}
             </span>
           )}
+          {node.toggles && <ToggleButtons toggles={node.toggles} />}
           {node.actions && (
-            <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
               {node.actions}
             </div>
           )}
           {node.subtitle && (
-            <span style={{ color: '#666', fontSize: 10, flexShrink: 0 }}>{node.subtitle}</span>
-          )}
-          {onRemove && node.removable !== false && (
-            <span
-              onClick={(e) => { e.stopPropagation(); onRemove(node.id); }}
-              style={{
-                color: '#666', cursor: 'pointer', fontSize: 12, padding: '0 4px',
-                opacity: 0,
-              }}
-              className="hierarchy-rm"
-              onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
-            >
-              ✕
+            <span style={{ color: 'var(--text-muted)', fontSize: 10, flexShrink: 0, maxWidth: 70, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {node.subtitle}
             </span>
           )}
+          {confirmId === node.id ? (
+            <div
+              style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <span style={{ color: 'var(--text-secondary)', fontSize: 10, whiteSpace: 'nowrap' }}>¿Eliminar?</span>
+              <RowIconButton
+                title="Sí, eliminar"
+                danger
+                onClick={() => { setConfirmId(null); onRemove?.(node.id); }}
+              >
+                <CheckIcon size={12} />
+              </RowIconButton>
+              <RowIconButton title="Cancelar" onClick={() => setConfirmId(null)}>
+                <XIcon size={12} />
+              </RowIconButton>
+            </div>
+          ) : onRemove && node.removable !== false ? (
+            <RowIconButton
+              title="Eliminar"
+              danger
+              onClick={() => setConfirmId(node.id)}
+            >
+              <XIcon size={12} />
+            </RowIconButton>
+          ) : null}
         </div>
-        {node.children?.map((child) => renderNode(child, depth + 1))}
+        {hasChildren && (
+          <AnimatePresence initial={false}>
+            {!isCollapsed && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.14, ease: 'easeOut' }}
+                style={{ overflow: 'hidden' }}
+              >
+                {node.children?.map((child) => renderNode(child, depth + 1))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </div>
     );
   };
@@ -218,38 +360,42 @@ export function HierarchyPanel({
         overflow: 'hidden',
       }}
     >
-      <style>{`
-        .hierarchy-rm { opacity: 0 !important; }
-        div:hover > .hierarchy-rm { opacity: 1 !important; }
-      `}</style>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 6px 6px 6px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px 10px 6px' }}>
         {sections.map((sec) => {
           const collapsed = collapsedMap[sec.id] ?? false;
+          const total = sec.items.length;
           return (
-            <div key={sec.id} style={{ marginBottom: 8 }}>
-              {/* Section header */}
+            <div key={sec.id} style={{ marginBottom: 10 }}>
               <div
                 onClick={() => toggleCollapse(sec.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 6px',
-                  marginBottom: 2,
+                  gap: 5,
+                  height: 24,
+                  padding: '0 4px',
                   cursor: 'pointer',
                   userSelect: 'none',
                 }}
               >
-                <span style={{ color: '#666', fontSize: 10, transition: 'transform 0.12s', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
-                  ▼
+                <span style={{
+                  color: 'var(--text-muted)', display: 'flex', flexShrink: 0,
+                  transition: 'transform 0.12s',
+                  transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                }}>
+                  <ChevronDownIcon size={12} />
                 </span>
                 <span style={{
                   color: 'var(--accent)', fontSize: 10, fontWeight: 700,
-                  textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1,
+                  textTransform: 'uppercase', letterSpacing: '0.5px',
+                  flex: 1, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                 }}>
                   {sec.title}
                 </span>
-                <div style={{ display: 'flex', gap: 2 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, flexShrink: 0 }}>
+                  {total}
+                </span>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                   {sec.actions}
                   {sec.onAdd && (
                     <button
@@ -257,17 +403,11 @@ export function HierarchyPanel({
                       style={{
                         background: 'var(--accent)',
                         border: 'none',
-                        borderRadius: 3,
-                        color: '#fff',
-                        width: 18,
-                        height: 18,
-                        fontSize: 12,
-                        fontWeight: 700,
+                        borderRadius: 6,
+                        color: '#0b110d',
+                        width: 20, height: 20,
                         cursor: 'pointer',
-                        lineHeight: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        display: 'grid', placeItems: 'center',
                       }}
                       title="Agregar"
                     >
@@ -276,16 +416,28 @@ export function HierarchyPanel({
                   )}
                 </div>
               </div>
-              {/* Items */}
-              {!collapsed && (
-                sec.items.length === 0 ? (
-                  <div style={{ color: '#555', fontSize: 10, textAlign: 'center', padding: '8px 0' }}>
-                    Sin elementos
-                  </div>
-                ) : (
-                  sec.items.map((item) => renderNode(item, 0))
-                )
-              )}
+              <AnimatePresence initial={false}>
+                {!collapsed && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.16, ease: 'easeOut' }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    {total === 0 ? (
+                      <div style={{
+                        color: 'var(--text-muted)', fontSize: 10, textAlign: 'center',
+                        padding: '8px 0',
+                      }}>
+                        Sin elementos
+                      </div>
+                    ) : (
+                      sec.items.map((item) => renderNode(item, 0))
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           );
         })}

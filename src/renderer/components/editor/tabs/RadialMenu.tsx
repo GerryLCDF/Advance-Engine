@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Variants } from 'framer-motion'
-import type { LucideIcon } from 'lucide-react'
+/** Acepta tanto un icono de Tabler como cualquiera de nuestros wrappers de `tabs/icons` */
+export type RadialMenuIcon = React.ComponentType<{ size?: string | number; strokeWidth?: string | number; color?: string }>
 
 export interface RadialMenuItem {
   label: string
-  Icon: LucideIcon
-  iconName: string
+  Icon: RadialMenuIcon
+  /** acción al elegir el ítem; NO depende del icono (cambiar el icono no rompe la lógica) */
+  action: string
   color: string
 }
 

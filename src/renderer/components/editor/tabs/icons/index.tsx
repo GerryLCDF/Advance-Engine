@@ -1,9 +1,49 @@
 import React from 'react';
 import {
+  IconAlertTriangleFilled as TablerIconAlertTriangleFilled,
+  IconArrowBack as TablerIconArrowBack,
+  IconArrowNarrowLeftDashed as TablerIconArrowNarrowLeftDashed,
+  IconAugmentedReality as TablerIconAugmentedReality,
+  IconBucketDroplet as TablerIconBucketDroplet,
+  IconCheck as TablerIconCheck,
+  IconClef as TablerIconClef,
+  IconConeFilled as TablerIconConeFilled,
+  IconDirectionArrows as TablerIconDirectionArrows,
+  IconEye as TablerIconEye,
+  IconEyeClosed as TablerIconEyeClosed,
+  IconFileCodeFilled as TablerIconFileCodeFilled,
   IconFileText as TablerIconFileText,
+  IconFocus as TablerIconFocus,
+  IconGrid3x3 as TablerIconGrid3x3,
+  IconHeadphonesFilled as TablerIconHeadphonesFilled,
+  IconHome2Filled as TablerIconHome2Filled,
+  IconLayersIntersect as TablerIconLayersIntersect,
+  IconLink as TablerIconLink,
+  IconLoader2 as TablerIconLoader2,
+  IconMapPin as TablerIconMapPin,
   IconMessage as TablerIconMessage,
+  IconMessageFilled as TablerIconMessageFilled,
   IconPalette as TablerIconPalette,
-  IconRobot as TablerIconRobot,
+  IconPhotoPentagon as TablerIconPhotoPentagon,
+  IconPlayerPause as TablerIconPlayerPause,
+  IconPlayerSkipBack as TablerIconPlayerSkipBack,
+  IconPlayerSkipForward as TablerIconPlayerSkipForward,
+  IconPlug as TablerIconPlug,
+  IconPlus as TablerIconPlus,
+  IconPuzzle as TablerIconPuzzle,
+  IconSettingsFilled as TablerIconSettingsFilled,
+  IconShield as TablerIconShield,
+  IconSquare as TablerIconSquare,
+  IconSquareRotatedFilled as TablerIconSquareRotatedFilled,
+  IconStack2 as TablerIconStack2,
+  IconTrash as TablerIconTrash,
+  IconUser as TablerIconUser,
+  IconUserFilled as TablerIconUserFilled,
+  IconVolume as TablerIconVolume,
+  IconVolumeOff as TablerIconVolumeOff,
+  IconWand as TablerIconWand,
+  IconX as TablerIconX,
+  IconXFilled as TablerIconXFilled,
 } from '@tabler/icons-react';
 import { tabler } from './tabler';
 
@@ -17,22 +57,29 @@ type IconProps = { size?: number; strokeWidth?: number };
 
 // Iconos del árbol de jerarquía (andamiaje con Tabler, pendientes de que los
 // apruebes en ICONOS.md)
-export const BotIcon = tabler(TablerIconRobot, 'IconRobot');
+export const BotIcon = tabler(TablerIconUserFilled, 'IconUserFilled');
+export function UserCodeIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="7" r="4" fill="currentColor" stroke="none" />
+      <path d="M6 21v-2a4 4 0 0 1 4 -4h3.5" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  );
+}
+export const PuzzleIcon = tabler(TablerIconPuzzle, 'IconPuzzle');
+export const AdvanceCodeIcon = tabler(TablerIconFileCodeFilled, 'IconFileCodeFilled');
+export const TriangleAlertIcon = tabler(TablerIconAlertTriangleFilled, 'IconAlertTriangleFilled');
+export const LoaderIcon = tabler(TablerIconLoader2, 'IconLoader2');
+export const RotateCcwIcon = tabler(TablerIconArrowBack, 'IconArrowBack');
+export const SettingsIcon = tabler(TablerIconSettingsFilled, 'IconSettingsFilled');
+export const ArrowLeftIcon = tabler(TablerIconArrowNarrowLeftDashed, 'IconArrowNarrowLeftDashed');
 export const MessageSquareIcon = tabler(TablerIconMessage, 'IconMessage');
 export const FileTextIcon = tabler(TablerIconFileText, 'IconFileText');
 export const PaletteIcon = tabler(TablerIconPalette, 'IconPalette');
 
-export function WandIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 21l15 -15l-3 -3l-15 15l3 3" />
-      <path d="M15 6l3 3" />
-      <path d="M9 3a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2" />
-      <path d="M19 13a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2" />
-    </svg>
-  );
-}
-
+export const WandIcon = tabler(TablerIconWand, 'IconWand');
 export function PencilIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -42,33 +89,9 @@ export function PencilIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   );
 }
 
-export function SquareIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14" />
-    </svg>
-  );
-}
-
-export function HomeIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12.707 2.293l9 9c.63 .63 .184 1.707 -.707 1.707h-1v6a3 3 0 0 1 -3 3h-10a3 3 0 0 1 -3 -3v-6h-1c-.89 0 -1.337 -1.077 -.707 -1.707l9 -9a1 1 0 0 1 1.414 0" />
-      <path d="M8.5 12.5a1.5 1.5 0 0 1 1.5 -1.5h4a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1 -1.5 1.5h-4a1.5 1.5 0 0 1 -1.5 -1.5z" />
-    </svg>
-  );
-}
-
-export function GlobeIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" />
-      <ellipse cx="12" cy="12" rx="4" ry="9" />
-      <path d="M3 12h18" />
-    </svg>
-  );
-}
-
+export const SquareIcon = tabler(TablerIconSquare, 'IconSquare');
+export const HomeIcon = tabler(TablerIconHome2Filled, 'IconHome2Filled');
+export const GlobeIcon = tabler(TablerIconSquareRotatedFilled, 'IconSquareRotatedFilled');
 export function MoreVerticalIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -87,40 +110,9 @@ export function ArrowRightIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   );
 }
 
-export function PaintBucketIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 16l1.465 1.638a2 2 0 1 1 -3.015 .099l1.55 -1.737" />
-      <path d="M13.737 9.737c2.299 -2.3 3.23 -5.095 2.081 -6.245c-1.15 -1.15 -3.945 -.217 -6.244 2.082c-2.3 2.299 -3.231 5.095 -2.082 6.244c1.15 1.15 3.946 .218 6.245 -2.081" />
-      <path d="M7.492 11.818c.362 .362 .768 .676 1.208 .934l6.895 4.047c1.078 .557 2.255 -.075 3.692 -1.512c1.437 -1.437 2.07 -2.614 1.512 -3.692c-.372 -.718 -1.72 -3.017 -4.047 -6.895a6.015 6.015 0 0 0 -.934 -1.208" />
-    </svg>
-  );
-}
-
-export function MoveIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 9l3 3l-3 3" />
-      <path d="M15 12h6" />
-      <path d="M6 9l-3 3l3 3" />
-      <path d="M3 12h6" />
-      <path d="M9 18l3 3l3 -3" />
-      <path d="M12 15v6" />
-      <path d="M15 6l-3 -3l-3 3" />
-      <path d="M12 3v6" />
-    </svg>
-  );
-}
-
-export function PlusIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  );
-}
-
+export const PaintBucketIcon = tabler(TablerIconBucketDroplet, 'IconBucketDroplet');
+export const MoveIcon = tabler(TablerIconDirectionArrows, 'IconDirectionArrows');
+export const PlusIcon = tabler(TablerIconPlus, 'IconPlus');
 export function MinusIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -129,29 +121,8 @@ export function MinusIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   );
 }
 
-export function Link2Icon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M15 6.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0" />
-      <path d="M4 17.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0" />
-      <path d="M8.5 15.5l7 -7" />
-    </svg>
-  );
-}
-
-export function Grid3x3Icon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 6h18" />
-      <path d="M3 12h18" />
-      <path d="M3 18h18" />
-      <path d="M6 3v18" />
-      <path d="M12 3v18" />
-      <path d="M18 3v18" />
-    </svg>
-  );
-}
-
+export const Link2Icon = tabler(TablerIconPlug, 'IconPlug');
+export const Grid3x3Icon = tabler(TablerIconGrid3x3, 'IconGrid3x3');
 export function Grid2x2Icon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -227,37 +198,10 @@ export function WaveIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   );
 }
 
-export function VolumeIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12h-2c-.894 0 -1.662 -.857 -1.761 -2c-.296 -3.45 -.749 -6 -2.749 -6s-2.5 3.582 -2.5 8s-.5 8 -2.5 8s-2.452 -2.547 -2.749 -6c-.1 -1.147 -.867 -2 -1.763 -2h-2" />
-    </svg>
-  );
-}
-
 export function Pencil2Icon({ size = 14, strokeWidth = 1.5 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
       <path d="M12.085 6.5l5.415 5.415l-8.793 8.792a1 1 0 0 1 -.707 .293h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 .293 -.707zm5.406 -2.698a3.828 3.828 0 0 1 1.716 6.405l-.292 .293l-5.415 -5.415l.293 -.292a3.83 3.83 0 0 1 3.698 -.991" />
-    </svg>
-  );
-}
-
-export function EyeIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
-      <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" />
-    </svg>
-  );
-}
-
-export function EyeOffIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10.585 10.587a2 2 0 0 0 2.829 2.828" />
-      <path d="M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87" />
-      <path d="M3 3l18 18" />
     </svg>
   );
 }
@@ -287,3 +231,34 @@ export function CodeIcon({ size = 14, strokeWidth = 1.5 }: IconProps) {
     </svg>
   );
 }
+
+// Iconos del panel de jerarquía (component-list) y del radial menu
+export const EyeIcon = tabler(TablerIconEye, 'IconEye');
+export const EyeOffIcon = tabler(TablerIconEyeClosed, 'IconEyeClosed');
+export const VolumeIcon = tabler(TablerIconVolume, 'IconVolume');
+export const VolumeOffIcon = tabler(TablerIconVolumeOff, 'IconVolumeOff');
+export const FocusIcon = tabler(TablerIconFocus, 'IconFocus');
+export const XIcon = tabler(TablerIconXFilled, 'IconXFilled');
+export const CheckIcon = tabler(TablerIconCheck, 'IconCheck');
+export const ChevronDownIcon = tabler(TablerIconConeFilled, 'IconConeFilled');
+export const LayersIcon = tabler(TablerIconStack2, 'IconStack2');
+export const MapPinIcon = tabler(TablerIconMapPin, 'IconMapPin');
+export const UserIcon = tabler(TablerIconUser, 'IconUser');
+export const LinkIcon = tabler(TablerIconLink, 'IconLink');
+export const ShieldIcon = tabler(TablerIconShield, 'IconShield');
+
+// ── Iconos reutilizables (los usan varias pestañas) ────────────────────────────
+export const PauseIcon = tabler(TablerIconPlayerPause, 'IconPlayerPause');
+export const SkipBackIcon = tabler(TablerIconPlayerSkipBack, 'IconPlayerSkipBack');
+export const SkipForwardIcon = tabler(TablerIconPlayerSkipForward, 'IconPlayerSkipForward');
+export const TrashIcon = tabler(TablerIconTrash, 'IconTrash');
+export const OnionSkinIcon = tabler(TablerIconLayersIntersect, 'IconLayersIntersect');
+
+// ── Estados vacíos (elegidos en ICONOS.md) ────────────────────────────────────
+// Son iconos SOLO del lienzo sin selección: los wrappers genéricos de arriba
+// (PencilIcon, Grid3x3Icon, MusicIcon…) siguen intactos para los botones.
+export const MessageFilledIcon = tabler(TablerIconMessageFilled, 'IconMessageFilled');
+export const PhotoPentagonIcon = tabler(TablerIconPhotoPentagon, 'IconPhotoPentagon');
+export const ClefIcon = tabler(TablerIconClef, 'IconClef');
+export const HeadphonesFilledIcon = tabler(TablerIconHeadphonesFilled, 'IconHeadphonesFilled');
+export const AugmentedRealityIcon = tabler(TablerIconAugmentedReality, 'IconAugmentedReality');

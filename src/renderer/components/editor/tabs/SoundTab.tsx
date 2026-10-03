@@ -4,7 +4,16 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import { EmptyState } from '../EmptyState';
-import { VolumeIcon, PlusIcon, PlayIcon, StopIcon, WaveIcon, NoiseIcon } from './icons';
+import {
+  HeadphonesFilledIcon,
+  NoiseIcon,
+  PlayIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  StopIcon,
+  VolumeIcon,
+  WaveIcon,
+} from './icons';
 import { playGBASound, getAudioContext, loadAudioFileBuffer } from '../../../utils/gba_audio';
 import type { SoundEffect } from '../../../types/editor';
 
@@ -394,10 +403,10 @@ function SliderRow({ label, value, min, max, step, onChange, unit, defaultVal }:
           </span>
           {defaultVal !== undefined && value !== defaultVal && (
             <span onClick={() => onChange(defaultVal)}
-              style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 9, padding: '0 2px', opacity: 0.5 }}
+              style={{ cursor: 'pointer', color: 'var(--text-muted)', padding: '0 2px', opacity: 0.5, display: 'grid', placeItems: 'center' }}
               title="Restablecer"
             >
-              ↩
+              <RotateCcwIcon size={12} />
             </span>
           )}
         </div>
@@ -731,7 +740,7 @@ export function SoundTab() {
           >
             <EmptyState
               background="transparent"
-              icon={<VolumeIcon size={40} />}
+              icon={<HeadphonesFilledIcon size={40} />}
               title={sounds.length === 0 ? 'Sin efectos de sonido' : 'Sin sonido seleccionado'}
               hint="Arrastra archivos de audio aquí o impórtalos manualmente."
               action={

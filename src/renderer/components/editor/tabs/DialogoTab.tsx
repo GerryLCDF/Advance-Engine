@@ -1,3 +1,4 @@
+import { MessageFilledIcon, XIcon } from './icons';
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
@@ -253,9 +254,10 @@ export function DialogoTab() {
                           background: 'transparent', border: 'none',
                           color: 'var(--red)', cursor: 'pointer', fontSize: 14,
                           fontWeight: 700, padding: '2px 6px',
+                          display: 'grid', placeItems: 'center',
                         }}
                       >
-                        ✕
+                        <XIcon size={12} />
                       </button>
                     </div>
                   ))}
@@ -263,13 +265,13 @@ export function DialogoTab() {
               </div>
             ) : selectedDialogue ? (
               <EmptyState
-                icon={<PencilIcon size={40} />}
+                icon={<MessageFilledIcon size={40} />}
                 title="Sin página seleccionada"
                 hint="Elige una página del diálogo para editarla."
               />
             ) : (
               <EmptyState
-                icon={<PencilIcon size={40} />}
+                icon={<MessageFilledIcon size={40} />}
                 title={dialogues.length === 0 ? 'Sin diálogos' : 'Sin diálogo seleccionado'}
                 hint="Crea un diálogo desde el botón + o selecciona uno de la lista."
               />

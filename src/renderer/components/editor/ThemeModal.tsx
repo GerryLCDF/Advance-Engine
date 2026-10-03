@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useAppStore } from '../../store/useAppStore';
+import { XIcon } from './tabs/icons';
 
 interface Props {
   onClose: () => void;
@@ -92,9 +93,10 @@ export function ThemeModal({ onClose }: Props) {
               background: 'var(--bg-raised)', border: 'none', borderRadius: 4,
               color: 'var(--text-muted)', width: 24, height: 24,
               cursor: 'pointer', fontSize: 14, lineHeight: 1,
+              display: 'grid', placeItems: 'center',
             }}
           >
-            ✕
+            <XIcon size={14} />
           </button>
         </div>
 

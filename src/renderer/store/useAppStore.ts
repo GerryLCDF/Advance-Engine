@@ -3,16 +3,17 @@ import type { Project, ActiveScreen, LauncherTab, CreditEntry, TemplateId } from
 import type {
   EditorTab, Scene, SceneConnection, SpriteSheet, Background,
   Song, DialogueEntry, Actor, Animation, AnimationFrame,
-  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset, SoundEffect, ScriptMode, ScriptData,
+  BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset, SoundEffect, ScriptMode, ScriptData, TransitionConfig,
 } from '../types/editor';
 import { createCollisionMap, makeDefaultConnection, defaultSoundEffect } from '../types/editor';
-import type { GBAExportedActor, GBAExportedActorFrame } from '../utils/gba_export';
+import type { GBAExportedActor, GBAExportedActorFrame, GBAExportedSceneBundle, GBASceneTransition } from '../utils/gba_export';
+import { scriptEffectiveCCode, acodSkeleton } from '../utils/advanceCode';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
   { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
   { id: '2', name: 'Naomi rodiges', role: 'Design Consultant ', url: 'https://github.com', linkEnabled: false },
   { id: '3', name: 'Ian Tapia', role: 'Asistente de desarrollo', url: '', linkEnabled: false },
-  { id: '4', name: 'Lucide Icons', role: 'Iconos UI (ISC License, © 2026 Lucide Icons and Contributors)', url: 'https://lucide.dev', linkEnabled: true },
+  { id: '4', name: 'Tabler Icons', role: 'Iconos UI (MIT License, © 2024-2026 Paweł Kuna)', url: 'https://tabler.io/icons', linkEnabled: true },
 ];
 
 const DEMO_PROJECTS: Project[] = [
@@ -49,6 +50,7 @@ const defaultActor = (): Actor => ({
   x: 0, y: 0, width: 16, height: 16, z: 0,
   spriteId: '', animId: '',
   collider: false, colliderWidth: 16, colliderHeight: 16,
+  colliderOffsetX: 0, colliderOffsetY: 0,
   properties: {},
 });
 
@@ -337,6 +339,10 @@ interface AppState {
   gridLineOpacity: number;
   imageSmoothing: boolean;
   setImageSmoothing: (val: boolean) => void;
+  flatColors: boolean;
+  setFlatColors: (val: boolean) => void;
+  codeFontSize: number;
+  setCodeFontSize: (val: number) => void;
   setGridLineOpacity: (val: number) => void;
   mundoShowGrid: boolean;
   setMundoShowGrid: (val: boolean) => void;
@@ -503,6 +509,7 @@ interface GlobalSettings {
   mundoGridStrokeWidth: number; mundoGridColor: string;
   connColorOut: string; connColorIn: string; connStrokeWidth: number;
   clickAnimation: boolean; showGrid: boolean; gridLineOpacity: number; imageSmoothing: boolean;
+  flatColors: boolean; codeFontSize: number;
 }
 
 function loadGlobalSettings(): Partial<GlobalSettings> {
@@ -514,6 +521,251 @@ function loadGlobalSettings(): Partial<GlobalSettings> {
 }
 
 const _saved = loadGlobalSettings();
+
+// Tamaño de letra del editor de código (Ctrl+rueda); 9–26 px
+const CODE_FONT_MIN = 9;
+const CODE_FONT_MAX = 26;
+const clampFontSize = (v: number) =>
+  Math.max(CODE_FONT_MIN, Math.min(CODE_FONT_MAX, Math.round(v) || 12));
+
+// ── Transiciones de conexión (se reproducen al cambiar de escena) ─────────
+// Extraen el tileset y el gradiente de una transición (reutiliza el mismo
+// formato .h / conversión que las del splash) para que switchScene(n) use la
+// animación configurada en la conexión origen→destino.
+interface TransitionTileset {
+  cArray: string;
+  tileSize: number;
+  frames: number;
+  fw: number;
+  fh: number;
+  name: string;
+}
+
+interface TransitionGradient {
+  cArray: string;
+  w: number;
+  h: number;
+}
+
+async function extractTilesetForTransition(
+  transition: TransitionConfig | undefined,
+  fxAssets: FxAsset[],
+  log: { add: (m: string) => void },
+  label: string,
+): Promise<TransitionTileset | null> {
+  if (!transition?.tilesetId || !transition?.tileSize) {
+    log.add(`[WARN] ${label}: transicion sin tileset o tileSize`);
+    return null;
+  }
+  const asset = fxAssets.find((a) => a.id === transition.tilesetId);
+  if (!asset) {
+    log.add(`[WARN] ${label}: tileset ID "${transition.tilesetId}" no encontrado en assets`);
+    return null;
+  }
+  const api = window.advanceAPI;
+  const tileSize = transition.tileSize;
+  const valToMask = (n: number): number => {
+    const r = n & 0x1F, g = (n >> 5) & 0x1F, b = (n >> 10) & 0x1F;
+    return (r + g + b) >= 30 ? 1 : 0;
+  };
+  const buildPixelFrameArray = (frameData: number[][]): string => {
+    const lines: string[] = [];
+    for (let y = 0; y < frameData.length; y++) {
+      lines.push('    {' + frameData[y].map((v) => (v ? '0x7FFF' : '0x0000')).join(',') + '}');
+    }
+    return '{\n' + lines.join(',\n') + '\n  }';
+  };
+  const buildFrames = (srcVals: number[], sw: number, sh: number, cols: number, rows: number): { cArray: string; fw: number; fh: number } => {
+    const totalFrames = cols * rows;
+    const fw = sw / cols;
+    const fh = sh / rows;
+    const frameArrays: string[] = [];
+    for (let f = 0; f < totalFrames; f++) {
+      const fCol = f % cols;
+      const fRow = Math.floor(f / cols);
+      const frameData: number[][] = [];
+      for (let py = 0; py < fh; py++) {
+        const row: number[] = [];
+        for (let px = 0; px < fw; px++) {
+          const srcIdx = (fRow * fh + py) * sw + (fCol * fw + px);
+          row.push(srcVals[srcIdx] || 0);
+        }
+        frameData.push(row);
+      }
+      frameArrays.push(`  // Frame ${f}\n  ${buildPixelFrameArray(frameData)}`);
+    }
+    return { cArray: `static const u16 gTilesetPixel[${totalFrames}][${fh}][${fw}] = {\n${frameArrays.join(',\n')},\n};`, fw, fh };
+  };
+  try {
+    let cArray: string | undefined;
+    let fw = 0, fh = 0, frames = 0;
+    if (asset.hFilePath) {
+      const hRead = await api.file.readText(asset.hFilePath);
+      if (hRead.success && hRead.data) {
+        const hd = hRead.data;
+        const wMatch = hd.match(/#define\s+TILESET_W\s+(\d+)/);
+        const hMatch = hd.match(/#define\s+TILESET_H\s+(\d+)/);
+        const cMatch = hd.match(/#define\s+TILESET_COLS\s+(\d+)/);
+        const rMatch = hd.match(/#define\s+TILESET_ROWS\s+(\d+)/);
+        const dMatch = hd.match(/tilesetData\[\d+\]\s*=\s*\{([\s\S]*?)\};/);
+        if (wMatch && hMatch && cMatch && rMatch && dMatch) {
+          const sw = parseInt(wMatch[1]);
+          const sh = parseInt(hMatch[1]);
+          const cols = parseInt(cMatch[1]);
+          const rows = parseInt(rMatch[1]);
+          const hexVals = dMatch[1].replace(/\s+/g, '').split(',').filter(Boolean);
+          const srcVals = hexVals.map((s) => { const n = parseInt(s.trim(), 16); return isNaN(n) ? 0 : valToMask(n); });
+          const built = buildFrames(srcVals, sw, sh, cols, rows);
+          cArray = built.cArray; fw = built.fw; fh = built.fh; frames = cols * rows;
+          log.add(`${label}: usado .h pre-generado "${asset.hFilePath.split(/[\\/]/).pop()}" (${sw}x${sh})`);
+        } else {
+          log.add(`[WARN] ${label}: .h sin tilesetData valido, fallback a conversion`);
+        }
+      } else {
+        log.add(`[WARN] ${label}: no se pudo leer .h, fallback a conversion`);
+      }
+    }
+    if (!cArray) {
+      const gbaResult = await api.file.convertImageToGbaBase64Exact(asset.filePath);
+      if (gbaResult.success && gbaResult.base64) {
+        const binaryStr = atob(gbaResult.base64);
+        const sw = gbaResult.width!;
+        const sh = gbaResult.height!;
+        const cols = asset.cols;
+        const rows = asset.rows;
+        const srcVals: number[] = [];
+        for (let y = 0; y < sh; y++) {
+          for (let x = 0; x < sw; x++) {
+            const idx = (y * sw + x) * 2;
+            srcVals.push(valToMask((binaryStr.charCodeAt(idx + 1) << 8) | binaryStr.charCodeAt(idx)));
+          }
+        }
+        const built = buildFrames(srcVals, sw, sh, cols, rows);
+        cArray = built.cArray; fw = built.fw; fh = built.fh; frames = cols * rows;
+        log.add(`${label}: tileset convertido (${sw}x${sh}, ${cols}x${rows} frames)`);
+      } else {
+        log.add(`[WARN] ${label}: falló conversión del tileset — ${gbaResult.reason || 'desconocido'}`);
+      }
+    }
+    if (!cArray) return null;
+    return { cArray, tileSize, frames, fw, fh, name: asset.name };
+  } catch (err: any) {
+    log.add(`[WARN] ${label}: error — ${String(err)}`);
+    return null;
+  }
+}
+
+async function extractGradientForTransition(
+  transition: TransitionConfig | undefined,
+  fxAssets: FxAsset[],
+  log: { add: (m: string) => void },
+  label: string,
+): Promise<TransitionGradient | null> {
+  const gradId = transition?.gradientId;
+  if (!gradId) return null;
+  const asset = fxAssets.find((a) => a.id === gradId);
+  if (!asset) {
+    log.add(`[WARN] ${label}: gradiente "${gradId}" no encontrado`);
+    return null;
+  }
+  const api = window.advanceAPI;
+  try {
+    let cArray: string | null = null;
+    let w = 0, h = 0;
+    if (asset.hFilePath) {
+      const hRead = await api.file.readText(asset.hFilePath);
+      if (hRead.success && hRead.data) {
+        const hd = hRead.data;
+        const wMatch = hd.match(/#define\s+GRADIENT_W\s+(\d+)/);
+        const hMatch = hd.match(/#define\s+GRADIENT_H\s+(\d+)/);
+        const dMatch = hd.match(/gradientData\[\d+\]\s*=\s*\{([\s\S]*?)\};/);
+        if (wMatch && hMatch && dMatch) {
+          w = parseInt(wMatch[1]);
+          h = parseInt(hMatch[1]);
+          const vals = dMatch[1].replace(/\s+/g, '').split(',').filter(Boolean).map((s) => parseInt(s.trim(), 10));
+          const rows: string[] = [];
+          for (let y = 0; y < h; y++) {
+            const rowVals: string[] = [];
+            for (let x = 0; x < w; x++) rowVals.push(String(vals[y * w + x] ?? 0));
+            rows.push('    {' + rowVals.join(',') + '}');
+          }
+          cArray = '{\n' + rows.join(',\n') + '\n  }';
+          log.add(`${label}: degradado desde .h "${asset.hFilePath.split(/[\\/]/).pop()}" (${w}x${h})`);
+        }
+      }
+    }
+    if (!cArray) {
+      const gbaResult = await api.file.convertImageToGbaBase64Exact(asset.filePath);
+      if (gbaResult.success && gbaResult.base64) {
+        const binaryStr = atob(gbaResult.base64);
+        w = gbaResult.width!;
+        h = gbaResult.height!;
+        const rows: string[] = [];
+        for (let y = 0; y < h; y++) {
+          const vals: string[] = [];
+          for (let x = 0; x < w; x++) {
+            const idx = (y * w + x) * 2;
+            const val = (binaryStr.charCodeAt(idx + 1) << 8) | binaryStr.charCodeAt(idx);
+            const r = val & 0x1F, g = (val >> 5) & 0x1F, b = (val >> 10) & 0x1F;
+            vals.push(String(Math.round(((r + g + b) * 255) / 93)));
+          }
+          rows.push('    {' + vals.join(',') + '}');
+        }
+        cArray = '{\n' + rows.join(',\n') + '\n  }';
+        log.add(`${label}: degradado convertido ${w}x${h}`);
+      }
+    }
+    if (!cArray) return null;
+    return { cArray, w, h };
+  } catch (err: any) {
+    log.add(`[WARN] ${label}: error — ${String(err)}`);
+    return null;
+  }
+}
+
+async function buildConnectionTransitions(
+  state: { sceneConnections?: SceneConnection[]; fxAssets: FxAsset[]; scenes: Scene[] },
+  log: { add: (m: string) => void },
+): Promise<GBASceneTransition[]> {
+  const out: GBASceneTransition[] = [];
+  const sceneIds = new Set(state.scenes.map((s) => s.id));
+  for (const conn of state.sceneConnections ?? []) {
+    if (!sceneIds.has(conn.fromSceneId) || !sceneIds.has(conn.toSceneId)) continue;
+    const tr = conn.entryTransition;
+    const base = { fromSceneId: conn.fromSceneId, toSceneId: conn.toSceneId };
+    if (!tr || tr.type === 'instant') {
+      out.push({ ...base, name: conn.label || '', type: 'instant', durationSec: 0 });
+      continue;
+    }
+    if (tr.type === 'fade') {
+      out.push({ ...base, name: conn.label || '', type: 'fade', durationSec: tr.duration || 0.5 });
+      continue;
+    }
+    const label = `Conexion "${conn.label || `${conn.fromSceneId}->${conn.toSceneId}`}"`;
+    const ts = await extractTilesetForTransition(tr, state.fxAssets, log, label);
+    const gr = await extractGradientForTransition(tr, state.fxAssets, log, label);
+    if (ts) {
+      out.push({
+        ...base,
+        name: conn.label || ts.name || '',
+        type: 'custom',
+        durationSec: tr.animSpeed || tr.duration || 5,
+        tilesetCArray: ts.cArray,
+        tileSize: ts.tileSize,
+        frames: ts.frames,
+        fw: ts.fw,
+        fh: ts.fh,
+        gradientCArray: gr?.cArray ?? null,
+        gradientW: gr?.w,
+        gradientH: gr?.h,
+      });
+    } else {
+      log.add(`[WARN] ${label}: transicion custom sin tileset valido → fade`);
+      out.push({ ...base, name: conn.label || '', type: 'fade', durationSec: tr.duration || 0.5 });
+    }
+  }
+  return out;
+}
 
 export const useAppStore = create<AppState>((set, get) => ({
   // ── Navegación ─────────────────────────────────────────────────────────
@@ -686,6 +938,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   gridLineOpacity: _saved.gridLineOpacity ?? 0.08,
   setGridLineOpacity: (val) => set({ gridLineOpacity: val }),
   imageSmoothing: _saved.imageSmoothing ?? false,
+  flatColors: _saved.flatColors ?? false,
+  setFlatColors: (val) => set({ flatColors: val }),
+  codeFontSize: clampFontSize(_saved.codeFontSize ?? 12),
+  setCodeFontSize: (val) => set({ codeFontSize: clampFontSize(val) }),
   setImageSmoothing: (val) => set({ imageSmoothing: val }),
   mundoShowGrid: _saved.mundoShowGrid ?? true,
   setMundoShowGrid: (val) => set({ mundoShowGrid: val }),
@@ -790,7 +1046,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         log.add(`[WARN] Splash: sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
       }
 
-      // ── Scene target after splash ─────────────────────────────────────
+      // ── Bundles de escena para el export (multi-escena) ───────────────
+      // Convierte una escena del editor en su bundle: imagen (o color sólido),
+      // colisión+cámara, canción y actores ya relativos a la cámara de esa
+      // escena. El orden de `state.scenes` define el índice de switchScene(n).
       let sceneCArray: string | undefined;
       let sceneColor: string | undefined;
       let sceneCollisionMap: number[][] | undefined;
@@ -799,157 +1058,186 @@ export const useAppStore = create<AppState>((set, get) => ({
       let sceneCamY: number | undefined;
       let sceneSong: Song | undefined;
       let actorsExport: GBAExportedActor[] = [];
-      if (state.splashScreen?.nextSceneId) {
-        const targetScene = state.scenes.find((s) => s.id === state.splashScreen.nextSceneId);
-        if (targetScene) {
-          sceneColor = targetScene.backgroundColor || '#000000';
-          sceneCamX = targetScene.cameraX || 0;
-          sceneCamY = targetScene.cameraY || 0;
-          if (targetScene.collisionMap?.length && targetScene.collisionMap[0]?.length) {
-            sceneCollisionMap = targetScene.collisionMap;
-            sceneCollisionTileSize = targetScene.collisionTileSize || 8;
-          }
-          const imgPath = targetScene.backgroundImage;
-          if (imgPath) {
-            try {
-              const api = window.advanceAPI;
-              const hasCamera = (targetScene.cameraX || 0) !== 0 || (targetScene.cameraY || 0) !== 0 || targetScene.width > 240 || targetScene.height > 160;
-              let gbaResult;
-              if (hasCamera) {
-                log.add(`Escena "${targetScene.name}": recortando fondo en cámara (${targetScene.cameraX},${targetScene.cameraY})...`);
-                gbaResult = await api.file.cropImageToGbaBase64(imgPath, targetScene.cameraX || 0, targetScene.cameraY || 0);
-              }
-              if (!hasCamera || !gbaResult?.success) {
-                log.add(`Escena "${targetScene.name}": redimensionando fondo...`);
-                gbaResult = await api.file.convertImageToGbaBase64(imgPath);
-              }
-              if (gbaResult.success && gbaResult.base64) {
-                const binaryStr = atob(gbaResult.base64);
-                const values: string[] = [];
-                for (let i = 0; i < binaryStr.length; i += 2) {
-                  const lo = binaryStr.charCodeAt(i);
-                  const hi = binaryStr.charCodeAt(i + 1);
-                  const val = (hi << 8) | lo;
-                  values.push(`0x${val.toString(16).padStart(4, '0')}`);
-                }
-                const lines: string[] = [];
-                for (let i = 0; i < values.length; i += 16) {
-                  lines.push('  ' + values.slice(i, i + 16).join(', '));
-                }
-                sceneCArray = '{\n' + lines.join(',\n') + '\n}';
-                log.add(`Escena "${targetScene.name}": array C generado (${values.length} u16)`);
-              } else {
-                log.add(`[WARN] Escena "${targetScene.name}": falló conversión — ${gbaResult.reason || 'desconocido'}`);
-              }
-            } catch (err: any) {
-              log.add(`[WARN] Escena "${targetScene.name}": error — ${String(err)}`);
-            }
-          } else {
-            log.add(`Escena "${targetScene.name}": sin imagen de fondo, se usará color sólido`);
-          }
-          // ── Scene background music ──────────────────────────────────────
-          if (targetScene.backgroundSong) {
-            const found = state.songs.find((s) => s.id === targetScene.backgroundSong);
-            if (found) {
-              sceneSong = found;
-              log.add(`Canción de escena: "${found.name}" (${found.patterns.length} patrones)`);
-            } else {
-              log.add(`[WARN] backgroundSong "${targetScene.backgroundSong}" no encontrada entre las canciones`);
-            }
-          }
-          if (targetScene.backgroundSoundId) {
-            const found = state.sounds.find((s) => s.id === targetScene.backgroundSoundId);
-            log.add(`[WARN] Sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
-          }
+      const sheetCache = new Map<string, { base64: string; width: number; height: number }>();
+      async function buildSceneBundle(scene: Scene): Promise<GBAExportedSceneBundle> {
+        const color = scene.backgroundColor || '#000000';
+        const camX = scene.cameraX || 0;
+        const camY = scene.cameraY || 0;
+        let imageCArray: string | undefined;
+        let collisionMap: number[][] | undefined;
+        let song: Song | undefined;
+        const actors: GBAExportedActor[] = [];
 
-          // ── Actores de la escena (sprites software OVERLAY) ────────────
-          actorsExport = [];
-          if (targetScene.actors?.length) {
-            const camX = targetScene.cameraX || 0;
-            const camY = targetScene.cameraY || 0;
-            const sheetCache = new Map<string, { base64: string; width: number; height: number }>();
-            for (const actor of targetScene.actors) {
-              if (!actor.spriteId) {
-                log.add(`[WARN] Actor "${actor.name}" sin spritesheet: omitido en export GBA`);
-                continue;
-              }
-              const sheet = (state.spriteSheets ?? []).find((s) => s.id === actor.spriteId);
-              if (!sheet) {
-                log.add(`[WARN] Actor "${actor.name}": spritesheet "${actor.spriteId}" no encontrado`);
-                continue;
-              }
-              const api = window.advanceAPI;
-              let raw = sheetCache.get(sheet.tilesetPath);
-              if (!raw) {
-                const gbaResult = await api.file.convertImageToGbaBase64ExactAlpha(sheet.tilesetPath);
-                if (gbaResult.success && gbaResult.base64 && gbaResult.width && gbaResult.height) {
-                  raw = { base64: gbaResult.base64, width: gbaResult.width, height: gbaResult.height };
-                  sheetCache.set(sheet.tilesetPath, raw);
-                } else {
-                  log.add(`[WARN] Actor "${actor.name}": no se pudo leer tileset "${sheet.name}" — ${gbaResult.reason || 'desconocido'}`);
-                  continue;
-                }
-              }
-              const binaryStr = atob(raw.base64);
-              const imgW = raw.width;
-              const cols = sheet.cols || 1;
-              const tw = sheet.tileWidth || 8;
-              const th = sheet.tileHeight || 8;
-              let anim = sheet.animations.find((an) => an.id === actor.animId);
-              if (!anim) anim = sheet.animations[0];
-              if (!anim) {
-                log.add(`[WARN] Actor "${actor.name}": spritesheet "${sheet.name}" sin animaciones`);
-                continue;
-              }
-              const frameList = anim.frames.length ? anim.frames.slice(0, 32) : [anim.frames[0]].filter(Boolean);
-              if (!frameList.length) {
-                log.add(`[WARN] Actor "${actor.name}": animación "${anim.name}" sin frames`);
-                continue;
-              }
-              if (anim.frames.length > 32) {
-                log.add(`[WARN] Actor "${actor.name}": animación "${anim.name}" tiene ${anim.frames.length} frames, se exportan los primeros 32 (MAX_ACTOR_FRAMES)`);
-              }
-              const speedFac = anim.speed && anim.speed > 0 ? anim.speed : 1;
-              const frames: GBAExportedActorFrame[] = frameList.map((f) => {
-                const ti = f.tileIndex || 0;
-                const tc = ti % cols;
-                const tr = Math.floor(ti / cols);
-                const pixels: number[] = [];
-                for (let py = 0; py < th; py++) {
-                  for (let px = 0; px < tw; px++) {
-                    const srcIdx = ((tr * th + py) * imgW + (tc * tw + px)) * 2;
-                    if (srcIdx + 1 >= binaryStr.length) { pixels.push(0x8000); continue; }
-                    const lo = binaryStr.charCodeAt(srcIdx);
-                    const hi = binaryStr.charCodeAt(srcIdx + 1);
-                    const val = (hi << 8) | lo;
-                    if (val & 0x8000) pixels.push(0x8000); // transparencia via canal alpha del PNG
-                    else pixels.push(val & 0x7FFF);
-                  }
-                }
-                return { w: tw, h: th, pixels };
-              });
-              const delays = frameList.map((f) => Math.max(1, Math.round((f.duration || 100) * 60 / 1000 / speedFac)));
-              actorsExport.push({
-                name: actor.name,
-                x: Math.round(actor.x - camX),
-                y: Math.round(actor.y - camY),
-                z: actor.z || 0,
-                w: tw,
-                h: th,
-                mode: anim.mode || 'loop',
-                frames,
-                delays,
-                collider: !!actor.collider,
-                colliderW: actor.colliderWidth,
-                colliderH: actor.colliderHeight,
-                scriptId: actor.scriptId || undefined,
-              });
-              log.add(`Actor "${actor.name}": ${tw}x${th}, ${frames.length} frames (${anim.name}), z=${actor.z || 0}`);
+        if (scene.collisionMap?.length && scene.collisionMap[0]?.length) {
+          collisionMap = scene.collisionMap;
+        }
+        const imgPath = scene.backgroundImage;
+        if (imgPath) {
+          try {
+            const api = window.advanceAPI;
+            const hasCamera = camX !== 0 || camY !== 0 || scene.width > 240 || scene.height > 160;
+            let gbaResult;
+            if (hasCamera) {
+              log.add(`Escena "${scene.name}": recortando fondo en cámara (${camX},${camY})...`);
+              gbaResult = await api.file.cropImageToGbaBase64(imgPath, camX, camY);
             }
+            if (!hasCamera || !gbaResult?.success) {
+              log.add(`Escena "${scene.name}": redimensionando fondo...`);
+              gbaResult = await api.file.convertImageToGbaBase64(imgPath);
+            }
+            if (gbaResult.success && gbaResult.base64) {
+              const binaryStr = atob(gbaResult.base64);
+              const values: string[] = [];
+              for (let i = 0; i < binaryStr.length; i += 2) {
+                const lo = binaryStr.charCodeAt(i);
+                const hi = binaryStr.charCodeAt(i + 1);
+                const val = (hi << 8) | lo;
+                values.push(`0x${val.toString(16).padStart(4, '0')}`);
+              }
+              const lines: string[] = [];
+              for (let i = 0; i < values.length; i += 16) {
+                lines.push('  ' + values.slice(i, i + 16).join(', '));
+              }
+              imageCArray = '{\n' + lines.join(',\n') + '\n}';
+              log.add(`Escena "${scene.name}": array C generado (${values.length} u16)`);
+            } else {
+              log.add(`[WARN] Escena "${scene.name}": falló conversión — ${gbaResult.reason || 'desconocido'}`);
+            }
+          } catch (err: any) {
+            log.add(`[WARN] Escena "${scene.name}": error — ${String(err)}`);
           }
         } else {
-          log.add(`[WARN] nextSceneId "${state.splashScreen.nextSceneId}" no coincide con ninguna escena`);
+          log.add(`Escena "${scene.name}": sin imagen de fondo, se usará color sólido`);
         }
+        // ── Música de fondo de la escena ──────────────────────────────────
+        if (scene.backgroundSong) {
+          const found = state.songs.find((s) => s.id === scene.backgroundSong);
+          if (found) {
+            song = found;
+            log.add(`Canción de escena "${scene.name}": "${found.name}" (${found.patterns.length} patrones)`);
+          } else {
+            log.add(`[WARN] backgroundSong "${scene.backgroundSong}" no encontrada entre las canciones`);
+          }
+        }
+        if (scene.backgroundSoundId) {
+          const found = state.sounds.find((s) => s.id === scene.backgroundSoundId);
+          log.add(`[WARN] Escena "${scene.name}": sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
+        }
+        // ── Actores de la escena (sprites software OVERLAY) ───────────────
+        if (scene.actors?.length) {
+          for (const actor of scene.actors) {
+            if (!actor.spriteId) {
+              log.add(`[WARN] Actor "${actor.name}" sin spritesheet: omitido en export GBA`);
+              continue;
+            }
+            const sheet = (state.spriteSheets ?? []).find((s) => s.id === actor.spriteId);
+            if (!sheet) {
+              log.add(`[WARN] Actor "${actor.name}": spritesheet "${actor.spriteId}" no encontrado`);
+              continue;
+            }
+            const api = window.advanceAPI;
+            let raw = sheetCache.get(sheet.tilesetPath);
+            if (!raw) {
+              const gbaResult = await api.file.convertImageToGbaBase64ExactAlpha(sheet.tilesetPath);
+              if (gbaResult.success && gbaResult.base64 && gbaResult.width && gbaResult.height) {
+                raw = { base64: gbaResult.base64, width: gbaResult.width, height: gbaResult.height };
+                sheetCache.set(sheet.tilesetPath, raw);
+              } else {
+                log.add(`[WARN] Actor "${actor.name}": no se pudo leer tileset "${sheet.name}" — ${gbaResult.reason || 'desconocido'}`);
+                continue;
+              }
+            }
+            const binaryStr = atob(raw.base64);
+            const imgW = raw.width;
+            const cols = sheet.cols || 1;
+            const tw = sheet.tileWidth || 8;
+            const th = sheet.tileHeight || 8;
+            let anim = sheet.animations.find((an) => an.id === actor.animId);
+            if (!anim) anim = sheet.animations[0];
+            if (!anim) {
+              log.add(`[WARN] Actor "${actor.name}": spritesheet "${sheet.name}" sin animaciones`);
+              continue;
+            }
+            const frameList = anim.frames.length ? anim.frames.slice(0, 32) : [anim.frames[0]].filter(Boolean);
+            if (!frameList.length) {
+              log.add(`[WARN] Actor "${actor.name}": animación "${anim.name}" sin frames`);
+              continue;
+            }
+            if (anim.frames.length > 32) {
+              log.add(`[WARN] Actor "${actor.name}": animación "${anim.name}" tiene ${anim.frames.length} frames, se exportan los primeros 32 (MAX_ACTOR_FRAMES)`);
+            }
+            const speedFac = anim.speed && anim.speed > 0 ? anim.speed : 1;
+            const frames: GBAExportedActorFrame[] = frameList.map((f) => {
+              const ti = f.tileIndex || 0;
+              const tc = ti % cols;
+              const tr = Math.floor(ti / cols);
+              const pixels: number[] = [];
+              for (let py = 0; py < th; py++) {
+                for (let px = 0; px < tw; px++) {
+                  const srcIdx = ((tr * th + py) * imgW + (tc * tw + px)) * 2;
+                  if (srcIdx + 1 >= binaryStr.length) { pixels.push(0x8000); continue; }
+                  const lo = binaryStr.charCodeAt(srcIdx);
+                  const hi = binaryStr.charCodeAt(srcIdx + 1);
+                  const val = (hi << 8) | lo;
+                  if (val & 0x8000) pixels.push(0x8000); // transparencia via canal alpha del PNG
+                  else pixels.push(val & 0x7FFF);
+                }
+              }
+              return { w: tw, h: th, pixels };
+            });
+            const delays = frameList.map((f) => Math.max(1, Math.round((f.duration || 100) * 60 / 1000 / speedFac)));
+            actors.push({
+              name: actor.name,
+              x: Math.round(actor.x - camX),
+              y: Math.round(actor.y - camY),
+              z: actor.z || 0,
+              w: tw,
+              h: th,
+              mode: anim.mode || 'loop',
+              frames,
+              delays,
+              collider: !!actor.collider,
+              colliderW: actor.colliderWidth,
+              colliderH: actor.colliderHeight,
+              colliderOffsetX: actor.colliderOffsetX ?? 0,
+              colliderOffsetY: actor.colliderOffsetY ?? 0,
+              hasArea: !!actor.hasArea,
+              areaW: actor.areaWidth,
+              areaH: actor.areaHeight,
+              areaOffsetX: actor.areaOffsetX ?? 0,
+              areaOffsetY: actor.areaOffsetY ?? 0,
+              scriptId: actor.scriptId || undefined,
+            });
+            log.add(`Actor "${actor.name}": ${tw}x${th}, ${frames.length} frames (${anim.name}), z=${actor.z || 0}`);
+          }
+        }
+        return {
+          id: scene.id, name: scene.name, imageCArray, color, collisionMap,
+          collisionTileSize: scene.collisionTileSize || 8, camX, camY, actors,
+        };
+      }
+
+      // Bundle de TODAS las escenas (índice = orden del editor, el que usa
+      // switchScene(n) en la ROM). El bundle de la escena tras el splash
+      // además alimenta las variables históricas de escena usadas abajo.
+      const allSceneBundles: GBAExportedSceneBundle[] = [];
+      let startBundle: GBAExportedSceneBundle | undefined;
+      for (const sc of state.scenes) {
+        const b = await buildSceneBundle(sc);
+        allSceneBundles.push(b);
+        if (sc.id === state.splashScreen?.nextSceneId) startBundle = b;
+      }
+      if (startBundle) {
+        sceneCArray = startBundle.imageCArray;
+        sceneColor = startBundle.color;
+        sceneCollisionMap = startBundle.collisionMap;
+        sceneCollisionTileSize = startBundle.collisionTileSize;
+        sceneCamX = startBundle.camX;
+        sceneCamY = startBundle.camY;
+        sceneSong = startBundle.song;
+        actorsExport = startBundle.actors;
+      } else if (state.splashScreen?.nextSceneId) {
+        log.add(`[WARN] nextSceneId "${state.splashScreen.nextSceneId}" no coincide con ninguna escena`);
       }
 
       // ── Entry transition tileset ──────────────────────────────────────
@@ -1431,6 +1719,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         log.add('Degradado de salida: no configurado');
       }
 
+      const sceneTransitions = await buildConnectionTransitions(
+        { sceneConnections: state.sceneConnections, fxAssets: state.fxAssets, scenes: state.scenes },
+        log,
+      );
+      if (sceneTransitions.length) {
+        log.add(`Transiciones de conexion: ${sceneTransitions.length} configurada(s) para switchScene`);
+      }
+
       const cCode = generateGBAProject({
         scenes: state.scenes,
         sceneConnections: state.sceneConnections,
@@ -1446,7 +1742,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
         entryGradientCArray, entryGradientW, entryGradientH,
         entryTransitionType, exitTransitionType,
-        sceneCollisionMap, sceneCollisionTileSize, sceneCamX, sceneCamY, actorsExport);
+        sceneCollisionMap, sceneCollisionTileSize, sceneCamX, sceneCamY, actorsExport,
+        { scenes: allSceneBundles, startSceneId: state.splashScreen?.nextSceneId ?? '', transitions: sceneTransitions });
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
       const buildDir = `${projectDir}/build`;
@@ -1727,6 +2024,9 @@ addActor: (sceneId, overrides) => {
       ),
     }));
   },
+  // ── Áreas (rectángulos con nombre que los scripts consultan) ───────────
+  // El nombre es la clave que usa el script: actor_in_area("puerta"), etc.
+  // Por eso se autogenera único por escena (area2, area3…) si no se pasa uno.
   sceneConnections: [],
   addConnection: (fromSceneId, toSceneId) => {
     get()._snapshotMundo();
@@ -2227,15 +2527,27 @@ addActor: (sceneId, overrides) => {
   scripts: [],
   addScript: (mode = 'blocks') => {
     const id = Date.now().toString();
+// El esqueleto ofrece las DOS primitivas de movimiento del motor. Descomenta
+// la que te sirva: topdown (laberinto/RPG) o plataformas (gravedad + salto).
+// Ninguna es obligatoria — si prefieres mover gSelf a mano, borra esto.
 const skeletonC = `void script_update(void) {
-  GBAActor* p = gSelf;
   u16 keys = ~REG_KEYINPUT & 0x3FF;
-  if (keys & (1 << 4)) moveActorCollide(p, 2, 0);   // Right
-  if (keys & (1 << 5)) moveActorCollide(p, -2, 0);  // Left
-  if (keys & (1 << 6)) moveActorCollide(p, 0, -2);  // Up
-  if (keys & (1 << 7)) moveActorCollide(p, 0, 2);   // Down
+
+  // 4 direcciones, sin gravedad. Para laberintos, RPG o menús.
+  moveTopDown(gSelf, keys);
+
+  // Plataformas: gravedad, salto con margen y salto variable.
+  // (descomenta esto y comenta moveTopDown si es un plataformas)
+  // movePlatformer(gSelf, keys);
 }`;
-    set((s) => ({ scripts: [...s.scripts, { id, name: 'Nuevo script', mode, blocks: [], language: '', cCode: mode === 'c' ? skeletonC : '' }], selectedNodeId: id }));
+// Esqueleto AdvanceCode: el canónico de advanceCode.ts (evita duplicar el
+// ejemplo; muestra primitivas de movimiento, input.* y hooks de área).
+const skeletonACod = acodSkeleton();
+    set((s) => ({ scripts: [...s.scripts, {
+      id, name: 'Nuevo script', mode, blocks: [],
+      language: mode === 'language' ? skeletonACod : '',
+      cCode: mode === 'c' ? skeletonC : '',
+    }], selectedNodeId: id }));
     return id;
   },
   updateScript: (id, patch) => set((s) => ({
@@ -2269,6 +2581,7 @@ useAppStore.subscribe((state) => {
     connColorOut: state.connColorOut, connColorIn: state.connColorIn,
     connStrokeWidth: state.connStrokeWidth, clickAnimation: state.clickAnimation,
     showGrid: state.showGrid, gridLineOpacity: state.gridLineOpacity, imageSmoothing: state.imageSmoothing,
+    flatColors: state.flatColors, codeFontSize: state.codeFontSize,
   });
   if (json !== _prevSettingsJson) {
     _prevSettingsJson = json;

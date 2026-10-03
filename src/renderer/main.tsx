@@ -42,6 +42,12 @@ function applyThemeVars(bgPanel: string, accent: string, fontSize: number) {
   root.style.setProperty('--app-font-size', `${fontSize}px`);
 }
 
+const ACCENT_GRADIENT = 'linear-gradient(135deg, var(--accent), var(--accent-light))';
+
+function applyFlatColors(flat: boolean) {
+  document.documentElement.style.setProperty('--accent-fill', flat ? 'var(--accent)' : ACCENT_GRADIENT);
+}
+
 function adjustColor(hex: string, factor: number) {
   const num = parseInt(hex.slice(1), 16);
   const r = Math.max(0, Math.min(255, ((num >> 16) & 0xff) + Math.round(255 * factor)));
@@ -62,6 +68,7 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
   const themeBgPanel = useAppStore((s) => s.themeBgPanel);
   const themeAccent = useAppStore((s) => s.themeAccent);
   const fontSize = useAppStore((s) => s.fontSize);
+  const flatColors = useAppStore((s) => s.flatColors);
 
   // Load saved theme on mount
   useEffect(() => { loadSavedTheme(); }, []);
@@ -71,6 +78,9 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
     applyThemeVars(themeBgPanel, themeAccent, fontSize);
     saveTheme();
   }, [themeBgPanel, themeAccent, fontSize]);
+
+  // Degradado de acento o color plano (Ajustes → General → Colores planos)
+  useEffect(() => { applyFlatColors(flatColors); }, [flatColors]);
 
   return <>{children}</>;
 }

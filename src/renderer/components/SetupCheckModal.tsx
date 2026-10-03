@@ -1,3 +1,4 @@
+import { CheckIcon, XIcon, LoaderIcon } from './editor/tabs/icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 
@@ -100,8 +101,8 @@ export function SetupCheckModal({ onClose }: { onClose: () => void }) {
             background: r.ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
             borderRadius: 8, border: `1px solid ${r.ok ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
           }}>
-            <span style={{ fontSize: 16, marginTop: 1 }}>
-              {checking ? '⏳' : r.ok ? '✓' : '✗'}
+            <span style={{ marginTop: 1, display: 'grid', placeItems: 'center', color: r.ok ? '#4ade80' : '#f87171' }}>
+              {checking ? <LoaderIcon size={16} /> : r.ok ? <CheckIcon size={16} /> : <XIcon size={16} />}
             </span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, color: r.ok ? '#4ade80' : '#f87171', fontSize: 13 }}>
@@ -183,7 +184,10 @@ export function SetupCheckModal({ onClose }: { onClose: () => void }) {
             border: '1px solid rgba(34,197,94,0.2)',
             fontSize: 12, color: '#4ade80',
           }}>
-            ✓ Todo listo para exportar ROMs GBA.
+            <span style={{ color: '#4ade80', display: 'inline-grid', placeItems: 'center', verticalAlign: '-2px', marginRight: 4 }}>
+              <CheckIcon size={13} />
+            </span>
+            Todo listo para exportar ROMs GBA.
           </div>
         )}
 

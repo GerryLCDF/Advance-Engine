@@ -1,3 +1,4 @@
+import { SettingsIcon } from '../components/editor/tabs/icons';
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore, selectProjects } from '../store/useAppStore';
@@ -154,7 +155,7 @@ export function TodosProyectosScreen() {
               }}
               title="Editar"
             >
-              ⚙
+              <SettingsIcon size={16} />
             </motion.button>
           </motion.div>
         ))}

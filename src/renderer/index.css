@@ -13,6 +13,10 @@
   --accent-light:   #a78bfa;
   --accent-lighter: #c4a0f0;
   --accent-dark:    #3a1a7a;
+  /* Relleno de acento: degradado (por defecto) o color plano si el usuario
+     lo activa en Ajustes → General → Colores planos. Lo sobreescribe
+     applyFlatColors() en main.tsx. */
+  --accent-fill:    linear-gradient(135deg, var(--accent), var(--accent-light));
 
   /* ── Derived UI ────────────────────────────────────────────────────── */
   --bg-raised:      #3a3a42;
@@ -99,3 +103,19 @@ body {
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Panel de jerarquía: filas ────────────────────────────────────────────
+   El fondo y el borde de la fila viven aquí (y no en el style inline) para
+   poder usar :hover sin mutar el DOM a mano: así React nunca queda con un
+   valor desincronizado y la fila no puede quedar "pegada" marcada. */
+.hp-row {
+  border: 1px solid transparent;
+  background: transparent;
+}
+.hp-row:hover:not([data-selected='true']):not([data-editing='true']) {
+  background: var(--bg-raised);
+}
+.hp-row[data-selected='true'] {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}

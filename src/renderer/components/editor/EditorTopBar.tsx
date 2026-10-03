@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MinusIcon, PlayIcon, SquareIcon, StopIcon, XIcon } from './tabs/icons';
 import { motion } from 'framer-motion';
 import { useAppStore } from '../../store/useAppStore';
 import type { EditorTab } from '../../types/editor';
@@ -157,6 +158,12 @@ export function EditorTopBar() {
       const ctrl = e.ctrlKey || e.metaKey;
       const tab = useAppStore.getState().editorTab;
       if (ctrl && e.key === 's') { e.preventDefault(); useAppStore.getState().saveProject(); return; }
+      // Con el foco en un campo editable manda el campo (copiar, pegar, cortar,
+      // seleccionar todo, borrar y el undo propio del campo). Sin esta guarda
+      // el preventDefault de más abajo mataba el portapapeles y la tecla
+      // Supr/Retroceso en TODA la app, no solo en el canvas.
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+        || e.target instanceof HTMLSelectElement || (e.target as HTMLElement | null)?.isContentEditable) return;
       if (ctrl && e.key === 'z') {
         e.preventDefault();
         if (tab === 'sprite') { useAppStore.getState().spriteUndo(); }
@@ -307,9 +314,9 @@ export function EditorTopBar() {
 
         {/* Window controls */}
         <div style={{ display: 'flex', gap: 2, paddingRight: 6, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <WinBtn label="─" onClick={() => win?.minimize()} />
-          <WinBtn label="□" onClick={() => win?.maximize()} />
-          <WinBtn label="✕" onClick={() => win?.close()} danger />
+          <WinBtn label={<MinusIcon size={12} />} onClick={() => win?.minimize()} />
+          <WinBtn label={<SquareIcon size={11} />} onClick={() => win?.maximize()} />
+          <WinBtn label={<XIcon size={11} />} onClick={() => win?.close()} danger />
         </div>
       </div>
 
@@ -422,7 +429,7 @@ export function EditorTopBar() {
               marginRight: 4,
             }}
           >
-            ▶ PLAY
+            <span style={{ display: 'grid', placeItems: 'center', marginRight: 4 }}><PlayIcon size={11} /></span>PLAY
           </motion.button>
           <motion.button
             whileHover={{ scale: 1.04 }}
@@ -439,7 +446,7 @@ export function EditorTopBar() {
               cursor: 'pointer',
             }}
           >
-            ■ STOP
+            <span style={{ display: 'grid', placeItems: 'center', marginRight: 4 }}><StopIcon size={11} /></span>STOP
           </motion.button>
         </div>
       </div>
@@ -528,7 +535,7 @@ function ExportMenuItem({ label, onClick, divider }: { label: string; onClick?: 
   );
 }
 
-function WinBtn({ label, onClick, danger }: { label: string; onClick?: () => void; danger?: boolean }) {
+function WinBtn({ label, onClick, danger }: { label: React.ReactNode; onClick?: () => void; danger?: boolean }) {
   return (
     <button
       onClick={onClick}

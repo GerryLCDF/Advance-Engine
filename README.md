@@ -189,7 +189,21 @@ Advance Engine puede generar una ROM `.gba` directamente desde el editor:
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.50.0**
+Definida en `src/version.ts` — semver. Actual: **0.51.0**
+
+### v0.51.0 — Panel de jerarquía con look de component-list + iconos Tabler
+- **Nuevo `HierarchyPanel`**: mismo look que el componente `component-list` (filas tipo tarjeta con chip de icono, encabezado con contador y colapsar, framer-motion en el expand/collapse), pero conservando el árbol completo: secciones, hijos anidados, grupos `isHeader`, renombrado en línea, menú contextual y eliminar al hover. Fila compacta de 34px y colores del tema (`--bg-raised`, `--accent`, `--text-secondary`), sin los colores hardcodeados del demo.
+- **`RowIconButton`** exportado: botón de icono de 22px con estado activo (degradado de `--accent`), `danger` para eliminar y tooltip. Basis de los toggles estándar.
+- **Toggles por ítem**: `toggles: { eye, solo, mute }` con `dimmed` para atenuar filas.
+  - Music: los toggles de canal (visible/solo/mute) pasan de letras "S"/"M" a iconos, y las filas se atenúan cuando hay un canal en solo.
+  - Imagen: el ojo de las capas pasa a botón y la fila se atenúa si la capa está oculta.
+- **Iconos aplicados de `ICONOS.md`**: los que elegiste ya son Tabler (el SVG viejo se borró): cerrar `IconXFilled`, ajustes `IconSettingsFilled`,desplegables `IconConeFilled`, aviso `IconAlertTriangleFilled`, mover `IconDirectionArrows`, colisión `IconSquare`/`IconGrid3x3`, relleno `IconBucketDroplet`, escena `IconSquareRotatedFilled`, splash `IconHome2Filled`, actor `IconUserFilled`, conectar `IconPlug`, ojo `IconEye`/`IconEyeClosed`, restablecer `IconArrowBack`, y en la jerarquía de Scripting: Bloques = pieza de rompecabezas, AdvanceCode = `IconFileCodeFilled`. También se eliminaron los glifos de texto sueltos (`✕`, `⚙`, `⚠`, `↩`, `▲▼`) y los botones de las barras de Mundo, que eran `✥ + 🔗 ▦ ▤ ⌾ ▢ ✎ ×`.
+- **Un solo origen de iconos**: `@tabler/icons-react` (wrapper `tabler()` que traduce `size`/`strokeWidth`). `lucide-react` desinstalado, radial menu migrado a Tabler y créditos actualizados.
+- **Ajustes → General → Colores planos**: interruptor que cambia los rellenos de acento del panel (chip del icono de la fila y botones de ojo/solo/mute activados) entre degradado (por defecto) y color plano. Se implementa con la variable CSS `--accent-fill` (`main.tsx:applyFlatColors`), así que un solo ajuste manda en todos los sitios.
+- **Deshacer/rehacer en el editor de C Directo**: `Ctrl+Z` y `Ctrl+Y` (o `Ctrl+Shift+Z`) con historial propio, agrupando lo escrito seguido en un solo paso e incluyendo los snippets y el auto-cierre de llaves (que el undo del navegador perdía).
+- **Zoom en el editor de C Directo**: `Ctrl` + rueda del ratón agranda o achica el texto (9–26 px, se recuerda entre sesiones). El gutter y el interlineado se ajustan con la letra y hay un indicador de porcentaje en la barra de snippets (clic para volver al 100%).
+- **Resaltado de sintaxis en el editor de C Directo**: tokenizador propio (sin dependencias) pintado sobre un `<pre>` detrás del textarea — comentarios, `#include`, cadenas, números, palabras clave, tipos de devkitARM (`u8`, `s16`…) y la API del motor (`gSelf`, `moveActorCollide`, `REG_KEYINPUT`…).
+- **Confirmación al eliminar**: el `✕` de cada fila pregunta "¿Eliminar?" con `✓` / `✕` antes de borrar, como en el `component-list` original. El SplashScreen de Mundo va con `removable: false` (no se puede borrar) y el estado vacío "Sin elementos" ya no dibuja el recuadro punteado.
 
 ### v0.50.0 — Scripting y estados vacíos unificados
 - **Pestaña Scripting**: sistema de código con tres modos (Bloques / Mi Lenguaje / C Directo). C Directo es el único funcional por ahora: editor con gutter, auto-indent, autocierre de delimitadores y snippets; los scripts se asignan a actores (escena → actor) desde el inspector y solo se exportan si están asignados.

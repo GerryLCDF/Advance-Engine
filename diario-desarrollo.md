@@ -760,3 +760,241 @@ Las 4 elegidas son provisionales: en `ICONOS.md` dejé los `{}` vacíos (los va 
 Tests: `npx tsc --noEmit -p tsconfig.json` y `npm run build:renderer` limpios.
 
 `src/version.ts`: 0.50.1 -> 0.50.2
+
+## 26 Septiembre 2026 — v0.51.0 Panel de jerarquía con el look de component-list
+
+El usuario me apuntó `/home/gerardo/Documentos/animaciones` como referencia: el componente `component-list` de esa galería (lista de tarjetas con reordenación, chips de icono, botones solo/mute/ojo/eliminar y encabezado con contador) le interesa sobre todo por los **botones por fila activables**, porque en Music ya existía ese estado (canales con visible/solo/muted) pero dibujado a mano con letras "S" y "M". El radial menu ya lo teníamos copiado de ahí, así que no era el que estaba buscando.
+
+Antes de tocar nada saqué una rama: `nuevo-menu`, con un checkpoint del estado previo (0.50.2) para poder volver atrás si se rompe.
+
+Qué cambié:
+
+- `HierarchyPanel.tsx` reescrito por dentro, con la MISMA API pública, para que las ocho pestañas no tocaran código: `sections`, `items`, `children`, nodos `isHeader`, `selectedId`, `onSelect`, `onRemove`, `onContextMenu`, `editingId`/`onRename`, `onDoubleClick`, `removable`, `actions`, `subtitle`, `color`.
+  - Del demo tomé la estructura: encabezado con chevron + título + contador + acciones + botón agregar, fila tipo tarjeta con chip de icono, y framer-motion en el expand/collapse (altura + opacidad, 0.14s).
+  - Del demo NO tomé el `Reorder.Group` ni el grip: el arrastre de escenas es en el canvas y meter un drag dentro del panel se pelearía. Tampoco el texto grande de "N de M componentes" porque nuestro panel es angosto (~220px).
+  - Fila compacta de 34px (el demo usa 52px y en 220px entran muy pocas filas) y chip de 22px.
+  - Colores: fuera todos los hex sueltos (`#666`, `#555`, `#c4a0f0`, `#2a2a30`, y los `#00a86b`/`#191919`/`#212121` del demo). Ahora todo pasa por `--bg-raised`, `--bg-splitter`, `--accent`, `--text`, `--text-secondary`, `--text-muted`. La selección cambió de "texto morado" a fila con tinte de acento y borde de acento.
+- `RowIconButton` exportado desde `HierarchyPanel.tsx`: botón de 22px, estado activo con degradado de `--accent`, variante `danger` (rojo al hover) para eliminar, tooltip y `whileTap` de framer-motion.
+- API nueva para no repetir markup:
+  - `HierarchyItem.toggles?: { eye?, solo?, mute? }` — el panel pinta los botones estándar.
+  - `HierarchyItem.dimmed?: boolean` — atenúa la fila (0.42).
+  - `HierarchySection.subtitle?: string`.
+- Music: los `<span>` con letras "S"/"M" y el ojo bespoke se reemplazaron por `toggles` sobre el mismo `toggleChannel`/`channelStates` (la lógica no se tocó), y las filas que no están en solo se atenúan cuando hay un solo activo.
+- Imagen: el ojo de las capas sale del slot `icon` y pasa a `toggles.eye`; la fila se atenúa si la capa está oculta y el chip ahora es `LayersIcon`.
+- Iconos: instalé `@tabler/icons-react` (ya estaba) y **desinstalé `lucide-react`**. Migré el radial menu (MundoTab usaba `MapPin, User, Link2, Shield` de lucide) a `IconMapPin`, `IconUser`, `IconLink`, `IconShield`, y cambié el tipo `LucideIcon` por el tipo `Icon` de Tabler en `RadialMenu.tsx`. `EyeIcon`, `EyeOffIcon` y `VolumeIcon` dejaron de ser SVG propios y ahora son wrappers. En `tabler.tsx` tuve que ampliar `size`/`strokeWidth` a `string | number` porque el tipo `Icon` de Tabler acepta las dos.
+- Créditos: la entrada de Lucide en `DEFAULT_CREDITS` pasó a Tabler (MIT).
+- `ICONOS.md`: secciones nuevas para los iconos del panel y del radial menu, con el `{}` vacío y anotando qué nombre provisional usé, para que el usuario los cambie si quiere.
+
+Tests: `npx tsc --noEmit -p tsconfig.json`, `npm run build:renderer` y `npm run build:electron` limpios. No pude tomar captura (no hay navegador headless en la máquina), así que el look final lo revisa el usuario con `npm run dev`.
+
+Pendiente del usuario: los nombres que ya llenó en `ICONOS.md` (IconXFilled, IconConeFilled, IconBucketDroplet, IconPlugConnected...) — todavía NO los apliqué a los SVG viejos; solo apliqué los provisionales del panel y del radial.
+
+`src/version.ts`: 0.50.2 -> 0.51.0
+
+## 26 Septiembre 2026 — v0.51.0 ajustes de Panel de jerarquía (colores planos, confirmar borrado, splash sin X)
+
+El usuario probó el panel nuevo (`nuevo-menu`) y pidió cuatro cosas "gráficas", tal cual:
+
+1. **Opción de color plano o degradado en Ajustes → General.** En el `component-list` del que copiamos el look había un flag `flat` que apagaba los degradados, así que lo metí como ajuste global y no como cosa del panel: store `flatColors` (persistido en `advance-engine-settings` con el resto de ajustes globales) y `main.tsx:applyFlatColors()` escribiendo la variable CSS `--accent-fill` en `:root`. El panel la usa en los dos únicos sitios con degradado (el chip del icono de la fila seleccionada y el fondo de los `RowIconButton` activos). Radial menu lo dejo como estaba porque ya tenía su `solid` por ítem. Por defecto sigue el degradado, que es lo que había.
+2. **Que el `✕` pregunte antes de eliminar.** El `component-list` traía esa confirmación. La metí como `confirmId` en el panel en vez de `window.confirm` (que es lo que usa ScriptingTab) porque el nativo bloquea el renderer y se ve feo: la fila se convierte en "¿Eliminar?" con `✓` (rojo al hover, `danger`) y `✕` para cancelar. `CheckIcon` es wrapper nuevo de Tabler (`IconCheck`, que es justo lo que había puesto en ICONOS.md).
+3. **El SplashScreen de Mundo sin `✕`.** El panel solo pinta el botón si `removable !== false`, y Mundo no lo tenía puesto, así que el `onRemove` del splash era un no-op silencioso: `removable: false` y listo.
+4. **El vacío sin recuadro punteado.** "Sin elementos" ahora es solo texto (`--text-muted` 10px centrado), sin el `border: 1px dashed`.
+
+De paso, dos bugs que vi al revisar: el toggle de mute pintaba el icono invertido (`on` = mute, pero mostraba el altavoz encendido) y el `disabled` de `RowIconButton` solo bajaba la opacidad pero aún disparaba el `onClick`. Ambos corregidos.
+
+Y un third que me colé yo: para arreglar "la fila se queda marcada" puse un `useRef` + `useEffect` **dentro de `renderNode`**, que se llama en bucle, y React aploó con "Rendered more hooks than during the previous render" (reventó el panel entero). Dos cosas:
+
+1. Los hooks solo pueden vivir al principio de `HierarchyPanel`; `renderNode` es una función normal que se llama por cada ítem. Fuera.
+2. El hover de la fila ya no se pinta mutando `e.currentTarget.style.background` en `onMouseEnter/Leave`. Eso deja el DOM fuera de lo que React cree y por eso la fila podía quedarse con el tinte de hover pegado. Ahora el fondo y el borde viven en `index.css` (`.hp-row`, `.hp-row:hover:not([data-selected='true']):not([data-editing='true'])`, `.hp-row[data-selected='true']`) y la fila solo pone `className` + `data-selected`/`data-editing`. Cero estado, cero staleness.
+
+`src/version.ts`: sigue en 0.51.0 (mismo bloque de trabajo, aún sin commitear).
+
+## 26 Septiembre 2026 — Colores en el editor de C Directo
+
+El usuario preguntó si se podía colorear donde se escribe código. La opción "gorda" era meter CodeMirror o Monaco, pero el editor que ya teníamos es un `<textarea>` propio con gutter, tab/auto-indent y snippets; cambiarlo por una librería me trae por debajo la barra (atajos, undo, IME) y mete ~300 kB. Así que fui por la técnica clásica: un `<pre>` con el texto coloreado detrás del `<textarea>` con `color: transparent` y `caretColor` visible.
+
+- `src/renderer/components/editor/codeHighlight.ts`: tokenizador de C en una pasada, sin dependencias. Cubre `//` y `/* */`, preprocesador (`#include <gba.h>` pinta la cabecera aparte), cadenas y caracteres con escapes, números (hex, bin, exponente, sufijos), palabras clave de C, tipos de devkitARM (`u8`, `s8`, `u16`, `s16`, `u32`, `s32`…), la API del motor (`gActors`, `gSelf`, `PLAYER_INDEX`, `REG_KEYINPUT`, `moveActorCollide`, `movePlayer`, `noteOn`…) y cualquier llamada a función (identificador seguido de `(`). Un `/*` sin cerrar se come hasta el final, como en cualquier editor.
+- Lo probé aparte con esbuild + node (el repo no tiene runner de tests) y revisé a mano la salida de tokens para comentarios, `#include`, chars con escape (`'\n'`, `'\''`), cadenas con comilla escapada y números.
+- En `ScriptingTab`, el `<pre>` y el `<textarea>` comparten un objeto `CODE_METRICS` (mismo font-family, 12px, line-height 16px, `white-space: pre`, `tabSize: 2`, padding `10px 12px`) para que no se descuadre ni una línea.
+- El scroll se sincroniza con `transform: translate(-scrollLeft, -scrollTop)` en el `<pre>`, NO con `scrollTop`: el `<pre>` va con `overflow` visible y es el contenedor (`overflow: hidden`) el que recorta; si le pongo `overflow: hidden` al `<pre>` se comería las líneas largas.
+- El gutter sigue funcionando (sigue siendo `.code-gutter` hermano del textarea dentro del mismo div).
+
+Paleta One Dark sobre el fondo `#0d0d14` del editor, en `TOKEN_COLOR`.
+
+## 26 Septiembre 2026 — Los iconos NO se aplicaban (el bug de verdad)
+
+El usuario avisó: «los iconos de grid, paint bucket y eso no se aplican». Ten��a razón, y la causa era más tonta de lo que parecía: **los wrappers sí estaban cambiados, pero nadie los usaba**. `Grid3x3Icon`, `PaintBucketIcon`, `SquareIcon`, `MoveIcon` y `WandIcon` estaban importados en MundoTab y **no aparecían en ni un solo JSX**; los botones de la barra de herramientas seguían siendo texto: `✥` (mover), `+` (agregar escena), `🔗` (conectar), `▦` (colisión), `▤` (bote), `⌾` (barita), `▢` (cuadro), `✎` (pincel) y `×` (cerrar el panel de colisiones).
+
+O sea: yo había hecho el cambio correcto en la capa equivocada. Cambiar la definición de los wrappers solo sirve si el call site **renderiza** ese wrapper. Por eso el `WandIcon` sí se veía (lo usa el EmptyState de Sprite) pero el bote y el grid no.
+
+Lo que hice: sustituir cada glifo por su componente en la barra principal y en la del panel de colisiones (que tenía las mismas herramientas duplicadas con títulos ligeramente distintos: "Barita" vs "Varita", por eso el replace(global) no enganchaba a la primera y tuve que cubrir las dos variantes). El `+` de "agregar escena" también era `+` de texto y ahora es `PlusIcon`. El botón de cerrar del panel de colisiones (`×`) pasó a `XIcon` con `display:grid; placeItems:center`, porque un SVG no se centra como un carácter.
+
+El `✎` (pincel de dibujar colisión) no estaba en ICONOS.md. Al final usé `PencilIcon` (IconPencil) — es el mismo glifo de lápiz que ya habías elegido para renombrar/editar, y dejarlo como texto entre cuatro iconos de Tabler se veía peor. Si prefieres otro, es una línea.
+
+Los `▲▼` de MusicTab siguen siendo texto a propósito: son indicadores de scroll del grid, no desplegables.
+
+Comprobación: 0 apariciones de `✥ ▦ ▢ ▤ ⌾ 🔗 ✎` en todo el renderer. `tsc`, `build:renderer` y `build:electron` pasan.
+
+Lección: al migrar iconos hay que buscar los **glifos** (`grep -F` por carácter), no los nombres de los wrappers. Un import que no se usa es la señal de que el call site sigue siendo texto.
+
+## 26 Septiembre 2026 — Los mismos iconos en el menú de opciones emergentes
+
+Petición: «esos mismos iconos que sean los que aparecen en el menu de opciones emergentes». O sea, que el radial menu de Mundo use los mismos iconos que los botones de la barra, no los suyos (MapPin/User/Link/Shield, que además tenían `{}` sin elegir en ICONOS.md).
+
+Mapeo por concepto, que es 1:1 con la barra: Escena → `PlusIcon` (el «+ Agregar escena»), Actor → `BotIcon` (IconUserFilled), Link → `Link2Icon` (IconPlug), Colisiones → `Grid3x3Icon`. De paso el botón «Agregar actor» de la barra dejó de usar `UserIcon` (IconUser, outline) y pasó a `BotIcon`, porque la jerarquía ya usaba el relleno y ahora los tres sitios (jerarquía, botón y radial) pintan el mismo actor.
+
+Eso obligó a tres arreglos de fondo:
+
+1. **`tabler()` no reenviaba `color`.** El radial hace `<item.Icon color="#fff" strokeWidth={2.2} />`; nuestro wrapper solo aceptaba `size`/`strokeWidth`, así que el `color` se perdía y los iconos salían del color del texto (invisibles sobre el disco de color). Añadido `color` a `IconProps`.
+
+2. **`RadialMenuItem.Icon` estaba tipado como `Icon as TablerIconType`**, que es un `ForwardRefExoticComponent` con props propias: un wrapper nuestro no es asignable. Lo cambié por un tipo estructural (`RadialMenuIcon`) que acepta los dos.
+
+3. **La lógica estaba atada al icono**: `onRadialPick` comparaba `item.iconName === 'Shield'` / `'MapPin'` / `'Link2'` / `'User'`. O sea, el menú se rompía en silencio si cambiabas un icono (justo lo que pasó al unificar). Renombré el campo a `action` con valores semánticos (`scene`/`actor`/`link`/`collisions`): la acción ya no depende del dibujo. Es el mismo error de acoplamiento que el de los wrappers sin usar, pero por el otro lado.
+
+`MapPinIcon`, `UserIcon`, `LinkIcon` y `ShieldIcon` quedaron sin uso (los borro de los imports de MundoTab; los wrappers siguen exportados por si acaso, anotados en ICONOS.md). `tsc` + ambos builds pasan.
+
+## 26 Septiembre 2026 — Reutilizar los iconos que ya teníamos
+
+Petición: «los iconos que se utilizan en otros lados, o sea que se pueden reutilizar, como pause, stop, eye, eye close, etc». Es decir: cuando un concepto ya tiene icono en alguna parte de la app, se usa ese, no se inventa un glifo nuevo ni un emoji.
+
+Lo que había:
+
+- `EditorTopBar`: `▶ PLAY`, `■ STOP` y los botones de ventana `─` / `□` como texto.
+- `MundoTab`: el botón de animación era `'▶ Reproducir' : '⏸ Pausar'` (string con glifo dentro).
+- Zoom de ImagenTab/MusicTab/SpriteTab: `−` y `+` como texto.
+- `SettingsModal`: la sidebar usaba `⚙🎨🌐🌍` y el placeholder de cada sección `💻🎨🖼🎵🔊💬`, todo emoji.
+- `SpriteTab` tenía **12 SVG defined localmente** (Play, Pause, SkipBack, SkipForward, SkipStart, SkipEnd, ChevronLeft, ChevronRight, OnionSkin, Grid, Pencil, Trash), de los cuales 4 ni siquiera se usaban (SkipStart, SkipEnd, ChevronLeft, ChevronRight). Y `PencilIcon`/`PlayIcon` existían además en el índice común, o sea dos definiciones distintas del mismo icono.
+
+Qué hice: los glifos pasaron a los wrappers que ya existían (`PlayIcon`, `StopIcon`, `MinusIcon`, `SquareIcon`, `PlusIcon`) y añadí `PauseIcon` al índice. En Ajustes reutilicé el icono de cada pestaña en vez del emoji. Y borré los 12 SVG locales de SpriteTab: sus call sites importan del índice común, con wrappers nuevos `PauseIcon`=IconPlayerPause, `SkipBackIcon`/`SkipForwardIcon`, `TrashIcon`=IconTrash, `OnionSkinIcon`=IconLayersIntersect. El `GridIcon` local (cuadrícula del onion skin) se resolvió con `Grid3x3Icon`, que ya existía.
+
+Ojo con un detalle: el `PencilIcon` de SpriteTab era relleno (`fill="currentColor"`) y el del índice común es de trazo. Al unificar, el botón «Renombrar» de Sprite pasó a trazo, que es lo consistente con DialogoTab y MundoTab. Si prefieres el relleno para renombrar, se revierte en una línea.
+
+`tsc` + ambos builds pasan.
+
+## 26 Septiembre 2026 — Estados vacíos con sección propia en ICONOS.md
+
+Preguntó dónde estaba el apartado de los iconos que salen "cuando no hay nada seleccionado". El problema es que **no había apartado**: cada uno estaba anotado en la sección de su pestaña (Sprite, Imagen, Music, Sound, Dialogo, Scripting), seis líneas separadas. Ahora hay una sección única, «Estados vacíos (cuando no hay nada seleccionado)», con una fila por sitio, la ruta del archivo y el `{}` para elegir.
+
+En esa sección hay que distinguir dos wrappers por línea, y es el detalle que choca al editarla: el **genérico** (`PencilIcon`, `Grid3x3Icon`, `MusicIcon`, `VolumeIcon`, `WandIcon`) lo usan también los botones de la pestaña —«Renombrar», «bote», los toggles—, mientras que el del estado vacío es un wrapper **exclusivo** de ese `EmptyState`. Cambiar el `{Icon…}` del estado vacío no debe tocar el genérico, o «Renombrar» y compañía cambian de icono sin avisar.
+
+Los eligió y quedaron puestos: Dialogo → `MessageFilledIcon` (IconMessageFilled), Imagen → `PhotoPentagonIcon` (IconPhotoPentagon), Music → `ClefIcon` (IconClef), Sound → `HeadphonesFilledIcon` (IconHeadphonesFilled), Sprite → `AugmentedRealityIcon` (IconAugmentedReality). Los cinco verificados contra `@tabler/icons-react` antes de usarlos.
+
+Siguen sin icono: **Scripting** y **Mundo** (solo texto del inspector). Y ojo, el "nada seleccionado" del **inspector** es otro sitio: `InspectorPanel` muestra `emptyMessage="Selecciona un …"` (7 llamadas) y es solo texto, sin icono.
+
+`tsc` + ambos builds pasan.
+
+## 26 Septiembre 2026 — Minimapa en el editor de C
+
+Pidió poner «un preview al lado, como lo tienen la mayoría de editores de código». Se podría haber hecho un panel de documentación de la API, un preview del `main.c` generado o un mockup de la pantalla, pero lo que de verdad tiene casi todos los editores de código al lado del texto es el **minimapa**, así que fue eso. Pregunté antes de construir y eligió minimapa.
+
+Cómo quedó: columna de 56 px a la derecha del editor, con una barrita por línea. El ancho de la barrita es proporcional a lo larga que es la línea (tope de 100 caracteres, mínimo 2 px) y el color es el del primer token no vacío, con menos opacidad en comentarios y en texto plano: así se ve de un vistazo dónde están los bloques y dónde los comentarios, que es justo para lo que se usa un minimapa. Encima va el rectángulo claro con el borde de acento que marca la zona visible; clic o arrastre llevan esa línea al centro de la vista. Botón `minimapa` en la barra para apagarlo.
+
+Tres detalles que salieron por el camino y que costaron:
+
+- **El cursor no puede pasar por estado.** El `onScroll` del textarea ya mutaba el `<pre>` y el gutter directamente, sin re-render, a propósito: si no, cada scroll re-renderizaría los miles de `<span>` del resaltado y el editor iría a trompicones. El minimapa mantiene esa regla (`mmSync()` escribe `style.height` y `style.transform` del slider), y solo usa estado para el alto de las filas, que cambia pocas veces.
+- **El alto del panel se mide después del layout**, no antes: en el primer render `clientHeight` es 0 y el pitch daba 0. Va en `useLayoutEffect` y en **estado** y no en ref, porque un ref cambia sin re-renderizar y las filas se quedaban con el valor viejo.
+- **`preventDefault` en el `pointerdown`**: sin él, el clic en el minimapa saca el foco del textarea y se pierden las teclas justo en el momento en el que estás usando el minimapa. Pequeño detalle que se nota muchísimo.
+
+Además, un archivo largo no cabe: en vez de recortar (y que el clic apunte a la línea equivocada), las líneas se **comprimen** (`mmPitch` baja de 3 px hasta un mínimo de 3, no de 1) para que el archivo entero siga siendo navegable, igual que hace VS Code.
+
+Comprobado con simulación de la matemática (`/tmp/opencode/mm_sim.mjs`): anchos por línea, alto y posición del cursor para scroll 0 y scroll al final, y el mapeo del clic a línea. `tsc` + ambos builds pasan.
+
+## 26 Septiembre 2026 — Ctrl+C y Ctrl+V=dead en todo el editor
+
+Avisó de que copiar y pegar no funcionaban en el editor de C. No era culpa del minimapa: `EditorTopBar` mete un `keydown` en `window` para los atajos de proyecto, y en ese handler se hacía `preventDefault()` de `ctrl+x`, `ctrl+c`, `ctrl+v`, `ctrl+a` y `Delete` **sin mirar dónde estaba el foco**.
+
+Y aquí está lo tramposo: un `keydown` del textarea sube en burbuja hasta el window, así que ese `preventDefault()` se ejecutaba igualmente y **mataba la acción nativa** (copiar/pegar/cortar/seleccionar todo/borrar no son "acciones" que ocurran en el keydown, ocurren como efecto por defecto; si lo cancelas, no pasan). O sea que el arreglo no era "dejar pasar el Ctrl+C", era **no llamar a preventDefault cuando el foco está en un campo editable**.
+
+MundoTab, MusicTab y SoundTab ya tenían esa guarda al principio de su handler; `EditorTopBar` era el único que se la saltaba, y como la barra está montada en todas las pestañas, el fallo era global: renombrar, editar diálogo, escribir un nombre… nada de eso tenía portapapeles.
+
+La cura, al principio del handler y **después** de Ctrl+S:
+
+```
+if (ctrl && e.key === 's') { … guardar … return; }   // guardar sí funciona escribiendo
+if (target es INPUT/TEXTAREA/SELECT/contentEditable) return;   // manda el campo
+```
+
+De paso salió un bug que no había buscado: Ctrl+Z dentro de un campo ejecutaba **las dos** historias — la del editor de C (`stepHistory`) y el `undo()` del proyecto, porque el handler global estaba antes de cualquier guarda. Escribir código y deshacer movía escenas. Ahora cada campo deshace lo suyo.
+
+Comprobado con simulación del bubbling (`/tmp/opencode/keys_sim.mjs`): con foco en el textarea, `c/v/x/a/z` y Supr llegan sin `preventDefault` y Ctrl+S sigue guardando; con foco en el canvas, los atajos globales siguen haciendo lo suyo.
+
+`src/version.ts`: sigue en 0.51.0 (mismo bloque sin commitear).
+
+## 26 Septiembre 2026 — Zoom del editor de C con Ctrl+rueda
+
+Pidió "una forma de zoomear, Ctrl más la rueda del ratón". Ojo con el detalle técnico: el `onWheel` de React va montado en el root **como listener pasivo**, así que un `e.preventDefault()` dentro no sirve y el navegador se come el gesto (en Electron, además, dispara el zoom de la página). La solución fue un `addEventListener('wheel', …, { passive: false })` nativo sobre el contenedor del editor, con cleanup en el `useEffect`, y ahí sí el `preventDefault`.
+
+- Tamaño en el store como `codeFontSize` (9–26 px, default 12) con `clampFontSize()`, persistido en `advance-engine-settings` junto al resto de ajustes globales, así que el zoom se recuerda al cerrar y abrir la app. Ojo: es el tamaño del CATA, no el `fontSize` general de la interfaz.
+- El gutter tenía `fontSize: 12` y `CODE_LINE_HEIGHT: 16` fijos; ahora salen de `codeLineHeight(size) = size * 1.34` (misma proporción que 12/16) para que los números no se desalineen al hacer zoom.
+- `CODE_METRICS` era un objeto constante; ahora es `codeMetrics(size)` (mismo contenido) para que `<pre>` y `<textarea>` compartan métricas con el tamaño nuevo.
+- Indicador de porcentaje a la derecha de la barra de snippets, con clic para resetear a 100%.
+
+`src/version.ts`: sigue en 0.51.0 (mismo bloque sin commitear).
+
+## 26 Septiembre 2026 — Ctrl+Z / Ctrl+Y en el editor de C
+
+Pidió deshacer. El mensaje quedó a medias ("y"…) y asumí que el "y" era el redo, así que van los dos atajos: `Ctrl+Z` deshace, `Ctrl+Y` y `Ctrl+Shift+Z` rehacen.
+
+Por qué NO me fié del undo nativo del `<textarea>`: es un campo controlado (el valor vive en el store) y sobre todo cada insert de snippet, el Tab/Shift+Tab y el auto-cierre de llaves escriben el value por código, que es exactamente lo que limpia la pila de undo del navegador. O sea, deshacías el snippet y se comía lo que habías escrito antes.
+
+Implementación (`ScriptingTab:CodeEditor`):
+- Pila propia en una ref: `histRef = { stack: string[], index: number, at: number }`, tope de 200 entradas. No usa `useState` a propósito: solo se lee en los handlers, y así no re-renderiza el editor en cada tecla.
+- `setValue(v, typed)` es el único punto de escritura. Si `typed` y han pasado menos de 600 ms desde el último cambio, **sustituye** el tope de la pila en vez de apilar: escribir una línea entera es un solo Ctrl+Z, no 40 (como el undo por palabra de VS Code). Los snippets y los atajos de bloque pasan `typed=false` → paso propio.
+- `stepHistory(dir)` mueve el índice, escribe por el store y en el `requestAnimationFrame` devuelve el foco y coloca el cursor (limitado al largo del texto, para no petar si el undo borra mucho).
+- La pila se reinicia al cambiar de `script.id`.
+- Un paso hacia atrás más allá del inicio no hace nada (no revienta), y al editar tras deshacer se recorta la cola de redo (comportamiento estándar).
+
+Como el repo no tiene runner de tests, volqué la lógica del historial a una simulación en node y la pasé por 8 casos: agrupación de ráfaga, redo, undo en el tope, snippet tras deshacer, recorte de la cola, separación por pausa >600 ms y el tope de 200. Las dos primeras "fallas" eran expectativas mías mal puestas (esperaba que el undo volviera a un estado que el propio recorte de la cola ya había descartado); el código estaba bien.
+
+`src/version.ts`: sigue en 0.51.0 (mismo bloque sin commitear).
+
+## 26 Septiembre 2026 — Iconos de ICONOS.md aplicados
+
+El usuario pidió dos cosas: que en la jerarquía de Scripting el script de Bloques llevara una pieza de rompecabezas (el AdvanceCode lo dejó a medias con "un ...." y pasó a lo segundo), y que fuera aplicando los iconos que ya había puesto en `ICONOS.md`.
+
+Cómo lo abordé: en vez de cambiar los call sites, cambié la **definición** de cada wrapper en `tabs/icons/index.tsx`. Los call sites siguen llamando a `PlusIcon`, `HomeIcon`, etc. y no se tocan; lo único que cambia es qué Tabler hay detrás. Los 9 SVG legacy que elegiste (`Wand`, `Square`, `Home`, `Globe`, `PaintBucket`, `Move`, `Plus`, `Grid3x3`, `Link2`) se borraron y dejaron solo la línea `tabler(...)`. `BotIcon` pasó de `IconRobot` a `IconUserFilled` (había puesto user para el actor) y `EyeOffIcon` de `IconEyeOff` a `IconEyeClosed`. De paso quedaron limpios los imports que ya no se usaban (`IconRobot`, `IconEyeOff`, `IconChevronDown`).
+
+Wrappers nuevos, porque en la lista no les había puesto componente y eran glifos de texto: `RotateCcwIcon` (IconArrowBack), `SettingsIcon` (IconSettingsFilled), `ArrowLeftIcon` (IconArrowNarrowLeftDashed), `TriangleAlertIcon` (IconAlertTriangleFilled), `LoaderIcon` (IconLoader2), `PuzzleIcon` (IconPuzzle) y `AdvanceCodeIcon` (IconFileCodeFilled, el que dejó suelto al final del archivo).
+
+Ojo con los glifos: `ICONOS.md` listaba el ✕ en 8 sitios, pero muchos no eran un icono sino texto dentro de un botón (`<WinBtn label="✕">`). Para esos cambié `label: string` por `label: React.ReactNode` y pasé el icono como hijo. También añadí `display: grid; placeItems: center` donde el glifo estaba centrado con `textAlign`/`lineHeight`, porque un SVG no se centra igual que un carácter. Con eso quedan **0 apariciones de `✕`** en el renderer.
+
+Los desplegables de Mundo (`sceneDropdownOpen ? '▲' : '▼'`, 5 sitios) ahora son `ChevronDownIcon` con `transform: rotate(180deg)` cuando están abiertos. Ojo: los `▲`/`▼` de MusicTab NO los toqué, esos son indicadores de scroll del grid, no desplegables.
+
+Lo que dejé como estaba: los `✓` de texto dentro de listas de código en ScriptingTab, el `✓` de "Todo listo" (ese sí lo pasé a `CheckIcon`), los `⚠` dentro de frases de texto largo y el loader `⏳` de SetupCheckModal, que lo pasé a `IconLoader2` provisional. En la sidebar de Ajustes solo el `⚙` es componente; `🎨`, `🌐` y `🌍` siguen con su emoji porque en la lista siguen vacíos.
+
+`src/version.ts`: sigue en 0.51.0 (mismo bloque sin commitear).
+
+## 27 Septiembre 2026 — Estados vacíos, minimapa del editor y primitivas de movimiento
+
+Tres bloques en una sesión.
+
+### Estados vacíos con icono dedicado
+
+`ICONOS.md` seguía con una columna de componente vacía en la sección de estados vacíos de las cinco pestañas, así que elegí Tabler para cada una y apliqué el cambio en `tabs/icons/index.tsx` (otra vez en la definición, no en los call sites): Dialogo → `IconMessageFilled`, Imagen → `IconPhotoPentagon`, Music → `IconClef`, Sound → `IconHeadphonesFilled`, Sprite → `IconAugmentedReality`. Los cinco `EmptyState` ya existían; solo cambió el icono que reciben.
+
+### Minimapa del editor de C
+
+Columna de 56 px a la derecha del editor, con una barrita por línea del archivo. El ancho sale de `min(trimmed.length, 100)/100` y el color del primer token no vacío de la línea (los comentarios a 0.3 de opacidad, para que destaquen las líneas de código). Clic o arrastre → la línea tocada queda **centrada** en la vista.
+
+Dos detalles que costaron: el sincronizador muta `style.height`/`style.transform` del rectángulo desde el `onScroll` del textarea, porque si fuera estado de React cada scroll re-renderizaría los miles de `<span>` del resaltado. Y cuando el archivo no cabe entero hay que **comprimir** las filas (`max(3, min(3, floor(availH/n)))`) en vez de recortarlas, porque si no el clic apuntaría a la línea equivocada. `onPointerDown` va con `preventDefault()` para que el clic no saque el foco del textarea.
+
+### Coger el bug del portapapeles de paso
+
+`EditorTopBar` tenía un `keydown` en `window` con atajos de proyecto y hacía `preventDefault()` de `ctrl+x/c/v/a` y `Delete` **sin mirar dónde estaba el foco**. El `keydown` de un textarea sube en burbuja hasta el window, así que allí moría la acción nativa: en **ningún** campo de texto se podía copiar, pegar, cortar, seleccionar todo ni borrar. La cura es una guarda al principio del handler que devuelve si `e.target` es un input/textarea/select o `isContentEditable` (Ctrl+S se queda antes de la guarda, para poder guardar escribiendo en un campo). `MundoTab`/`MusicTab`/`SoundTab` ya tenían esa guarda; `EditorTopBar` era el único que se la saltaba. Efecto colateral bienvenido: Ctrl+Z dentro de un campo ya no dispara además el `undo()` del proyecto.
+
+### Primitivas de movimiento (lo gordo de la sesión)
+
+El usuario pedía bases de escenas para distinguir plataformas de topdown, pero al mirar el motor me di cuenta de que el nivel ya es el mapa de tiles y de que lo único que cambia entre un plataformas y un laberinto son **~40 líneas**. Así que en vez de un sistema de plantillas metí dos primitivas en el template: `moveTopDown` (4 direcciones, sin gravedad) y `movePlatformer` (gravedad + coyote time + jump buffer + salto variable, respetando one-way). Todo ajustable con `#define`.
+
+Dos bugs que solo aparecieron al ejecutar el C de verdad:
+
+- **Velocidad pegada al muro.** La primera versión hacía `if (a->vx) a->vy = 0;` queriendo limpiar la velocidad al chocar de lado. Pero eso (a) anulaba el movimiento vertical en diagonal y (b) no frenaba nada al bajar recto, porque bajando solo `vx == 0` y la condición no se cumplía nunca. Ahora se compara la posición antes/después por eje: `if (a->x == ox) a->vx = 0; if (a->y == oy) a->vy = 0;`.
+- **Rebote automático al mantener A.** `JUMP_BUFFER` era un `#define` muerto: `jumpBuf` contaba hasta 255 mientras A siguiera pulsado, así que mantener A rebotaba solo al aterrizar. Ahora el buffer se arma en el **flanco de pulsación** (campo `jumpHeld` por actor) y vale `JUMP_BUFFER` vsyncs: mantener A = un salto, soltar y volver a pulsar = otro.
+
+Y un aviso sobre el harness, que me costó un rato: `generateGBAProject` tiene 35 parámetros, y el `gen.cjs` de pruebas se había quedado corto en cuatro (los `Fw/Fh` de las dos transiciones). Como en JavaScript un argumento mal colocado no da error sino `undefined`, los actores llegaban como `collisionMap` y el `main.c` salía **sin primitivas y sin `solidTile`**. El síntoma era el log `[WARN] Script "salto" NO está asignado a ningún actor`; la pista buena fue que el `main.c` generado no contenía ni una vez `movePlatformer`. La lección: si el C generado sale incompleto, sospechar del orden de los argumentos antes que del template.
+
+Verificado sobre el C real (extraído del `main.c` a un test host con `gcc -Wall -Wextra`, no una reimplementación en JS): 10/10 en caída, altura de salto (55 px en 16 frames), one-way por encima y desde dentro, coyote time, subida a través del one-way, aceleración y frenada topdown, frenado contra suelo y contra muro, sin rebote manteniendo A y pulso anticipado. Ambas ramas (con mapa de colisiones y con el stub sin mapa) compilan con devkitARM y generan ROM.
+
+`PLAYER_SPEED` desapareció del template (era el define de la velocidad del D-pad, ya innecesario) y también del doc, junto con el ejemplo 6 que enseñaba a hacer a mano la gravedad que ahora hace `movePlatformer` en una línea.
+
+`src/version.ts`: sigue en 0.51.0 (mismo bloque sin commitear).

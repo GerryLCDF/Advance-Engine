@@ -8,9 +8,30 @@ import type { Scene, Actor, SplashScreen, SceneConnection, TransitionConfig, FxA
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
 import { imageDataUrlToTransitionHeader } from '../../../utils/transitionHeader';
 import { imageDataUrlToGradientHeader } from '../../../utils/transitionGradientHeader';
-import { MoveIcon, PlusIcon, MinusIcon, Link2Icon, Grid3x3Icon, Grid2x2Icon, PencilIcon, SquareIcon, WandIcon, HomeIcon, GlobeIcon, MoreVerticalIcon, ArrowRightIcon, PaintBucketIcon, BotIcon } from './icons';
+import {
+  ArrowRightIcon,
+  BotIcon,
+  ChevronDownIcon,
+  GlobeIcon,
+  Grid2x2Icon,
+  Grid3x3Icon,
+  HomeIcon,
+  Link2Icon,
+  MinusIcon,
+  MoreVerticalIcon,
+  MoveIcon,
+  PaintBucketIcon,
+  PauseIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  SquareIcon,
+  TriangleAlertIcon,
+  UserCodeIcon,
+  WandIcon,
+  XIcon,
+} from './icons';
 import RadialMenu, { type RadialMenuItem } from './RadialMenu';
-import { MapPin, User, Link2, Shield } from 'lucide-react';
 
 // ── Slope helpers ──────────────────────────────────────────────────────
 const SLOPE_DEFS: Record<number, number[]> = {
@@ -237,7 +258,7 @@ function TilesetSelector({
                   <span style={{ flex: 1, fontSize: 10, color: 'var(--text)' }}>{t.name}</span>
                   <button onClick={(e) => { e.stopPropagation(); useAppStore.getState().removeFxAsset(t.id); }}
                     style={{ padding: 0, width: 16, height: 16, background: 'transparent', color: '#ef4444', border: 'none', borderRadius: 2, fontSize: 11, lineHeight: '16px', textAlign: 'center', cursor: 'pointer' }}
-                    title="Eliminar tileset">✕</button>
+                    title="Eliminar tileset"><XIcon size={11} /></button>
                 </div>
               ))}
             </div>
@@ -492,7 +513,7 @@ function GradientSelector({
                   <span style={{ flex: 1, fontSize: 10, color: 'var(--text)' }}>{g.name}</span>
                   <button onClick={(e) => { e.stopPropagation(); useAppStore.getState().removeFxAsset(g.id); }}
                     style={{ padding: 0, width: 16, height: 16, background: 'transparent', color: '#ef4444', border: 'none', borderRadius: 2, fontSize: 11, lineHeight: '16px', textAlign: 'center', cursor: 'pointer' }}
-                    title="Eliminar degradado">✕</button>
+                    title="Eliminar degradado"><XIcon size={11} /></button>
                 </div>
               ))}
             </div>
@@ -890,10 +911,10 @@ export function MundoTab() {
   useEffect(() => () => window.clearTimeout(radialTimer.current), []);
 
   const radialItems = useMemo<RadialMenuItem[]>(() => [
-    { label: 'Escena', Icon: MapPin, iconName: 'MapPin', color: themeAccent },
-    { label: 'Actor', Icon: User, iconName: 'User', color: themeAccent },
-    { label: 'Link', Icon: Link2, iconName: 'Link2', color: themeAccent },
-    { label: 'Colisiones', Icon: Shield, iconName: 'Shield', color: themeAccent },
+    { label: 'Escena', Icon: PlusIcon, action: 'scene', color: themeAccent },
+    { label: 'Actor', Icon: BotIcon, action: 'actor', color: themeAccent },
+    { label: 'Link', Icon: Link2Icon, action: 'link', color: themeAccent },
+    { label: 'Colisiones', Icon: Grid3x3Icon, action: 'collisions', color: themeAccent },
   ], [themeAccent]);
 
   const placeActorInSelectedScene = () => {
@@ -908,24 +929,24 @@ export function MundoTab() {
 
   const onRadialPick = (item: RadialMenuItem) => {
     setRadialCollisionsOpen(false);
-    if (item.iconName === 'Shield') {
+    if (item.action === 'collisions') {
       setCollisionBrush('draw');
       setTool('collision');
       setRadialPick('');
       setRadialCollisionsOpen(true);
       return;
     }
-    if (item.iconName === 'MapPin') {
+    if (item.action === 'scene') {
       const el = canvasContainerRef.current;
       const wX = el ? (el.clientWidth / 2 - panX) / zoom : 240;
       const wY = el ? (el.clientHeight / 2 - panY) / zoom : 80;
       addScene(wX, wY);
       setRadialPick('Escena creada');
-    } else if (item.iconName === 'Link2') {
+    } else if (item.action === 'link') {
       setTool('connect');
       setConnectFrom(null);
       setRadialPick('Selecciona dos escenas para conectar');
-    } else if (item.iconName === 'User') {
+    } else if (item.action === 'actor') {
       const placed = placeActorInSelectedScene();
       setTool('move');
       if (placed) {
@@ -994,7 +1015,7 @@ export function MundoTab() {
             }}
           >
             <span>{splashNextScene?.name ?? 'Ninguna'}</span>
-            <span style={{ fontSize: 8, opacity: 0.6 }}>{sceneDropdownOpen ? '▲' : '▼'}</span>
+            <ChevronDownIcon size={11} style={{ transform: sceneDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.12s' }} />
           </div>
           {sceneDropdownOpen && (
             <div style={{
@@ -1240,12 +1261,13 @@ export function MundoTab() {
       items: [{
         id: splashScreen.id, label: splashScreen.name, icon: <HomeIcon size={13} />,
         subtitle: `${splashScreen.duration}s`,
+        removable: false,
         actions: isSplashLargeImage ? (
           <span
             title="La imagen de fondo del SplashScreen se ajusta automaticamente al tamaño de la imagen"
-            style={{ cursor: 'help', fontSize: 11, color: '#f0ad4e' }}
+            style={{ cursor: 'help', color: '#f0ad4e', display: 'grid', placeItems: 'center' }}
           >
-            ⚠
+            <TriangleAlertIcon size={13} />
           </span>
         ) : undefined,
       }],
@@ -1257,10 +1279,11 @@ export function MundoTab() {
       items: scenes.map((sc) => ({
         id: sc.id, label: sc.name, icon: <GlobeIcon size={13} />,
         subtitle: `${sc.width}x${sc.height}`,
+        expandWhenSelected: true,
         children: (sc.actors ?? []).map((a) => ({
           id: `actor:${sc.id}:${a.id}`,
           label: a.name,
-          icon: <BotIcon size={13} />,
+          icon: a.scriptId ? <UserCodeIcon size={13} /> : <BotIcon size={13} />,
           subtitle: a.spriteId ? spriteSheets.find((sp) => sp.id === a.spriteId)?.name : undefined,
         })),
       })),
@@ -1497,6 +1520,18 @@ export function MundoTab() {
           { label: 'Collider', type: 'toggle', value: selectedActorObj.collider, onChange: (v) => actorPatch({ collider: v as boolean }) },
           { label: 'Ancho collider', type: 'number', value: selectedActorObj.colliderWidth, min: 1, step: 1, onChange: (v) => actorPatch({ colliderWidth: Math.max(1, Math.round(v as number)) }) },
           { label: 'Alto collider', type: 'number', value: selectedActorObj.colliderHeight, min: 1, step: 1, onChange: (v) => actorPatch({ colliderHeight: Math.max(1, Math.round(v as number)) }) },
+          { label: 'Offset X (px)', type: 'number', value: selectedActorObj.colliderOffsetX ?? 0, min: -512, step: 1, onChange: (v) => actorPatch({ colliderOffsetX: Math.round(v as number) }) },
+          { label: 'Offset Y (px)', type: 'number', value: selectedActorObj.colliderOffsetY ?? 0, min: -512, step: 1, onChange: (v) => actorPatch({ colliderOffsetY: Math.round(v as number) }) },
+        ],
+      });
+      inspectorSections.push({
+        title: 'Área',
+        fields: [
+          { label: 'Área', type: 'toggle', value: !!selectedActorObj.hasArea, onChange: (v) => actorPatch({ hasArea: v as boolean }) },
+          { label: 'Ancho área', type: 'number', value: selectedActorObj.areaWidth ?? selectedActorObj.width, min: 1, step: 1, onChange: (v) => actorPatch({ areaWidth: Math.max(1, Math.round(v as number)) }) },
+          { label: 'Alto área', type: 'number', value: selectedActorObj.areaHeight ?? selectedActorObj.height, min: 1, step: 1, onChange: (v) => actorPatch({ areaHeight: Math.max(1, Math.round(v as number)) }) },
+          { label: 'Offset X (px)', type: 'number', value: selectedActorObj.areaOffsetX ?? 0, min: -512, step: 1, onChange: (v) => actorPatch({ areaOffsetX: Math.round(v as number) }) },
+          { label: 'Offset Y (px)', type: 'number', value: selectedActorObj.areaOffsetY ?? 0, min: -512, step: 1, onChange: (v) => actorPatch({ areaOffsetY: Math.round(v as number) }) },
         ],
       });
       const sfxOptions = sounds.filter((sd) => sd.usage === 'sfx').map((sd) => ({ value: sd.id, label: sd.name }));
@@ -1594,7 +1629,7 @@ export function MundoTab() {
               }}
             >
               <span>{sceneBgImg?.label ?? 'Ninguna'}</span>
-              <span style={{ fontSize: 8, opacity: 0.6 }}>{imgDropdownOpen ? '▲' : '▼'}</span>
+              <ChevronDownIcon size={11} style={{ transform: imgDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.12s' }} />
             </div>
             {imgDropdownOpen && (
               <div style={{
@@ -1684,7 +1719,10 @@ export function MundoTab() {
                   fontSize: 10, cursor: 'pointer',
                 }}
               >
-                {sceneAnimPaused[selectedScene.id] ? '▶ Reproducir' : '⏸ Pausar'}
+                <span style={{ display: 'grid', placeItems: 'center' }}>
+                  {sceneAnimPaused[selectedScene.id] ? <PlayIcon size={11} /> : <PauseIcon size={11} />}
+                </span>
+                {sceneAnimPaused[selectedScene.id] ? 'Reproducir' : 'Pausar'}
               </button>
             </div>
           </div>
@@ -1711,7 +1749,7 @@ export function MundoTab() {
             }}
           >
             <span>{displayBgmName}</span>
-            <span style={{ fontSize: 8, opacity: 0.6 }}>{dropdownOpen ? '▲' : '▼'}</span>
+            <ChevronDownIcon size={11} style={{ transform: dropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.12s' }} />
           </div>
           {selectedScene.backgroundSoundId && (
             <div style={{
@@ -1846,7 +1884,7 @@ export function MundoTab() {
             }}
           >
             <span>{splashBgSong?.name ?? splashBgSound?.name ?? 'Ninguna'}</span>
-            <span style={{ fontSize: 8, opacity: 0.6 }}>{dropdownOpen ? '▲' : '▼'}</span>
+            <ChevronDownIcon size={11} style={{ transform: dropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.12s' }} />
           </div>
           {dropdownOpen && (
             <div style={{
@@ -1937,7 +1975,7 @@ export function MundoTab() {
               }}
             >
               <span>{splashBgImg?.label ?? 'Ninguna'}</span>
-              <span style={{ fontSize: 8, opacity: 0.6 }}>{imgDropdownOpen ? '▲' : '▼'}</span>
+              <ChevronDownIcon size={11} style={{ transform: imgDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.12s' }} />
             </div>
             {imgDropdownOpen && (
               <div style={{
@@ -1994,7 +2032,7 @@ export function MundoTab() {
               background: 'rgba(240, 173, 78, 0.1)', border: '1px solid rgba(240, 173, 78, 0.3)',
               borderRadius: 4,
             }}>
-              <span style={{ fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚠</span>
+              <span style={{ flexShrink: 0, marginTop: 1, color: '#f0ad4e', display: 'grid', placeItems: 'center' }}><TriangleAlertIcon size={13} /></span>
               <span>La imagen de fondo del SplashScreen se ajusta automaticamente al tamano de la imagen.</span>
             </div>
           )}
@@ -2081,6 +2119,17 @@ export function MundoTab() {
       title: 'Conexión',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {!isSplashConn && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 64, flexShrink: 0 }}>Nombre</span>
+              <input
+                value={selectedConnection.label ?? ''}
+                placeholder={`${fromScene?.name ?? '?'} → ${toScene?.name ?? '?'}`}
+                onChange={(e) => updateConnection(selectedConnection.id, { label: e.target.value })}
+                style={{ flex: 1, minWidth: 0, background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '3px 6px' }}
+              />
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 64, flexShrink: 0 }}>Origen</span>
             <span style={{ color: 'var(--text)', fontSize: 11 }}>{fromScene?.name ?? '?'}</span>
@@ -2270,6 +2319,7 @@ export function MundoTab() {
             const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
             if (isConn) {
               setHighlightedConnId((prev) => prev === id ? null : id);
+              setSelectedActor(null);
             } else {
               setSelectedNodeId(id);
               setHighlightedConnId(null);
@@ -2302,17 +2352,17 @@ export function MundoTab() {
               background: 'var(--bg-canvas)', borderRadius: 20,
               padding: '3px 4px',
             }}>
-              <ToolBtn active={tool === 'move'} onClick={() => { setTool('move'); setConnectFrom(null); }} title="Mover">✥</ToolBtn>
+              <ToolBtn active={tool === 'move'} onClick={() => { setTool('move'); setConnectFrom(null); }} title="Mover"><MoveIcon size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
-              <ToolBtn active={tool === 'add'} onClick={() => { setTool('add'); setConnectFrom(null); }} title="Agregar escena">+</ToolBtn>
+              <ToolBtn active={tool === 'add'} onClick={() => { setTool('add'); setConnectFrom(null); }} title="Agregar escena"><PlusIcon size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
-              <ToolBtn active={tool === 'actor'} onClick={() => { const placed = placeActorInSelectedScene(); setConnectFrom(null); setTool('move'); if (!placed) setRadialPick('Selecciona una escena primero'); window.clearTimeout(radialTimer.current); radialTimer.current = window.setTimeout(() => setRadialPick(''), 2200); }} title="Agregar actor al centro de la escena seleccionada"><User size={14} /></ToolBtn>
+              <ToolBtn active={tool === 'actor'} onClick={() => { const placed = placeActorInSelectedScene(); setConnectFrom(null); setTool('move'); if (!placed) setRadialPick('Selecciona una escena primero'); window.clearTimeout(radialTimer.current); radialTimer.current = window.setTimeout(() => setRadialPick(''), 2200); }} title="Agregar actor al centro de la escena seleccionada"><BotIcon size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
               <ToolBtn active={tool === 'connect'} onClick={() => { setTool('connect'); setConnectFrom(null); }} title="Conectar escenas">
-                {connectFrom ? '→' : '🔗'}
+                <Link2Icon size={14} />
               </ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
-              <ToolBtn active={tool === 'collision'} onClick={() => { setTool('collision'); setConnectFrom(null); }} title="Pintar colisión">▦</ToolBtn>
+              <ToolBtn active={tool === 'collision'} onClick={() => { setTool('collision'); setConnectFrom(null); }} title="Pintar colisión"><Grid3x3Icon size={14} /></ToolBtn>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <ToolBtn
@@ -2411,16 +2461,16 @@ export function MundoTab() {
                   background: 'var(--bg-canvas)', borderRadius: 20,
                   padding: '3px 4px',
                 }}>
-                  <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
-                    <ToolBtn active={false} title="Barita (seleccionar) — pronto">⌾</ToolBtn>
+                  <ToolBtn active={false} title="Bote (rellenar) — pronto"><PaintBucketIcon size={14} /></ToolBtn>
+                    <ToolBtn active={false} title="Barita (seleccionar) — pronto"><WandIcon size={14} /></ToolBtn>
                   <ToolBtn active={collisionBrush === 'draw'}
                     onClick={() => setCollisionBrush('draw')}
                     title="Dibujar (arrastra para pintar, clic derecho para borrar)"
-                  >✎</ToolBtn>
+                  ><PencilIcon size={14} /></ToolBtn>
                   <ToolBtn active={collisionBrush === 'rectangle'}
                     onClick={() => setCollisionBrush('rectangle')}
                     title="Cuadro (arrastra para dibujar un rectángulo, clic derecho para borrar)"
-                  >▢</ToolBtn>
+                  ><SquareIcon size={14} /></ToolBtn>
                   {collisionBrush === 'draw' && (
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4,
@@ -2668,16 +2718,16 @@ export function MundoTab() {
                         display: 'flex', alignItems: 'center', gap: 2,
                         background: 'var(--bg-canvas)', borderRadius: 20, padding: '3px 4px',
                       }}>
-                        <ToolBtn active={false} title="Bote (rellenar) — pronto">▤</ToolBtn>
-                        <ToolBtn active={false} title="Varita (seleccionar) — pronto">⌾</ToolBtn>
+                        <ToolBtn active={false} title="Bote (rellenar) — pronto"><PaintBucketIcon size={14} /></ToolBtn>
+                        <ToolBtn active={false} title="Varita (seleccionar) — pronto"><WandIcon size={14} /></ToolBtn>
                         <ToolBtn active={collisionBrush === 'draw'}
                           onClick={() => setCollisionBrush('draw')}
                           title="Lápiz (arrastra para pintar, clic derecho para borrar)"
-                        >✎</ToolBtn>
+                        ><PencilIcon size={14} /></ToolBtn>
                         <ToolBtn active={collisionBrush === 'rectangle'}
                           onClick={() => setCollisionBrush('rectangle')}
                           title="Cuadro (arrastra para dibujar un rectángulo, clic derecho para borrar)"
-                        >▢</ToolBtn>
+                        ><SquareIcon size={14} /></ToolBtn>
                       </div>
                       <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 4px' }} />
                       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -2703,10 +2753,10 @@ export function MundoTab() {
                         title="Cerrar panel de colisiones"
                         style={{
                           marginLeft: 2, background: 'transparent', border: 'none',
-                          color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14,
-                          lineHeight: 1, padding: 4,
+                          color: 'var(--text-secondary)', cursor: 'pointer', padding: 4,
+                          display: 'grid', placeItems: 'center',
                         }}
-                      >×</button>
+                      ><XIcon size={14} /></button>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -3506,10 +3556,23 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
                         position: 'absolute',
                         border: '1px dashed rgba(255,80,80,0.9)',
                         boxSizing: 'border-box',
-                        left: (a.width - a.colliderWidth) / 2,
-                        top: (a.height - a.colliderHeight) / 2,
+                        left: (a.width - a.colliderWidth) / 2 + (a.colliderOffsetX ?? 0),
+                        top: (a.height - a.colliderHeight) / 2 + (a.colliderOffsetY ?? 0),
                         width: a.colliderWidth,
                         height: a.colliderHeight,
+                        pointerEvents: 'none',
+                      }} />
+                    )}
+                    {a.hasArea && (
+                      <div style={{
+                        position: 'absolute',
+                        border: '1px dashed rgba(59,130,246,0.9)',
+                        background: 'rgba(59,130,246,0.12)',
+                        boxSizing: 'border-box',
+                        left: (a.width - (a.areaWidth ?? a.width)) / 2 + (a.areaOffsetX ?? 0),
+                        top: (a.height - (a.areaHeight ?? a.height)) / 2 + (a.areaOffsetY ?? 0),
+                        width: a.areaWidth ?? a.width,
+                        height: a.areaHeight ?? a.height,
                         pointerEvents: 'none',
                       }} />
                     )}

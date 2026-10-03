@@ -4,7 +4,7 @@ import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import { EmptyState } from '../EmptyState';
-import { EyeIcon, EyeOffIcon, Grid3x3Icon } from './icons';
+import { Grid3x3Icon, LayersIcon, MinusIcon, PhotoPentagonIcon, PlusIcon } from './icons';
 import type { AnimationLoop } from '../../../types/editor';
 
 const PREVIEW_W = 320;
@@ -268,8 +268,12 @@ export function ImagenTab() {
       items: allLayers.map((l) => ({
         id: l.id,
         label: l.imagePath ? imgBasename(l.imagePath) : '(sin imagen)',
-        icon: l.visible ? <EyeIcon /> : <EyeOffIcon />,
+        icon: <LayersIcon />,
         subtitle: l.imagePath ? '' : 'vacío',
+        dimmed: !l.visible,
+        toggles: {
+          eye: { on: l.visible, onToggle: () => parentBg && updateLayer(parentBg.id, l.id, { visible: !l.visible }) },
+        },
       })),
     },
   ];
@@ -441,7 +445,7 @@ export function ImagenTab() {
               <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
                 <EmptyState
                   background="transparent"
-                  icon={<Grid3x3Icon size={40} />}
+                  icon={<PhotoPentagonIcon size={40} />}
                   title="Sin imagen seleccionada"
                   hint={dragOver ? 'Suelta la imagen aquí' : 'Selecciona una imagen de la lista o arrastra una aquí.'}
                 />
@@ -456,9 +460,9 @@ export function ImagenTab() {
               padding: '3px 6px', border: '1px solid var(--bg-raised)',
               zIndex: 10,
             }}>
-              <button onClick={() => setImagenZoom(Math.max(0.25, +(imagenZoom - 0.1).toFixed(2)))} style={zoomBtnStyle}>−</button>
+              <button onClick={() => setImagenZoom(Math.max(0.25, +(imagenZoom - 0.1).toFixed(2)))} style={zoomBtnStyle}><MinusIcon size={11} /></button>
               <span style={{ color: 'var(--text-secondary)', fontSize: 11, minWidth: 36, textAlign: 'center' }}>{Math.round(imagenZoom * 100)}%</span>
-              <button onClick={() => setImagenZoom(Math.min(4, +(imagenZoom + 0.1).toFixed(2)))} style={zoomBtnStyle}>+</button>
+              <button onClick={() => setImagenZoom(Math.min(4, +(imagenZoom + 0.1).toFixed(2)))} style={zoomBtnStyle}><PlusIcon size={11} /></button>
             </div>
 
             <div style={{
