@@ -2589,4 +2589,22 @@ useAppStore.subscribe((state) => {
   }
 });
 
+// ── Estado del emulador → log global ────────────────────────────────────────
+// La ventana del emulador va en su propia BrowserWindow, así que su estado sólo
+// se ve si alguien escucha. Se suscribe una vez al cargar el store para que los
+// fallos del emulador aparezcan en el log desde CUALQUIER pestaña, no solo desde
+// MundoTab (que es donde antes se pintaba el log).
+let emuLogSuscrito = false;
+if (typeof window !== 'undefined' && !emuLogSuscrito) {
+  emuLogSuscrito = true;
+  try {
+    window.advanceAPI?.emu?.onEmulatorStatus(({ level, msg }) => {
+      const linea = level === 'error' ? `[ERROR] ${msg}` : msg;
+      useAppStore.setState((s) => ({ exportLog: [...s.exportLog, linea] }));
+    });
+  } catch {
+    // Sin preload de emulador (p.ej. la vista web de Vite): no pasa nada.
+  }
+}
+
 export const selectProjects = (state: AppState) => state.projects;

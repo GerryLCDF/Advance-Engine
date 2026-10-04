@@ -9,6 +9,7 @@ import { MusicTab } from '../components/editor/tabs/MusicTab';
 import { DialogoTab } from '../components/editor/tabs/DialogoTab';
 import { SoundTab } from '../components/editor/tabs/SoundTab';
 import { ScriptingTab } from '../components/editor/tabs/ScriptingTab';
+import { GlobalAlerts } from '../components/editor/GlobalAlerts';
 
 interface EditorScreenProps {
   projectId: string;
@@ -77,6 +78,8 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
           </motion.div>
         </AnimatePresence>
       </div>
+      {/* Los errores del emulador y de la exportación se ven desde cualquier pestaña */}
+      <GlobalAlerts />
     </motion.div>
   );
 }

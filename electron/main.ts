@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { exec, execFileSync, spawn } from 'child_process';
-import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning, resolveEmulatorFile, setEmulatorStatusSink } from './emuWindow';
+import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning, resolveEmulatorFile, setEmulatorStatusSink, reportEmulatorStatus } from './emuWindow';
 
 // isDev: true cuando se corre con NODE_ENV=development (npm run dev)
 // app.isPackaged es seguro de leer en cualquier momento del proceso principal
@@ -1042,6 +1042,18 @@ ipcMain.handle('emu:isRunning', () => {
 // el log del editor, no solo en MundoTab.
 setEmulatorStatusSink((level, msg) => {
   mainWindow?.webContents.send('emu:log', { level, msg });
+});
+
+// Estado que reporta el shell a través de su preload (emuPreload.ts).
+// Solo se pasan los estados interestinges: 'loading' y 'ready' pasarían por el
+// log en cada arranque sin decir gran cosa.
+ipcMain.on('emu:status', (_e, payload: { state: string; error: string | null }) => {
+  const { state, error } = payload ?? {};
+  if (error) {
+    reportEmulatorStatus('error', `[emulador] ${error}`);
+  } else if (state === 'started') {
+    reportEmulatorStatus('info', '[emulador] EmuladorJS arrancó (core mGBA)');
+  }
 });
 
 // ── IPC: Ventana ────────────────────────────────────────────────────────────

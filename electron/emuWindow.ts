@@ -13,6 +13,14 @@ export function setEmulatorStatusSink(sink: StatusSink | null): void {
   statusSink = sink;
 }
 
+/**
+ * Avisa al renderer del estado que publica el propio shell (window.__advanceEmu).
+ * Exportado para que main.ts pueda conectarlo al IPC emu:status.
+ */
+export function reportEmulatorStatus(level: 'info' | 'error', msg: string): void {
+  report(level, msg);
+}
+
 function report(level: 'info' | 'error', msg: string): void {
   try {
     statusSink?.(level, msg);
