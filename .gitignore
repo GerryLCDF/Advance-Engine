@@ -16,3 +16,7 @@ public/testIMG/
 test_padded.gba
 test_padded.gba.sha1
 tools/
+
+# Playwright
+/test-results/
+/playwright-report/

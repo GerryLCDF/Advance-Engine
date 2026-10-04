@@ -12,7 +12,7 @@
 // Ver también public/emulator/ejs/PROVENANCE.md (generado por este script).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { mkdir, writeFile, stat } from 'node:fs/promises';
+import { mkdir, writeFile, stat, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,6 +56,40 @@ const FILES = [
 
 const force = process.argv.includes('--force');
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
+
+/**
+ * EJS tiene HARDCODEADO un fetch al CDN para recordar que "Using stable is highly
+ * recommended unless you build and ship your own cores". Como aquí sí se envían
+ * cores propios, el aviso no viene al caso y —peor— en el export web y en el .exe
+ * significaría una salida a Internet en cada arranque. Se redirige al
+ * version.json local.
+ *
+ * Se hace aquí y no a mano para que el fichero vendorizado siga siendo
+ * reproducible con un solo comando.
+ */
+const CDN_VERSION_URL = 'https://cdn.emulatorjs.org/stable/data/version.json';
+
+async function parchearVersionCheck() {
+  const file = join(OUT, 'emulator.min.js');
+  const src = await readFile(file, 'utf-8');
+
+  if (!src.includes(CDN_VERSION_URL)) {
+    // Si upstream deja de pedirlo, no hay nada que hacer (y no es un error).
+    console.log('  · emulator.min.js ya no pide el CDN: sin parcheo');
+    return;
+  }
+
+  const out = src.split(CDN_VERSION_URL).join('ejs/version.json');
+  const cambios = src.split(CDN_VERSION_URL).length - 1;
+  await writeFile(file, out);
+  console.log(`  ~ emulator.min.js parcheado (${cambios} fetch al CDN → ejs/version.json local)`);
+
+  // Si el parche no se aplicó, no seguimos en silencio: saldría tráfico externo.
+  const check = await readFile(file, 'utf-8');
+  if (check.includes(CDN_VERSION_URL)) {
+    throw new Error('el parche del version.json no se aplicó');
+  }
+}
 
 async function alreadyThere(out, expected) {
   if (force || expected == null) return false;
@@ -112,7 +146,10 @@ async function main() {
     console.log(`  + ${file.out.padEnd(28)} ${kb(buf.length)}`);
   }
 
-  // 3. Dejar constancia de qué es esto y de dónde salió.
+  // 3. Quitar la petición al CDN.
+  await parchearVersionCheck();
+
+  // 4. Dejar constancia de qué es esto y de dónde salió.
   const provenance = `# Assets de EmulatorJS (vendorizados)
 
 Estos archivos **no** se editan a mano. Se regeneran con:

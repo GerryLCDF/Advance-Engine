@@ -6,6 +6,8 @@ interface AdvanceAPI {
     play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
     stop: () => Promise<{ success: boolean }>;
     isRunning: () => Promise<boolean>;
+    /** Estado real del emulador; así los fallos se ven desde cualquier pestaña. */
+    onEmulatorStatus: (cb: (payload: { level: 'info' | 'error'; msg: string }) => void) => () => void;
   };
   projects: {
     getAll: () => Promise<Project[]>;
@@ -68,9 +70,22 @@ interface AdvanceAPI {
   };
 }
 
+/** Estado que publica el shell del emulador (public/emulator/index.html). */
+interface AdvanceEmuState {
+  state: 'boot' | 'loading' | 'ready' | 'started' | 'error' | 'closed';
+  error: string | null;
+  rom: string | null;
+  mode: 'editor' | 'game';
+  romName: string | null;
+  /** Fotogramas distintos detectados en el último segundo. */
+  fps?: number;
+  everChanged?: boolean;
+}
+
 declare global {
   interface Window {
     advanceAPI: AdvanceAPI;
+    __advanceEmu?: AdvanceEmuState;
   }
 }
 

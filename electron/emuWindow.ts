@@ -1,15 +1,85 @@
 import { BrowserWindow, app } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 
 let emuWindow: BrowserWindow | null = null;
+/** ROM que se está emulando, para poder servirla como app://emu/rom/<nombre>. */
+let currentRomPath: string | null = null;
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+type StatusSink = (level: 'info' | 'error', msg: string) => void;
+let statusSink: StatusSink | null = null;
+
+export function setEmulatorStatusSink(sink: StatusSink | null): void {
+  statusSink = sink;
+}
+
+function report(level: 'info' | 'error', msg: string): void {
+  try {
+    statusSink?.(level, msg);
+  } catch {
+    /* el log es best-effort: nunca debe romper el emulador */
+  }
+}
+
+/**
+ * Carpeta que contiene public/emulator/ (y por tanto ejs/ con los assets).
+ * Sirve tanto en desarrollo como dentro de app.asar.
+ */
+export function emulatorRootDir(): string {
+  const base = app.getAppPath();
+
+  const candidates = [
+    path.join(base, 'public', 'emulator'),
+    path.join(base, '..', '..', 'public', 'emulator'), // dev: repo/ desde dist/electron/
+    path.join(__dirname, '..', '..', '..', 'public', 'emulator'),
+  ];
+
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
+    } catch { /* siguiente */ }
+  }
+  return candidates[0];
+}
+
+/**
+ * Traduce una URL app://emu/... a un archivo en disco.
+ * Devuelve null si no corresponde (que es distinto de "existe pero vacío").
+ *
+ *   app://emu/index.html      → public/emulator/index.html
+ *   app://emu/ejs/loader.js   → public/emulator/ejs/loader.js
+ *   app://emu/rom/mi.gba      → la ROM en curso
+ */
+export function resolveEmulatorFile(requestUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(requestUrl);
+  } catch {
+    return null;
+  }
+  if (url.host !== 'emu') return null;
+
+  const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
+
+  if (rel === 'rom' || rel.startsWith('rom/')) {
+    return currentRomPath && fs.existsSync(currentRomPath) ? currentRomPath : null;
+  }
+
+  const root = emulatorRootDir();
+  const file = path.join(root, rel);
+  // Nada de salirse de public/emulator con '../'
+  if (!file.startsWith(root + path.sep)) return null;
+
+  try {
+    return fs.existsSync(file) && fs.statSync(file).isFile() ? file : null;
+  } catch {
+    return null;
+  }
+}
 
 export function createEmulatorWindow(romPath: string): void {
-  if (emuWindow && !emuWindow.isDestroyed()) {
-    emuWindow.close();
-    emuWindow = null;
-  }
+  closeEmulatorWindow();
+  currentRomPath = romPath;
 
   emuWindow = new BrowserWindow({
     width: 780,
@@ -21,21 +91,35 @@ export function createEmulatorWindow(romPath: string): void {
     title: 'Advance Studio — Emulador GBA',
     backgroundColor: '#0f0f1a',
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      // Sin nodeIntegration: la ROM y los assets llegan por app://, así que la
+      // página no necesita tocar el sistema de ficheros.
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'emuPreload.js'),
     },
   });
 
-  const emuPagePath = path.join(
-    isDev ? app.getAppPath() : __dirname,
-    'public', 'emulator', 'index.html'
-  );
-
-  emuWindow.loadFile(emuPagePath, { query: { rom: romPath } });
+  // Si algo falla, no podemos callárnoslo: el síntoma sería una ventana negra
+  // sin explicación, que es justo lo que pasaba antes.
+  emuWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    report('error', `[emulador] No se pudo cargar ${url} → ${desc} (código ${code})`);
+  });
+  emuWindow.webContents.on('console-message', (_e, level, message, line, source) => {
+    if (level >= 2) {
+      report('error', `[emulador] ${message} (${String(source).split('/').pop()}:${line})`);
+    }
+  });
+  emuWindow.webContents.on('render-process-gone', (_e, details) => {
+    report('error', `[emulador] el proceso de render murió (${details.reason})`);
+  });
 
   emuWindow.on('closed', () => {
     emuWindow = null;
+    currentRomPath = null;
   });
+
+  const romUrl = `app://emu/rom/${encodeURIComponent(path.basename(romPath))}`;
+  emuWindow.loadURL(`app://emu/index.html?rom=${encodeURIComponent(romUrl)}&mode=editor`);
 }
 
 export function closeEmulatorWindow(): void {
@@ -43,6 +127,7 @@ export function closeEmulatorWindow(): void {
     emuWindow.close();
     emuWindow = null;
   }
+  currentRomPath = null;
 }
 
 export function isEmulatorRunning(): boolean {

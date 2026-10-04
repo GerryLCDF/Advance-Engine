@@ -17,6 +17,8 @@ export interface AdvanceAPI {
     play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
     stop: () => Promise<{ success: boolean }>;
     isRunning: () => Promise<boolean>;
+    /** Estado real del emulador: loading | ready | started | error | closed */
+    onEmulatorStatus: (cb: (p: { level: 'info' | 'error'; msg: string }) => void) => () => void;
   };
   // Proyectos
   projects: {
@@ -93,6 +95,11 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     play: (romPath: string) => ipcRenderer.invoke('emu:play', romPath),
     stop: () => ipcRenderer.invoke('emu:stop'),
     isRunning: () => ipcRenderer.invoke('emu:isRunning'),
+    onEmulatorStatus: (cb: (p: { level: 'info' | 'error'; msg: string }) => void) => {
+      const listener = (_e: unknown, payload: { level: 'info' | 'error'; msg: string }) => cb(payload);
+      ipcRenderer.on('emu:log', listener);
+      return () => ipcRenderer.removeListener('emu:log', listener);
+    },
   },
   projects: {
     getAll: () => ipcRenderer.invoke('projects:getAll'),

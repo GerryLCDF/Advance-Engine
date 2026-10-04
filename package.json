@@ -10,12 +10,13 @@
     "dev:renderer": "vite",
     "dev:electron": "npm run build:electron && cross-env NODE_ENV=development electron .",
     "dev": "concurrently -k \"npm run dev:renderer\" \"wait-on http://localhost:5173 && npm run dev:electron\"",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:emulator": "playwright test",
+    "fetch:emulatorjs": "node scripts/fetch-emulatorjs.mjs"
   },
   "dependencies": {
     "@tabler/icons-react": "^3.48.0",
     "framer-motion": "^11.0.0",
-    "gbajs": "^1.1.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.13"

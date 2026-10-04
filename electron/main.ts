@@ -3,11 +3,21 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { exec, execFileSync, spawn } from 'child_process';
-import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning } from './emuWindow';
+import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning, resolveEmulatorFile, setEmulatorStatusSink } from './emuWindow';
 
 // isDev: true cuando se corre con NODE_ENV=development (npm run dev)
 // app.isPackaged es seguro de leer en cualquier momento del proceso principal
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+// El esquema app:// lo usa la ventana del emulador. Hay que declararlo BEFORE de
+// app.whenReady(): 'standard' + 'secure' para que fetch y los Web Workers
+// funcionen como en http://, que es lo que EmulatorJS necesita.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
+  },
+]);
 
 // Datos en JSON local — se inicializa cuando app está lista
 let projectsFile = '';
@@ -1027,6 +1037,13 @@ ipcMain.handle('emu:isRunning', () => {
   return isEmulatorRunning();
 });
 
+// Los mensajes del emulador (fallos de carga, errores de consola, y el estado
+// que publica el propio shell vía su preload) van al renderer para aparecer en
+// el log del editor, no solo en MundoTab.
+setEmulatorStatusSink((level, msg) => {
+  mainWindow?.webContents.send('emu:log', { level, msg });
+});
+
 // ── IPC: Ventana ────────────────────────────────────────────────────────────
 
 ipcMain.on('window-minimize', () => mainWindow?.minimize());
@@ -1057,6 +1074,33 @@ app.whenReady().then(() => {
         : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
         : ext === '.gif' ? 'image/gif'
         : ext === '.webp' ? 'image/webp'
+        : 'application/octet-stream';
+      return new Response(data, { headers: { 'Content-Type': mime } });
+    } catch (err) {
+      return new Response(null, { status: 404, statusText: 'Not found' });
+    }
+  });
+
+  // Registrar protocolo app: para el emulador (EmulatorJS + core mGBA/WASM).
+  //
+  // ¿Por qué un protocolo propio y no file://? Porque Chromium bloquea fetch() y
+  // los Web Workers cuando el origen es file://, y EmulatorJS necesita ambos para
+  // bajar el core. Con app:// la página tiene un origen normal y, de paso, no
+  // hace falta nodeIntegration en la ventana del emulador.
+  protocol.handle('app', (request) => {
+    try {
+      const filePath = resolveEmulatorFile(request.url);
+      if (!filePath) return new Response(null, { status: 404, statusText: 'Not found' });
+
+      const data = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = ext === '.html' ? 'text/html; charset=utf-8'
+        : ext === '.js' || ext === '.mjs' ? 'text/javascript; charset=utf-8'
+        : ext === '.css' ? 'text/css; charset=utf-8'
+        : ext === '.json' ? 'application/json; charset=utf-8'
+        : ext === '.wasm' ? 'application/wasm'
+        : ext === '.svg' ? 'image/svg+xml'
+        : ext === '.png' ? 'image/png'
         : 'application/octet-stream';
       return new Response(data, { headers: { 'Content-Type': mime } });
     } catch (err) {

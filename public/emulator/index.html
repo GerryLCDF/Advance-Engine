@@ -22,6 +22,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 }
 #titlebar button:hover { background: #c33; color: #fff; }
 
+#gba-mount { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+/* EJS crea su propio canvas dentro de #gba-mount; le obligamos a llenar el marco */
+#gba-mount canvas { width: 100% !important; height: 100% !important; image-rendering: pixelated; }
+/* la barra de EJS no la queremos: el chrome de esta página ya trae sus controles */
+#gba-mount .ejs_menu_bar,
+#gba-mount .ejs_context_menu,
+#gba-mount .ejs_menu_button,
+#gba-mount .ejs_start_screen,
+#gba-mount .ejs_start_button { display: none !important; }
+
 #container {
   display: flex; flex-direction: column; align-items: center;
   height: calc(100% - 32px); padding: 16px; gap: 12px;
@@ -112,7 +122,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 
 <div id="container">
   <div id="screen-wrapper" class="loading">
-    <canvas id="screen" width="720" height="480"></canvas>
+    <div id="gba-mount"></div>
     <div id="error-overlay">
       <div class="icon">⚠️</div>
       <div class="msg" id="error-msg">Error desconocido</div>
@@ -154,182 +164,372 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 </div>
 
 <script>
-const GameBoyAdvance = require('gbajs');
-const fs = require('fs');
+// ═══════════════════════════════════════════════════════════════════════════
+// Emulador GBA — EmulatorJS (core mGBA/WebAssembly), self-hosteado en ./ejs/
+//
+// Esta página la comparten los TRES destinos:
+//   ?mode=editor → ventana Play del editor (con el chrome de abajo)
+//   ?mode=game   → reproductor "sellado" del export web y del .exe
+//
+// ?rom= debe ser una URL que el core pueda bajar con fetch():
+//   app://rom/mijuego.gba   en Electron
+//   game.gba                en el export web (relativa a esta página)
+// ═══════════════════════════════════════════════════════════════════════════
+(function () {
+'use strict';
 
-const params = new URLSearchParams(window.location.search);
-const romPath = params.get('rom');
+const params = new URLSearchParams(location.search);
+const ROM_URL = params.get('rom');
+const MODE = params.get('mode') === 'game' ? 'game' : 'editor';
 
-const canvas = document.getElementById('screen');
-const ctx = canvas.getContext('2d');
 const screenWrapper = document.getElementById('screen-wrapper');
 const errorOverlay = document.getElementById('error-overlay');
 const errorMsg = document.getElementById('error-msg');
 const statusRom = document.getElementById('status-rom');
 const statusFps = document.getElementById('status-fps');
+const titlebar = document.getElementById('titlebar');
 
-let gba = null;
-const keysDown = new Set();
-let fpsCount = 0;
+// ── Estado observable ─────────────────────────────────────────────────────
+// Lo leen el test de Playwright y Electron (para saber si de verdad arrancó).
+window.__advanceEmu = {
+  state: 'boot',      // boot → loading → ready → started | error | closed
+  error: null,
+  rom: ROM_URL,
+  mode: MODE,
+  romName: ROM_URL ? ROM_URL.split('/').pop().split('?')[0] : null,
+  frames: 0,
+};
 
-setInterval(() => { statusFps.textContent = fpsCount + ' FPS'; fpsCount = 0; }, 1000);
-
-// ── GBA init ──────────────────────────────────────────────────────────
-function initGBA() {
-  const g = new GameBoyAdvance();
-  g.logLevel = g.LOG_ERROR;
-  g.keypad.eatInput = true;
-  g.setCanvas(canvas);
-
-  g.video.drawCallback = function() {
-    if (g.indirectCanvas) {
-      ctx.drawImage(g.indirectCanvas, 0, 0, canvas.width, canvas.height);
-    }
-  };
-
-  // Wrap advanceFrame: count FPS + catch errors
-  const origAF = g.advanceFrame;
-  g.advanceFrame = function() {
-    try {
-      origAF.call(g);
-      fpsCount++;
-    } catch (err) {
-      showError('Error en emulación: ' + (err.message || String(err)).slice(0, 200));
-      try { g.pause(); } catch {}
-    }
-  };
-
-  return g;
-}
-
-function createMinimalBios() {
-  // 16KB BIOS que salta a ROM (0x08000000)
-  // Basado en gbajs/bios.S: "mov pc, #0x8000000"
-  var size = 0x4000; // 16KB
-  var buf = new ArrayBuffer(size);
-  var view = new DataView(buf);
-  // MOV PC, #0x08000000 → 0xE3A0F408 (little-endian: 08 F4 A0 E3)
-  view.setUint32(0, 0xE3A0F408, true);
-  return buf;
-}
-
-function loadRom(path) {
-  gba = initGBA();
-  screenWrapper.classList.add('loading');
-  errorOverlay.classList.remove('visible');
-  statusRom.textContent = path.split(/[\\/]/).pop();
-
-  try {
-    // setBios ANTES de setRom (reset() copia this.bios a memory[0])
-    gba.setBios(createMinimalBios(), true);
-
-    const data = fs.readFileSync(path);
-    const arrBuf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-    const success = gba.setRom(arrBuf);
-    if (!success) {
-      showError('Formato de ROM inválido');
-      return;
-    }
-    // CPU arranca desde BIOS (addr 0) que salta a ROM (0x08000000)
-    screenWrapper.classList.remove('loading');
-    gba.audio.pause(false);
-    gba.runStable();
-  } catch (err) {
-    showError(String(err));
+const setState = (state, err) => {
+  window.__advanceEmu.state = state;
+  if (err) window.__advanceEmu.error = String(err);
+  // Electron escucha esto para alimentar el log del editor.
+  if (window.__advanceEmuBridge) {
+    try { window.__advanceEmuBridge.report(state, window.__advanceEmu.error); } catch (_) {}
   }
-}
+};
 
 function showError(msg) {
+  setState('error', msg);
   screenWrapper.classList.remove('loading');
-  errorMsg.textContent = msg;
+  errorMsg.textContent = String(msg).slice(0, 300);
   errorOverlay.classList.add('visible');
-  if (gba) { try { gba.pause(); } catch {} }
 }
 
-function closeEmulator() {
-  if (gba) { try { gba.pause(); } catch {} }
-  window.close();
-}
-
-// ── Input mapping ─────────────────────────────────────────────────────
-const BTN = {
-  a: 0, b: 1, select: 2, start: 3,
-  right: 4, left: 5, up: 6, down: 7, r: 8, l: 9,
+// ── Errores globales ──────────────────────────────────────────────────────
+// OJO: Wake Lock y autoplay fallan sin gesto del usuario y son ruido, no fallos
+// del emulador. Se ignoran para no enseñar errores falsos.
+const IGNORABLE = /Wake Lock|NotAllowedError|play\(\) request|user gesture|AudioContext/i;
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+  if (IGNORABLE.test(msg)) return;
+  showError('Error inesperado: ' + msg);
+});
+window.onerror = (msg) => {
+  const text = String(msg || '');
+  if (IGNORABLE.test(text)) return false;
+  showError('Error: ' + text);
+  return false;
 };
-function press(b) { if (gba) gba.keypad.keydown(b); }
-function release(b) { if (gba) gba.keypad.keyup(b); }
 
-function setupButton(id, btnConst) {
+// ── Configuración de EmulatorJS ───────────────────────────────────────────
+// Los assets están en ./ejs/ (ver scripts/fetch-emulatorjs.mjs y PROVENANCE.md).
+// EJS_paths deja el 'version.json' en local: anula el fetch a raw.githack.com
+// que hace loader.js para comprobar si hay versión nueva.
+const EJS_BASE = './ejs/';
+window.EJS_player = '#gba-mount';
+window.EJS_core = 'gba';                    // resuelve al core 'mgba' vía cores.json
+window.EJS_pathtodata = EJS_BASE;
+window.EJS_gameUrl = ROM_URL;
+window.EJS_gameName = window.__advanceEmu.romName || 'advance';
+window.EJS_gameID = 1;
+window.EJS_language = 'es-ES';
+window.EJS_startOnLoaded = true;
+window.EJS_color = '#3b82f6';
+window.EJS_backgroundColor = '#000000';
+window.EJS_threads = false;                 // sin hilos: no hay cabeceras COOP/COEP
+window.EJS_cacheConfig = { enabled: false };
+window.EJS_volume = 0.6;
+window.EJS_fixedSaveInterval = 5000;
+// Absoluta a propósito: EJS espera una URL, y si no la reconoce cae al CDN
+// (se vio pedir https://cdn.emulatorjs.org/stable/data/version.json). Con esto
+// el export web y el .exe no salen nunca a Internet.
+window.EJS_paths = { 'version.json': new URL('ejs/version.json', location.href).href };
+
+// Fuera toda la barra de EJS: el chrome de esta página trae sus propios
+// controles y el export sellado no puede enseñar botones de guardado/carga.
+window.EJS_Buttons = {
+  playPause: false, play: false, pause: false,
+  restart: false,
+  mute: false, unmute: false, volume: false,
+  settings: false,
+  fullscreen: false, enterFullscreen: false, exitFullscreen: false,
+  saveState: false, loadState: false, quickSave: false, quickLoad: false,
+  saveSavFiles: false, loadSavFiles: false,
+  screenRecord: false, screenshot: false,
+  cheat: false, gamepad: false,
+  cacheManager: false, exitEmulation: false,
+};
+window.EJS_hideSettings = ['shader', 'save-state-location', 'save-state-slot', 'netplay', 'cheat', 'cache-manager'];
+window.EJS_askBeforeExit = false;
+
+// Teclado: Z=A, X=B, Enter=START, \=SELECT, A=L, S=R, flechas=DPad.
+// BUTTON_1=A, BUTTON_2=B, BUTTON_3=SELECT, BUTTON_4=START.
+window.EJS_defaultControls = {
+  0: {
+    0:  { value: 'z',          value2: 'BUTTON_1' },
+    1:  { value: 'x',          value2: 'BUTTON_2' },
+    2:  { value: 'backslash',  value2: 'BUTTON_3' },
+    3:  { value: 'enter',      value2: 'BUTTON_4' },
+    4:  { value: 'right arrow',value2: 'DPAD_RIGHT' },
+    5:  { value: 'left arrow', value2: 'DPAD_LEFT' },
+    6:  { value: 'up arrow',   value2: 'DPAD_UP' },
+    7:  { value: 'down arrow', value2: 'DPAD_DOWN' },
+    8:  { value: 'a',          value2: 'LEFT_SHOULDER' },
+    9:  { value: 's',          value2: 'RIGHT_SHOULDER' },
+  },
+  // setupKeys() recorre los cuatro puestos y hace defaultControllers[j][botón],
+  // así que los cuatro tienen que existir aunque solo se configure el 0.
+  1: {},
+  2: {},
+  3: {},
+};
+
+window.EJS_ready = function () { setState('ready'); };
+window.EJS_onGameStart = function () { setState('started'); };
+window.EJS_onExit = function () { setState('closed'); };
+
+// ── Arranque ──────────────────────────────────────────────────────────────
+function boot() {
+  if (!ROM_URL) {
+    showError('No se indicó la ROM (?rom=).');
+    return;
+  }
+  setState('loading');
+  if (statusRom) statusRom.textContent = window.__advanceEmu.romName || ROM_URL;
+  // loader.js se inyecta desde aquí (no con un <script src>) para poder
+  // capturar onerror y avisar si falta la carpeta ejs/.
+  loadScript();
+}
+
+function loadScript() {
+  const s = document.createElement('script');
+  s.src = EJS_BASE + 'loader.js';
+  s.onload = launch;
+  s.onerror = () => showError(
+    'No se pudo cargar ejs/loader.js. Faltan los assets de EmulatorJS — ' +
+    'ejecuta "node scripts/fetch-emulatorjs.mjs".'
+  );
+  document.head.appendChild(s);
+}
+
+function launch() {
+  // loader.js (4.2.3) es un IIFE async: carga emulator.min.js y luego construye
+  // window.EJS_emulator él mismo. No hay que instanciarlo a mano (si se hace
+  // aquí, EmulatorJS aún no está definido y revienta), solo esperar a que exista.
+  esperarEmulador(0);
+}
+
+function esperarEmulador(intentos) {
+  if (window.EJS_emulator) return;
+
+  if (intentos > 150) {
+    showError(
+      'EmulatorJS no llegó a arrancar. Revisa que public/emulator/ejs/ tenga los ' +
+      'assets (node scripts/fetch-emulatorjs.mjs) y que la página se sirva por ' +
+      'http:// — en file:// el navegador no deja descargar el core.'
+    );
+    return;
+  }
+  setTimeout(() => esperarEmulador(intentos + 1), 100);
+}
+
+if (MODE === 'game') {
+  document.title = window.__advanceEmu.romName || 'Juego';
+}
+
+// ── Contador de FPS ───────────────────────────────────────────────────────
+// EJS no publica ningún evento de fotograma, y leer el canvas NO vale: es WebGL
+// sin preserveDrawingBuffer, así que un drawImage() devuelve negro siempre.
+// Lo que sí es real es contar las llamadas de dibujo: el core pinta una vez por
+// fotograma, así que dibujar ≈ 60 veces por segundo es ir a 60 fps de verdad.
+(function fpsMeter() {
+  const mount = document.getElementById('gba-mount');
+  if (!mount) return;
+
+  const DRAW_METHODS = ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced'];
+  let envuelto = null;
+  let draws = 0;
+
+  function envolver() {
+    // OJO: solo cuando el juego YA arrancó. Un canvas solo admite un tipo de
+    // contexto, así que si preguntamos antes de que EJS cree el suyo se lo
+    // adjudicamos nosotros, EJS pide el que quiere, recibe null y no arranca nada.
+    if (window.__advanceEmu.state !== 'started') return;
+
+    const canvas = window.EJS_emulator?.canvas || mount.querySelector('canvas');
+    if (!canvas || !canvas.width) return;
+    if (envuelto && envuelto.canvas === canvas) return;
+
+    // Con el tipo correcto, getContext devuelve el contexto YA creado por EJS.
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return;
+
+    for (const name of DRAW_METHODS) {
+      const fn = gl[name];
+      if (typeof fn !== 'function' || fn.__advanceEmuWrapped) continue;
+      const original = fn.bind(gl);
+      const contador = function (...args) {
+        draws++;
+        return original(...args);
+      };
+      contador.__advanceEmuWrapped = true;
+      gl[name] = contador;
+    }
+    envuelto = { canvas, gl };
+  }
+
+  // EJS puede recrear el canvas (cambio de WebGL, resize), así que se reintenta.
+  envolver();
+  setInterval(envolver, 250);
+
+  let anterior = 0;
+  setInterval(() => {
+    const porSegundo = Math.max(0, draws - anterior);
+    anterior = draws;
+
+    window.__advanceEmu.drawCalls = draws;
+    window.__advanceEmu.fps = porSegundo;
+    window.__advanceEmu.everDrawn = draws > 0;
+
+    if (statusFps) {
+      statusFps.textContent = porSegundo > 0 ? porSegundo + ' FPS' : '— FPS';
+    }
+  }, 1000);
+})();
+
+// ── Botones en pantalla ────────────────────────────────────────────────────
+// EJS NO escucha en window: se engancha a elements.parent (el contenedor del
+// jugador) y compara t.keyCode, no t.code. Por eso un evento sintético lanzado
+// en window no llegaba a la ROM (el test lo cazó: la tecla de verdad sí, el
+// botón en pantalla no).
+const KEYCODES = {
+  KeyZ: 90, KeyX: 88, Backslash: 220, Enter: 13,
+  ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
+  KeyA: 65, KeyS: 83,
+};
+
+const BTN_CODE = {
+  'btn-a': 'KeyZ', 'btn-b': 'KeyX',
+  'btn-select': 'Backslash', 'btn-start': 'Enter',
+  'dpad-up': 'ArrowUp', 'dpad-down': 'ArrowDown',
+  'dpad-left': 'ArrowLeft', 'dpad-right': 'ArrowRight',
+  'btn-l': 'KeyA', 'btn-r': 'KeyS',
+};
+
+/** Nodo al que EJS engancha sus oyentes de teclado. */
+function nodoEjs() {
+  return window.EJS_emulator?.elements?.parent || document.getElementById('gba-mount');
+}
+
+function sendKey(code, down) {
+  const target = nodoEjs();
+  if (!target) return;
+
+  const keyCode = KEYCODES[code] ?? 0;
+  const key = code.startsWith('Arrow')
+    ? code.slice(5).toLowerCase()
+    : (code === 'Backslash' ? '\\' : code.replace(/^Key/, '').toLowerCase());
+
+  const ev = new KeyboardEvent(down ? 'keydown' : 'keyup', {
+    key,
+    code,
+    keyCode,          // EJS compara t.keyCode (Chrome lo acepta en el init dict)
+    which: keyCode,
+    charCode: 0,
+    bubbles: true,
+    cancelable: true,
+  });
+  target.dispatchEvent(ev);
+}
+
+const keysHeld = new Set();
+
+for (const [id, code] of Object.entries(BTN_CODE)) {
   const el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('pressed'); press(btnConst); });
-  el.addEventListener('pointerup', (e) => { e.preventDefault(); el.classList.remove('pressed'); release(btnConst); });
-  el.addEventListener('pointerleave', () => { el.classList.remove('pressed'); release(btnConst); });
-}
-setupButton('btn-a', BTN.a);
-setupButton('btn-b', BTN.b);
-setupButton('btn-select', BTN.select);
-setupButton('btn-start', BTN.start);
-setupButton('dpad-up', BTN.up);
-setupButton('dpad-down', BTN.down);
-setupButton('dpad-left', BTN.left);
-setupButton('dpad-right', BTN.right);
-setupButton('btn-l', BTN.l);
-setupButton('btn-r', BTN.r);
+  if (!el) continue;
 
-// ── Keyboard ──────────────────────────────────────────────────────────
-const KEY_MAP = {
-  'KeyZ': BTN.a, 'KeyX': BTN.b, 'Enter': BTN.start,
-  'Backslash': BTN.select, 'KeyA': BTN.l, 'KeyS': BTN.r,
-  'ArrowUp': BTN.up, 'ArrowDown': BTN.down,
-  'ArrowLeft': BTN.left, 'ArrowRight': BTN.right,
+  const down = (e) => {
+    e.preventDefault();
+    el.classList.add('pressed');
+    if (!keysHeld.has(code)) { keysHeld.add(code); sendKey(code, true); }
+  };
+  const up = (e) => {
+    e.preventDefault();
+    el.classList.remove('pressed');
+    if (keysHeld.has(code)) { keysHeld.delete(code); sendKey(code, false); }
+  };
+
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointerleave', up);
+  el.addEventListener('pointercancel', up);
+}
+
+// ── Teclado ───────────────────────────────────────────────────────────────
+// Mismo mapa que BTN_CODE para que los botones se iluminen al teclear.
+const CODE_TO_BTN = {
+  KeyZ: 'btn-a', KeyX: 'btn-b', Backslash: 'btn-select', Enter: 'btn-start',
+  ArrowUp: 'dpad-up', ArrowDown: 'dpad-down', ArrowLeft: 'dpad-left', ArrowRight: 'dpad-right',
+  KeyA: 'btn-l', KeyS: 'btn-r',
 };
-const VISUAL_MAP = {
-  'KeyZ': 'btn-a', 'KeyX': 'btn-b', 'Enter': 'btn-start',
-  'Backslash': 'btn-select', 'KeyA': 'btn-l', 'KeyS': 'btn-r',
-  'ArrowUp': 'dpad-up', 'ArrowDown': 'dpad-down',
-  'ArrowLeft': 'dpad-left', 'ArrowRight': 'dpad-right',
-};
+const held = new Set();
+
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || (e.ctrlKey && e.key === 'w')) { closeEmulator(); return; }
-  const btn = KEY_MAP[e.code];
-  if (btn !== undefined && !keysDown.has(e.code)) {
-    keysDown.add(e.code); press(btn);
-    const vid = VISUAL_MAP[e.code];
-    if (vid) document.getElementById(vid)?.classList.add('pressed');
-    e.preventDefault();
+  const btn = CODE_TO_BTN[e.code];
+  if (!btn) return;
+  if (!held.has(e.code)) {
+    held.add(e.code);
+    const el = document.getElementById(btn);
+    if (el) el.classList.add('pressed');
   }
+  // No hacemos preventDefault: EJS ya gestiona el teclado del juego.
 });
 window.addEventListener('keyup', (e) => {
-  const btn = KEY_MAP[e.code];
-  if (btn !== undefined) {
-    keysDown.delete(e.code); release(btn);
-    const vid = VISUAL_MAP[e.code];
-    if (vid) document.getElementById(vid)?.classList.remove('pressed');
-    e.preventDefault();
-  }
+  const btn = CODE_TO_BTN[e.code];
+  if (!btn) return;
+  held.delete(e.code);
+  const el = document.getElementById(btn);
+  if (el) el.classList.remove('pressed');
+});
+// Si se sueltan varias a la vez (alt-tab), limpiar las que se quedaron pegadas.
+window.addEventListener('blur', () => {
+  held.clear();
+  keysHeld.clear();
+  document.querySelectorAll('.pressed').forEach((el) => el.classList.remove('pressed'));
 });
 
-// ── Window controls ───────────────────────────────────────────────────
-document.getElementById('btn-close').addEventListener('click', closeEmulator);
-document.getElementById('btn-close-err')?.addEventListener('click', closeEmulator);
-document.getElementById('btn-retry')?.addEventListener('click', () => { if (romPath) loadRom(romPath); });
-
-// ── Global error handlers ────────────────────────────────────────────
-window.onerror = function(msg, source, line, col, err) {
-  showError('Error: ' + ((err && (err.stack || err.message)) || String(msg)).slice(0, 200));
-  return true;
-};
-window.addEventListener('unhandledrejection', function(e) {
-  showError('Promise: ' + (e.reason ? String(e.reason).slice(0, 200) : 'unknown'));
-});
-
-// ── Boot ──────────────────────────────────────────────────────────────
-if (romPath && fs.existsSync(romPath)) {
-  loadRom(romPath);
-} else {
-  showError('Archivo ROM no encontrado: ' + (romPath || '(vacío)'));
+// ── Ventana ────────────────────────────────────────────────────────────────
+function closeEmulator() {
+  setState('closed');
+  try { if (window.EJS_emulator) window.EJS_emulator.stop(); } catch (_) {}
+  window.close();
 }
+document.getElementById('btn-close')?.addEventListener('click', closeEmulator);
+document.getElementById('btn-close-err')?.addEventListener('click', closeEmulator);
+document.getElementById('btn-retry')?.addEventListener('click', () => location.reload());
+window.addEventListener('beforeunload', () => setState('closed'));
+
+// En modo juego no hay titlebar ni botones: el .exe va directo al juego.
+if (MODE === 'game') {
+  titlebar?.remove();
+  document.getElementById('controls')?.remove();
+  document.getElementById('keys-hint')?.remove();
+}
+
+boot();
+})();
 </script>
 </body>
 </html>
