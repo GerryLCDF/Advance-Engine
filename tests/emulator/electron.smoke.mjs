@@ -65,6 +65,24 @@ test('la app abre el emulador por app://, dibuja y mapea los botones', async () 
   // Se declara fuera del try porque leds() la usa y el try bloquea su alcance.
   let ventana;
 
+  /**
+   * Espera a que la ROM muestre exactamente el botón esperado.
+   *
+   * Antes se dormía un tiempo fijo y la botón en pantalla fallaba de vez en
+   * cuando (220 ms no siempre dan para que el core llegue a pintar el
+   * fotograma). Preguntando hasta que pase es determinista y más rápido.
+   */
+  const esperarLeds = async (esperado, ms = 4000) => {
+    const limite = Date.now() + ms;
+    let ultimo = [];
+    while (Date.now() < limite) {
+      ultimo = await leds();
+      if (JSON.stringify(ultimo) === JSON.stringify(esperado)) return ultimo;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return ultimo;
+  };
+
   /** Lee la tira de 10 celdas y devuelve los botones GBA que están blancos. */
   const leds = async () => {
     const buf = await ventana.locator('#gba-mount canvas').screenshot();
@@ -121,10 +139,9 @@ test('la app abre el emulador por app://, dibuja y mapea los botones', async () 
     ];
     for (const [code, bit] of TECLAS) {
       await ventana.keyboard.down(code);
-      await ventana.waitForTimeout(220);
-      expect(await leds(), `${code} debería pulsar ${BIT[bit]} y solo eso`).toEqual([bit]);
+      expect(await esperarLeds([bit]), `${code} debería pulsar ${BIT[bit]} y solo eso`).toEqual([bit]);
       await ventana.keyboard.up(code);
-      await ventana.waitForTimeout(180);
+      expect(await esperarLeds([]), `${code} se quedó pulsado al soltarlo`).toEqual([]);
     }
 
     // Los botones en pantalla van por el camino sintético, no por teclado real.
@@ -137,12 +154,28 @@ test('la app abre el emulador por app://, dibuja y mapea los botones', async () 
       const box = await ventana.locator(sel).boundingBox();
       await ventana.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await ventana.mouse.down();
-      await ventana.waitForTimeout(220);
-      expect(await leds(), `${sel} debería pulsar ${BIT[bit]} y solo eso`).toEqual([bit]);
+      expect(await esperarLeds([bit]), `${sel} debería pulsar ${BIT[bit]} y solo eso`).toEqual([bit]);
       await ventana.mouse.up();
-      await ventana.waitForTimeout(180);
-      expect(await leds(), `${sel} se quedó pulsado`).toEqual([]);
+      expect(await esperarLeds([]), `${sel} se quedó pulsado`).toEqual([]);
     }
+
+    // ── el log no debe llenarse de ruido ────────────────────────────────
+    // Electron suelta avisos de seguridad y de Autofill por consola, y el
+    // navegador avisa de Wake Lock y del audio automático. Ninguno es un fallo
+    // del emulador, así que no pueden llegar al log del editor como [ERROR].
+    const ruido = await principal.evaluate(async () => {
+      const lineas = [];
+      const sin = window.advanceAPI.emu.onEmulatorStatus(({ msg }) => lineas.push(msg));
+      await window.advanceAPI.emu.play('__no_existe__.gba');
+      await new Promise((r) => setTimeout(r, 1500));
+      sin();
+      return lineas;
+    });
+    expect(
+      ruido.filter((m) => /Security Warning|Autofill|Wake Lock|%c|font-weight/.test(m)),
+      `ruido de Electron en el log del emulador:\n${ruido.join('\n')}`
+    ).toEqual([]);
+    expect(ruido.some((m) => m.startsWith('[emulador]')), 'ni siquiera se registró el fallo').toBe(true);
 
     // ── y stop tiene que cerrar la ventana ───────────────────────────────
     await principal.evaluate(() => window.advanceAPI.emu.stop());

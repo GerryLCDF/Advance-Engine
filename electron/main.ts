@@ -1018,13 +1018,17 @@ ipcMain.handle('system:installDevkitPro', async () => installDevkitPro());
 ipcMain.handle('emu:play', async (_e, romPath: string) => {
   try {
     if (!fs.existsSync(romPath)) {
-      return { success: false, reason: `ROM no encontrada: ${romPath}` };
+      const reason = `ROM no encontrada: ${romPath}`;
+      reportEmulatorStatus('error', `[emulador] ${reason}`);
+      return { success: false, reason };
     }
     closeEmulatorWindow();
     createEmulatorWindow(romPath);
     return { success: true };
   } catch (err) {
-    return { success: false, reason: String(err) };
+    const reason = String(err);
+    reportEmulatorStatus('error', `[emulador] no se pudo abrir: ${reason}`);
+    return { success: false, reason };
   }
 });
 

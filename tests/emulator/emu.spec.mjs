@@ -130,6 +130,22 @@ async function botonesPulsados(page) {
   return blancos;
 }
 
+/**
+ * Espera a que la ROM muestre exactamente el botón esperado. Preguntar hasta que
+ * pase es determinista; dormir un tiempo fijo fallaba de vez en cuando con los
+ * botones en pantalla.
+ */
+async function esperarBotones(page, esperado, ms = 4000) {
+  const limite = Date.now() + ms;
+  let ultimo = [];
+  while (Date.now() < limite) {
+    ultimo = await botonesPulsados(page);
+    if (JSON.stringify(ultimo) === JSON.stringify(esperado)) return ultimo;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return ultimo;
+}
+
 async function fotograma(page) {
   const canvas = page.locator('#gba-mount canvas');
   await expect(canvas).toHaveCount(1);
@@ -291,8 +307,7 @@ test('cada tecla del teclado llega a su botón de la GBA', async () => {
     await page.waitForTimeout(350);
 
     await page.keyboard.down(code);
-    await page.waitForTimeout(250);
-    const pressed = await botonesPulsados(page);
+    const pressed = await esperarBotones(page, [bit]);
     await page.keyboard.up(code);
 
     expect(pressed, `${code} debería pulsar ${BOTONES_GBA[bit]} y solo eso`).toEqual([bit]);
@@ -319,8 +334,7 @@ test('cada botón en pantalla llega a su botón de la GBA', async () => {
     const box = await el.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
-    await page.waitForTimeout(250);
-    const pressed = await botonesPulsados(page);
+    const pressed = await esperarBotones(page, [bit]);
     await page.mouse.up();
 
     expect(pressed, `${sel} debería pulsar ${BOTONES_GBA[bit]} y solo eso`).toEqual([bit]);

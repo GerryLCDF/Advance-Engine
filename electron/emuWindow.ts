@@ -112,14 +112,23 @@ export function createEmulatorWindow(romPath: string): void {
   emuWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     report('error', `[emulador] No se pudo cargar ${url} → ${desc} (código ${code})`);
   });
-  // El navegador rechaza Wake Lock y el audio automático si no hay gesto del
-  // usuario. No son fallos del emulador, así que no se pasan al log como errores
-  // (si no, cada arranque asusta al usuario con un aviso rojo).
-  const IGNORABLE = /Wake Lock|NotAllowedError|play\(\) request|user gesture|AudioContext/i;
+  // Ruido que NO es del emulador y no debe salir como [ERROR] en el log:
+  //  - Wake Lock y audio automático: el navegador los rechaza sin gesto del usuario
+  //  - "Electron Security Warning": aviso del propio runtime de Electron (que
+  //    además llega con los códigos de estilo %c de DevTools pegados)
+  //  - Autofill: avisos internos de Chromium
+  const IGNORABLE =
+    /Wake Lock|NotAllowedError|play\(\) request|user gesture|AudioContext|Electron Security Warning|Autofill/i;
+
   emuWindow.webContents.on('console-message', (_e, level, message, line, source) => {
-    if (level >= 2 && !IGNORABLE.test(message)) {
-      report('error', `[emulador] ${message} (${String(source).split('/').pop()}:${line})`);
-    }
+    if (level < 2) return;
+    if (IGNORABLE.test(message)) return;
+
+    // Los avisos de Electron llegan con directives de estilo %c de DevTools
+    // ("%cElectron Security Warning font-weight: bold;"). Se quitan para que el
+    // texto que se lea sea el del problema, no el de su maquetación.
+    const limpio = message.replace(/%c/g, '').replace(/\s{2,}/g, ' ').trim();
+    report('error', `[emulador] ${limpio} (${String(source).split('/').pop()}:${line})`);
   });
   emuWindow.webContents.on('render-process-gone', (_e, details) => {
     report('error', `[emulador] el proceso de render murió (${details.reason})`);
