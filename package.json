@@ -14,7 +14,8 @@
     "test:emulator": "playwright test",
     "fetch:emulatorjs": "node scripts/fetch-emulatorjs.mjs",
     "test:emulator:app": "playwright test --config playwright.app.config.mjs",
-    "test:emulator:all": "npm run test:emulator && npm run test:emulator:app"
+    "test:emulator:all": "npm run test:emulator && npm run test:emulator:app",
+    "test:scripts": "node tests/emulator/prose.test.mjs"
   },
   "dependencies": {
     "@tabler/icons-react": "^3.48.0",

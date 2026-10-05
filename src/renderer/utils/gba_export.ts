@@ -425,6 +425,56 @@ ${runToSceneCode}
 `;
 }
 
+/**
+ * Detecta texto explicativo pegado por error en un script de C.
+ *
+ * El cuerpo del script se copia tal cual al main.c, así que si alguien pega la
+ * explicación que rodea a un ejemplo, el gcc se come veinte líneas de warnings y
+ * un error críptico tipo "unknown type name 'Y'". Aquí se avisa ANTES de
+ * compilar, que es cuando todavía se entiende.
+ *
+ * Una línea es sospechosa si, sin ser comentario ni preprocesador, parece una
+ * frase: muchas palabras y ninguno de los símbolos que usa el código.
+ */
+function lineasDeTextoPegado(code: string): number[] {
+  const sospechosas: number[] = [];
+
+  // Símbolo que el código usa y un texto en castellano casi nunca: si aparece,
+  // la línea es código aunque no tenga ni punto y coma ni llave (un condicional
+  // largo sin llaves, una firma de función partida en dos líneas...).
+  // \w\( es llamada o declaración de función: en castellano eso no pasa
+  // ("rápido (" lleva espacio, y un identificador pegado al paréntesis no aparece).
+  const CODIGO_FUERTE = /\w\(|->|&&|\|\||==|!=|<=|>=|\+\+|--|<<|>>|\[|\]|_|::|\*/;
+  const CIERRE = /;|\{|\}/;
+
+  let enComentario = false;
+
+  code.split('\n').forEach((linea, i) => {
+    const t = linea.trim();
+
+    // Comentario de bloque: hay que llevar la cuenta hasta el cierre, porque sus
+    // líneas intermedias no empiezan por * y son texto igual.
+    if (enComentario) {
+      if (t.includes('*/')) enComentario = false;
+      return;
+    }
+    if (!t) return;
+    if (t.startsWith('/*')) {
+      if (!t.includes('*/')) enComentario = true;
+      return;
+    }
+    if (t.startsWith('//') || t.startsWith('#')) return;
+
+    const palabras = t.split(/\s+/).filter(Boolean).length;
+    if (palabras < 6) return;                    // una frase corta puede ser código
+    if (CODIGO_FUERTE.test(t) || CIERRE.test(t)) return;
+
+    sospechosas.push(i + 1);
+  });
+
+  return sospechosas;
+}
+
 export function generateGBAProject(
   state: EditorState,
   name: string,
@@ -565,6 +615,16 @@ export function generateGBAProject(
       const body = raw
         .replace(/\bscript_init\b\s*\(/g, `${tag}_init(`)
         .replace(/\bscript_update\b\s*\(/g, `${tag}_update(`);
+
+      // Texto pegado por error: se avisa aquí, antes de que el gcc lo entierre
+      // entre veinte líneas de warnings.
+      const textoPegado = lineasDeTextoPegado(raw);
+      if (textoPegado.length > 0) {
+        log.add(
+          `[ERROR] Script "${s.name}" línea(s) ${textoPegado.join(', ')} parecen texto explicativo, no código C. ` +
+          `Borra el texto que rodea al ejemplo y pega solo el código (void script_init / void script_update).`
+        );
+      }
 
       if (!hasUpd) log.add(`[WARN] Script "${s.name}": no define script_update() — no hará nada cada frame`);
 
@@ -1927,6 +1987,16 @@ function generateGBAProjectMulti(
       const body = raw
         .replace(/\bscript_init\b\s*\(/g, `${tag}_init(`)
         .replace(/\bscript_update\b\s*\(/g, `${tag}_update(`);
+      // Texto pegado por error: se avisa aquí, antes de que el gcc lo entierre
+      // entre veinte líneas de warnings.
+      const textoPegado = lineasDeTextoPegado(raw);
+      if (textoPegado.length > 0) {
+        log.add(
+          `[ERROR] Script "${s.name}" línea(s) ${textoPegado.join(', ')} parecen texto explicativo, no código C. ` +
+          `Borra el texto que rodea al ejemplo y pega solo el código (void script_init / void script_update).`
+        );
+      }
+
       if (!hasUpd) log.add(`[WARN] Script "${s.name}": no define script_update() — no hará nada cada frame`);
       scriptBodies.push(`// ── Script ${i + 1}: ${s.name ?? 'sin nombre'}\n${body}`);
     });
