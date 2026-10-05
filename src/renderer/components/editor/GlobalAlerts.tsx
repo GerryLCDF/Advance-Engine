@@ -16,23 +16,35 @@ const DURACION_MS = 7000;
 export function GlobalAlerts() {
   const exportLog = useAppStore((s) => s.exportLog);
 
-  const [avisos, setAvisos] = useState<number[]>([]);
+  // El aviso guarda su texto, no el índice: si el log se vacía a mitad de la
+  // animación, un índice se quedaría apuntando a otra línea (o a ninguna).
+  const [avisos, setAvisos] = useState<{ id: number; msg: string }[]>([]);
+  const idSeq = useRef(0);
   // Índices ya mostrados, para no volver a sacar el mismo error.
   const vistosRef = useRef<Set<number>>(new Set());
   const vistoMaxRef = useRef(-1);
 
   useEffect(() => {
-    // Al cargar el store puede venir log de antes (proyecto recién abierto):
-    // se marca como visto para no saltar avisos de cosas ya pasadas.
+    // El log se vacía al empezar cada exportación o Play (beginExportRun), así
+    // que los índices se reinician. Si el log se ha encogido, es que hubo un
+    // vaciado: hay que olvidar el rastreo o los errores siguientes pasarían
+    // desapercibidos por estar en índices "ya vistos".
+    if (exportLog.length < vistoMaxRef.current) {
+      vistosRef.current = new Set();
+      vistoMaxRef.current = -1;
+    }
+
+    // Al montar puede venir log de antes (proyecto recién abierto): se marca
+    // como visto para no saltar avisos de cosas ya pasadas.
     if (vistoMaxRef.current === -1 && exportLog.length > 0) {
       vistoMaxRef.current = exportLog.length - 1;
     }
 
-    const nuevos: number[] = [];
+    const nuevos: { id: number; msg: string }[] = [];
     for (let i = Math.max(0, vistoMaxRef.current + 1); i < exportLog.length; i++) {
       if (exportLog[i].startsWith('[ERROR]') && !vistosRef.current.has(i)) {
         vistosRef.current.add(i);
-        nuevos.push(i);
+        nuevos.push({ id: idSeq.current++, msg: exportLog[i].replace(/^\[ERROR\]\s*/, '') });
       }
     }
     if (nuevos.length === 0) return;
@@ -40,13 +52,14 @@ export function GlobalAlerts() {
     vistoMaxRef.current = exportLog.length - 1;
     setAvisos((prev) => [...prev, ...nuevos]);
 
-    const timers = nuevos.map((idx) =>
-      setTimeout(() => setAvisos((prev) => prev.filter((i) => i !== idx)), DURACION_MS)
+    const ids = nuevos.map((n) => n.id);
+    const timers = ids.map((id) =>
+      setTimeout(() => setAvisos((prev) => prev.filter((a) => a.id !== id)), DURACION_MS)
     );
     return () => timers.forEach(clearTimeout);
   }, [exportLog]);
 
-  const cerrar = (idx: number) => setAvisos((prev) => prev.filter((i) => i !== idx));
+  const cerrar = (id: number) => setAvisos((prev) => prev.filter((a) => a.id !== id));
 
   if (avisos.length === 0) return null;
 
@@ -66,9 +79,9 @@ export function GlobalAlerts() {
       }}
     >
       <AnimatePresence>
-        {avisos.map((idx) => (
+        {avisos.map((aviso) => (
           <motion.div
-            key={idx}
+            key={aviso.id}
             layout
             initial={{ opacity: 0, y: 16, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -89,10 +102,10 @@ export function GlobalAlerts() {
           >
             <TriangleAlertIcon size={16} style={{ color: '#f87171', flexShrink: 0, marginTop: 2 }} />
             <div style={{ fontSize: 12, lineHeight: 1.45, wordBreak: 'break-word' }}>
-              {exportLog[idx].replace(/^\[ERROR\]\s*/, '')}
+              {aviso.msg}
             </div>
             <button
-              onClick={() => cerrar(idx)}
+              onClick={() => cerrar(aviso.id)}
               title="Cerrar"
               style={{
                 marginLeft: 'auto',

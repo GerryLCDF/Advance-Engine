@@ -370,7 +370,17 @@ interface AppState {
   exportLog: string[];
   addExportLog: (msg: string) => void;
   clearExportLog: () => void;
-  generateBuildFiles: () => Promise<boolean>;
+  /**
+   * Genera main.c + Makefile en <proyecto>/build.
+   *
+   * `verbose: false` no publica las ~40 líneas de detalle en el log. Se usa al
+   * guardar: guardar también regenera los ficheros (para que el build esté
+   * siempre al día) y, si publicara el detalle, cada Ctrl+S añadía otro bloque
+   * entero de [INFO] y el log se volvía ilegible a los pocos_guardados.
+   */
+  generateBuildFiles: (opts?: { verbose?: boolean }) => Promise<boolean>;
+  /** Vacía el log: se llama al empezar una exportación o un Play. */
+  beginExportRun: () => void;
   saveProject: () => Promise<boolean>;
   loadProject: (path: string) => Promise<boolean>;
   exportGBA: () => Promise<boolean>;
@@ -500,6 +510,16 @@ interface AppState {
   removeFxAsset: (id: string) => void;
   updateFxAsset: (id: string, patch: Partial<FxAsset>) => void;
 }
+
+/**
+ * Tope de líneas del log de exportación.
+ *
+ * El log crece con cada operación (compilación, emulador, avisos globales) y sin
+ * tope una sesión larga acaba con decenas de miles de líneas: a partir de cierto
+ * punto.scrollback se come la CPU y leerlo es inútil. Se queda solo el final,
+ * que es donde está el error.
+ */
+const LOG_MAX = 600;
 
 // ── Global settings persistence (localStorage) ──────────────────────────────
 const GLOBAL_SETTINGS_KEY = 'advance-engine-settings';
@@ -989,9 +1009,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     imagenZoom: 1,
   }),
   exportLog: [],
-  addExportLog: (msg) => set((s) => ({ exportLog: [...s.exportLog, msg] })),
+  addExportLog: (msg) => set((s) => ({ exportLog: [...s.exportLog, msg].slice(-LOG_MAX) })),
   clearExportLog: () => set({ exportLog: [] }),
-  generateBuildFiles: async () => {
+  beginExportRun: () => set({ exportLog: [] }),
+  generateBuildFiles: async (opts) => {
+    const verbose = opts?.verbose !== false;
     try {
       const state = get();
       const projectDir = state.projectDir;
@@ -1751,10 +1773,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       await api.file.writeText(`${buildDir}/main.c`, cCode);
       await api.file.writeText(`${buildDir}/Makefile`, makefile);
 
-      // Publish log to the terminal
-      set((s) => ({ exportLog: [...s.exportLog, ...log.messages] }));
+      // Publicar el detalle. Al guardar (verbose: false) no se publica: son
+      // ~40 líneas por guardado y el log se hacía ilegible.
+      if (verbose) set((s) => ({ exportLog: [...s.exportLog, ...log.messages].slice(-LOG_MAX) }));
       return true;
     } catch (err: any) {
+      // El error siempre se publica, aussi en silencio: si no, un fallo al
+      // guardar no se vería por ningún lado.
       set((s) => ({ exportLog: [...s.exportLog, `[ERROR] generateBuildFiles: ${String(err)}`] }));
       return false;
     }
@@ -1783,7 +1808,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (result.success) {
         set({ projectDir: result.path, dirty: false, exportLog: [...get().exportLog, `[OK] Proyecto guardado en ${result.path}`] });
         get().updateProject(project.id, { path: result.path });
-        get().generateBuildFiles();
+        // Se regenera el build para que esté al día, pero en silencio: publicar
+        // el detalle aquí metía otro bloque de ~40 líneas por cada guardado y el
+        // log acababa siendo ilegible. Await: antes quedaba en el aire y se
+        // solapaba con la siguiente operación.
+        await get().generateBuildFiles({ verbose: false });
         return true;
       }
       set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${result.reason}`] }));
@@ -1796,6 +1825,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadProject: async (path) => {
     try {
       const api = window.advanceAPI;
+      get().beginExportRun();
       set((s) => ({ exportLog: [...s.exportLog, `[INFO] Cargando proyecto: ${path}`] }));
       const result = await api.project.load(path);
       if (!result.success || !result.state) {
@@ -1836,6 +1866,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   exportGBA: async () => {
     try {
+      // Una exportación = un log limpio. Antes se concatenaban con todo lo
+      // anterior y el error real quedaba enterrado.
+      get().beginExportRun();
       const state = get();
       const project = state.projects.find((p) => p.id === state.editorProjectId);
       const projectDir = state.projectDir;
@@ -1870,6 +1903,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   playEmulator: async () => {
     try {
+      // Igual que en exportGBA: lo que interesa es la última ejecución.
+      get().beginExportRun();
       const state = get();
       const project = state.projects.find((p) => p.id === state.editorProjectId);
       const projectDir = state.projectDir;
@@ -2600,7 +2635,7 @@ if (typeof window !== 'undefined' && !emuLogSuscrito) {
   try {
     window.advanceAPI?.emu?.onEmulatorStatus(({ level, msg }) => {
       const linea = level === 'error' ? `[ERROR] ${msg}` : msg;
-      useAppStore.setState((s) => ({ exportLog: [...s.exportLog, linea] }));
+      useAppStore.setState((s) => ({ exportLog: [...s.exportLog, linea].slice(-LOG_MAX) }));
     });
   } catch {
     // Sin preload de emulador (p.ej. la vista web de Vite): no pasa nada.
