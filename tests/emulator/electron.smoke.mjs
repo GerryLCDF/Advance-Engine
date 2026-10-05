@@ -1,74 +1,156 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Humo del camino Electron: el origen app:// y la ventana del emulador.
+// Humo del camino Electron: el origen app://, la ventana y los botones.
 //
 // El test de emulación (emu.spec.mjs) sirve public/emulator por http, que es lo
 // que hace el export web. Pero la app usa el esquema app:// con protocol.handle(),
-// y file:// no sirve para EJS. Este test comprueba que ese camino también
-// funciona de verdad, launching la app Electron real.
+// y file:// no sirve para EJS. Aquí se lanza la app Electron real y se va por el
+// camino del usuario: renderer → advanceAPI.emu.play → IPC → main → ventana.
 //
-// Necesita DISPLAY (xvfb-run npm run test:emulator si no hay).
+// Va en su propia pasada (playwright.app.config.mjs) y en un SOLO test a
+// propósito: relanzar Electron varias veces seguidas dentro del mismo proceso
+// dejaba la segunda ventana principal sin preload y el resultado era
+// intermitente. Con una sola app y una sola ventana de emulador es determinista.
+//
+// Necesita DISPLAY (xvfb-run npm run test:emulator:app si no hay).
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, expect, _electron as electron } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTestRom } from './build-test-rom.mjs';
+import { decodePng } from './png.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 
-// La ROM se compila a nivel de módulo porque test.skip() se evalúa al RECOGER
-// los tests, es decir antes de que corra beforeAll.
+// A nivel de módulo porque test.skip() se evalúa al recoger los tests, antes
+// de que corra beforeAll.
 const romPath = buildTestRom();
+const BIT = ['A', 'B', 'SELECT', 'START', 'DERECHA', 'IZQUIERDA', 'ARRIBA', 'ABAJO', 'R', 'L'];
 
-let app = null;
+/**
+ * Ventana principal de la app.
+ *
+ * NO vale app.firstWindow(): con Electron + Playwright se abre también la de
+ * DevTools y a veces es la primera, así que firstWindow() devolvía el DevTools
+ * (url devtools://) y el preload advanceAPI no existía nunca. Se elige la
+ * ventana que carga el renderer de la app.
+ */
+async function esperarVentanaPrincipal(app) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    for (const w of app.windows()) {
+      const url = w.url();
+      if (url.startsWith('devtools://')) continue;
+      if (url && url !== 'about:blank') return w;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error('la ventana principal de la app no apareció');
+}
 
-test.beforeAll(async () => {
-  if (!romPath) return;
-  app = await electron.launch({
-    args: [ROOT, '--no-sandbox', '--disable-gpu-sandbox'],
+test('la app abre el emulador por app://, dibuja y mapea los botones', async () => {
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  // --user-data-dir propio: si el Electron del usuario y este se pelean por el
+  // perfil, Chromium se queda colgado sin montar nada.
+  const perfil = mkdtempSync(join(tmpdir(), 'ae-emu-perfil-'));
+  const app = await electron.launch({
+    args: [ROOT, '--no-sandbox', '--disable-gpu-sandbox', `--user-data-dir=${perfil}`],
     cwd: ROOT,
     env: { ...process.env, NODE_ENV: 'production' },
   });
-});
 
-test.afterAll(async () => {
-  await app?.close();
-});
+  // Se declara fuera del try porque leds() la usa y el try bloquea su alcance.
+  let ventana;
 
-test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+  /** Lee la tira de 10 celdas y devuelve los botones GBA que están blancos. */
+  const leds = async () => {
+    const buf = await ventana.locator('#gba-mount canvas').screenshot();
+    const { width, channels, pixels } = decodePng(buf);
+    const escala = width / 240;
+    const out = [];
+    for (let i = 0; i < 10; i++) {
+      const x = Math.round((i * 8 + 4) * escala);
+      const y = Math.round(4 * escala);
+      const p = (y * width + x) * channels;
+      const lum = 0.299 * pixels[p] + 0.587 * pixels[p + 1] + 0.114 * pixels[p + 2];
+      if (lum > 128) out.push(i);
+    }
+    return out;
+  };
 
-test('la ventana del emulador arranca con app:// y dibuja', async () => {
-  const principal = await app.firstWindow();
-  await principal.waitForLoadState('domcontentloaded');
+  try {
+    // ── la ventana principal ────────────────────────────────────────────
+    const principal = await esperarVentanaPrincipal(app);
+    await principal.waitForLoadState('domcontentloaded');
+    await principal.waitForFunction(() => !!window.advanceAPI, null, { timeout: 30_000 });
 
-  // El camino REAL de usuario: renderer → IPC → main → ventana del emulador.
-  // Nada de colarse en los módulos internos.
-  const res = await principal.evaluate((rom) => window.advanceAPI.emu.play(rom), romPath);
-  expect(res.success, `emu:play falló: ${res.reason ?? '(sin motivo)'}`).toBe(true);
+    // ── abrir el emulador por el IPC real ───────────────────────────────
+    const res = await principal.evaluate((rom) => window.advanceAPI.emu.play(rom), romPath);
+    expect(res.success, `emu:play falló: ${res.reason ?? '(sin motivo)'}`).toBe(true);
 
-  const ventana = await app.waitForEvent('window', { timeout: 20_000 });
-  await ventana.waitForLoadState('domcontentloaded');
+    ventana = await app.waitForEvent('window', { timeout: 30_000 });
+    await ventana.waitForLoadState('domcontentloaded');
 
-  // La URL tiene que ser app://: con file:// Chromium no deja descargar el core.
-  expect(ventana.url()).toMatch(/^app:\/\/emu\/index\.html/);
+    // Con file:// Chromium no deja descargar el core, así que esto no es
+    // cosmético: es lo que decide si el emulador funciona.
+    expect(ventana.url()).toMatch(/^app:\/\/emu\/index\.html/);
 
-  await ventana.waitForFunction(() => window.__advanceEmu?.state === 'started', null, { timeout: 60_000 });
+    await ventana.waitForFunction(() => window.__advanceEmu?.state === 'started', null, { timeout: 60_000 });
+    // Barrera: no medir hasta que el core haya pintado de verdad.
+    await ventana.waitForFunction(() => (window.__advanceEmu?.drawCalls ?? 0) > 20, null, { timeout: 30_000 });
 
-  // drawCalls se publica una vez por segundo, así que hay que esperar a que el
-  // contador haya Published algo (leerlo en el instante de 'started' siempre da 0).
-  await ventana.waitForFunction(() => (window.__advanceEmu?.drawCalls ?? 0) > 0, null, { timeout: 15_000 });
-  const estado = await ventana.evaluate(() => window.__advanceEmu);
-  expect(estado.error).toBeNull();
-  expect(estado.everDrawn, 'no se dibujó ni un fotograma').toBe(true);
+    const estado = await ventana.evaluate(() => window.__advanceEmu);
+    expect(estado.error).toBeNull();
+    expect(estado.everDrawn, 'no se dibujó ni un fotograma').toBe(true);
 
-  const canvas = ventana.locator('#gba-mount canvas');
-  await expect(canvas).toHaveCount(1);
-  const box = await canvas.boundingBox();
-  expect(box?.width ?? 0).toBeGreaterThan(100);
+    await expect(ventana.locator('#gba-mount canvas')).toHaveCount(1);
+    expect((await ventana.locator('#gba-mount canvas').boundingBox())?.width ?? 0).toBeGreaterThan(100);
 
-  // Y stop debe cerrar la ventana de verdad.
-  await principal.evaluate(() => window.advanceAPI.emu.stop());
-  await ventana.waitForEvent('close', { timeout: 10_000 }).catch(() => {});
-  const sigue = await principal.evaluate(() => window.advanceAPI.emu.isRunning());
-  expect(sigue, 'emu:isRunning sigue diciendo que hay emulador').toBe(false);
+    // ── el mapeo de botones, en el core que usa de verdad la app ─────────
+    // OJO: el test de HTTP usa el core legacy (WebGL1) porque el Chromium
+    // headless no da WebGL2, mientras que Electron sí y usa mgba-wasm.data. Si
+    // un core ordenara los botones distinto, los controles funcionarían en el
+    // test y fallarían en la app.
+    const TECLAS = [
+      ['KeyZ', 0], ['KeyX', 1], ['KeyV', 2], ['Enter', 3],
+      ['ArrowRight', 4], ['ArrowLeft', 5], ['ArrowUp', 6], ['ArrowDown', 7],
+      ['KeyS', 8], ['KeyA', 9],
+    ];
+    for (const [code, bit] of TECLAS) {
+      await ventana.keyboard.down(code);
+      await ventana.waitForTimeout(220);
+      expect(await leds(), `${code} debería pulsar ${BIT[bit]} y solo eso`).toEqual([bit]);
+      await ventana.keyboard.up(code);
+      await ventana.waitForTimeout(180);
+    }
+
+    // Los botones en pantalla van por el camino sintético, no por teclado real.
+    const BOTONES = [
+      ['#btn-a', 0], ['#btn-b', 1], ['#btn-select', 2], ['#btn-start', 3],
+      ['#dpad-right', 4], ['#dpad-left', 5], ['#dpad-up', 6], ['#dpad-down', 7],
+      ['#btn-r', 8], ['#btn-l', 9],
+    ];
+    for (const [sel, bit] of BOTONES) {
+      const box = await ventana.locator(sel).boundingBox();
+      await ventana.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await ventana.mouse.down();
+      await ventana.waitForTimeout(220);
+      expect(await leds(), `${sel} debería pulsar ${BIT[bit]} y solo eso`).toEqual([bit]);
+      await ventana.mouse.up();
+      await ventana.waitForTimeout(180);
+      expect(await leds(), `${sel} se quedó pulsado`).toEqual([]);
+    }
+
+    // ── y stop tiene que cerrar la ventana ───────────────────────────────
+    await principal.evaluate(() => window.advanceAPI.emu.stop());
+    expect(await principal.evaluate(() => window.advanceAPI.emu.isRunning())).toBe(false);
+  } finally {
+    // Con el try/finally la app siempre se cierra. Sin esto, una corrida que
+    // fallaba antes del cierre dejaba Electron zombis, y unos cuantos cargaban
+    // tanto la máquina que el siguiente arranque no montaba ni el preload.
+    await app.close().catch(() => {});
+  }
 });

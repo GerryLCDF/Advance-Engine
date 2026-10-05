@@ -122,7 +122,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 
 <div id="container">
   <div id="screen-wrapper" class="loading">
-    <div id="gba-mount"></div>
+    <div id="gba-mount" tabindex="0"></div>
     <div id="error-overlay">
       <div class="icon">⚠️</div>
       <div class="msg" id="error-msg">Error desconocido</div>
@@ -159,7 +159,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
     <span class="fps" id="status-fps">— FPS</span>
   </div>
   <div id="keys-hint">
-    Z=A &nbsp; X=B &nbsp; A=L &nbsp; S=R &nbsp; Enter=Start &nbsp; \=Select &nbsp; Flechas=D-Pad
+    Z=A &nbsp; X=B &nbsp; A=L &nbsp; S=R &nbsp; Enter=Start &nbsp; V=Select &nbsp; Flechas=D-Pad
   </div>
 </div>
 
@@ -273,30 +273,54 @@ window.EJS_Buttons = {
 window.EJS_hideSettings = ['shader', 'save-state-location', 'save-state-slot', 'netplay', 'cheat', 'cache-manager'];
 window.EJS_askBeforeExit = false;
 
-// Teclado: Z=A, X=B, Enter=START, \=SELECT, A=L, S=R, flechas=DPad.
-// BUTTON_1=A, BUTTON_2=B, BUTTON_3=SELECT, BUTTON_4=START.
+// Teclado: Z=A, X=B, Enter=START, V=Select, A=L, S=R, flechas=DPad.
+//
+// OJO: los índices NO son los bits de REG_KEYINPUT del GBA, y tampoco lo que
+// dicen los nombres de EJS (BUTTON_1 resulta ser la B del GBA, y la A está en
+// el índice 8). Esta tabla está MEDIDA sobre el core mgba de EJS 4.2.3, que es
+// lo único que vale:
+//
+//    8 → A        0 → B        2 → SELECT    3 → START
+//    7 → DERECHA  6 → IZQUIERDA  4 → ARRIBA  5 → ABAJO
+//   11 → R       10 → L
+//
+// Antes se usaban 0..3 para A/B/SELECT/START y 12..15 para el d-pad (que son
+// DPAD_* en la nomenclatura de EJS, pero no los entiende este core): por eso
+// A pulsaba B, el d-pad no movía nada y L/R no llegaban.
+//
+// Además el nombre de la tecla debe existir en la tabla interna de EJS
+// (keyLookup): 'backslash' no está, así que SELECT usa 'v'.
+//
+// Los cuatro puestos tienen que existir aunque solo se configure el 0, porque
+// setupKeys() recorre los cuatro.
 window.EJS_defaultControls = {
   0: {
-    0:  { value: 'z',          value2: 'BUTTON_1' },
-    1:  { value: 'x',          value2: 'BUTTON_2' },
-    2:  { value: 'backslash',  value2: 'BUTTON_3' },
-    3:  { value: 'enter',      value2: 'BUTTON_4' },
-    4:  { value: 'right arrow',value2: 'DPAD_RIGHT' },
-    5:  { value: 'left arrow', value2: 'DPAD_LEFT' },
-    6:  { value: 'up arrow',   value2: 'DPAD_UP' },
-    7:  { value: 'down arrow', value2: 'DPAD_DOWN' },
-    8:  { value: 'a',          value2: 'LEFT_SHOULDER' },
-    9:  { value: 's',          value2: 'RIGHT_SHOULDER' },
+    8:  { value: 'z',           value2: 'SELECT' },        // SELECT de EJS = botón A
+    0:  { value: 'x',           value2: 'BUTTON_1' },      // BUTTON_1 = botón B
+    2:  { value: 'v',           value2: 'BUTTON_3' },      // SELECT
+    3:  { value: 'enter',       value2: 'BUTTON_4' },      // START
+    4:  { value: 'up arrow',    value2: 'LEFT_TOP_SHOULDER' },
+    5:  { value: 'down arrow',  value2: 'RIGHT_TOP_SHOULDER' },
+    6:  { value: 'left arrow',  value2: 'LEFT_BOTTOM_SHOULDER' },
+    7:  { value: 'right arrow', value2: 'RIGHT_BOTTOM_SHOULDER' },
+    10: { value: 'a',           value2: 'LEFT_STICK' },    // L
+    11: { value: 's',           value2: 'RIGHT_STICK' },   // R
   },
-  // setupKeys() recorre los cuatro puestos y hace defaultControllers[j][botón],
-  // así que los cuatro tienen que existir aunque solo se configure el 0.
   1: {},
   2: {},
   3: {},
 };
 
 window.EJS_ready = function () { setState('ready'); };
-window.EJS_onGameStart = function () { setState('started'); };
+window.EJS_onGameStart = function () {
+  setState('started');
+  // EJS escucha el teclado en elements.parent (este mismo div), así que hace
+  // falta que el foco esté aquí dentro: si se queda en body, las teclas reales
+  // no pasan por el contenedor al propagarse y el juego no ve nada.
+  // tabindex="-1" (el que pone EJS) no es focusable por script en todos los
+  // casos; con tabindex="0" sí.
+  try { document.getElementById('gba-mount')?.focus({ preventScroll: true }); } catch (_) {}
+};
 window.EJS_onExit = function () { setState('closed'); };
 
 // ── Arranque ──────────────────────────────────────────────────────────────
@@ -414,14 +438,14 @@ if (MODE === 'game') {
 // en window no llegaba a la ROM (el test lo cazó: la tecla de verdad sí, el
 // botón en pantalla no).
 const KEYCODES = {
-  KeyZ: 90, KeyX: 88, Backslash: 220, Enter: 13,
+  KeyZ: 90, KeyX: 88, KeyV: 86, Enter: 13,
   ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
   KeyA: 65, KeyS: 83,
 };
 
 const BTN_CODE = {
   'btn-a': 'KeyZ', 'btn-b': 'KeyX',
-  'btn-select': 'Backslash', 'btn-start': 'Enter',
+  'btn-select': 'KeyV', 'btn-start': 'Enter',
   'dpad-up': 'ArrowUp', 'dpad-down': 'ArrowDown',
   'dpad-left': 'ArrowLeft', 'dpad-right': 'ArrowRight',
   'btn-l': 'KeyA', 'btn-r': 'KeyS',
@@ -437,9 +461,7 @@ function sendKey(code, down) {
   if (!target) return;
 
   const keyCode = KEYCODES[code] ?? 0;
-  const key = code.startsWith('Arrow')
-    ? code.slice(5).toLowerCase()
-    : (code === 'Backslash' ? '\\' : code.replace(/^Key/, '').toLowerCase());
+  const key = code.startsWith('Arrow') ? code.slice(5).toLowerCase() : code.replace(/^Key/, '').toLowerCase();
 
   const ev = new KeyboardEvent(down ? 'keydown' : 'keyup', {
     key,
@@ -479,7 +501,7 @@ for (const [id, code] of Object.entries(BTN_CODE)) {
 // ── Teclado ───────────────────────────────────────────────────────────────
 // Mismo mapa que BTN_CODE para que los botones se iluminen al teclear.
 const CODE_TO_BTN = {
-  KeyZ: 'btn-a', KeyX: 'btn-b', Backslash: 'btn-select', Enter: 'btn-start',
+  KeyZ: 'btn-a', KeyX: 'btn-b', KeyV: 'btn-select', Enter: 'btn-start',
   ArrowUp: 'dpad-up', ArrowDown: 'dpad-down', ArrowLeft: 'dpad-left', ArrowRight: 'dpad-right',
   KeyA: 'btn-l', KeyS: 'btn-r',
 };
@@ -489,6 +511,12 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || (e.ctrlKey && e.key === 'w')) { closeEmulator(); return; }
   const btn = CODE_TO_BTN[e.code];
   if (!btn) return;
+
+  // Respaldo: si el evento no ha pasado por el contenedor de EJS (porque el
+  // foco estaba en otro sitio), se le reenvía. Si ya pasó por ahí, contains()
+  // da true y no se duplica.
+  const mount = document.getElementById('gba-mount');
+  if (mount && !mount.contains(e.target)) sendKey(e.code, true);
   if (!held.has(e.code)) {
     held.add(e.code);
     const el = document.getElementById(btn);
@@ -499,6 +527,10 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
   const btn = CODE_TO_BTN[e.code];
   if (!btn) return;
+
+  const mount0 = document.getElementById('gba-mount');
+  if (mount0 && !mount0.contains(e.target)) sendKey(e.code, false);
+
   held.delete(e.code);
   const el = document.getElementById(btn);
   if (el) el.classList.remove('pressed');

@@ -12,7 +12,9 @@
     "dev": "concurrently -k \"npm run dev:renderer\" \"wait-on http://localhost:5173 && npm run dev:electron\"",
     "preview": "vite preview",
     "test:emulator": "playwright test",
-    "fetch:emulatorjs": "node scripts/fetch-emulatorjs.mjs"
+    "fetch:emulatorjs": "node scripts/fetch-emulatorjs.mjs",
+    "test:emulator:app": "playwright test --config playwright.app.config.mjs",
+    "test:emulator:all": "npm run test:emulator && npm run test:emulator:app"
   },
   "dependencies": {
     "@tabler/icons-react": "^3.48.0",

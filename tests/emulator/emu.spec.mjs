@@ -57,7 +57,11 @@ async function abrirYEsperar(page) {
   externas.length = 0;
   fallosRed.length = 0;
 
-  page.on('pageerror', (e) => errores.push(e.message));
+  // Wake Lock y autoplay los rechaza el navegador sin gesto del usuario: el
+  // shell los ignora a propósito (no son fallos del emulador), así que aquí
+  // también, o el test sería intermitente.
+  const IGNORABLE = /Wake Lock|NotAllowedError|play\(\) request|user gesture|AudioContext/i;
+  page.on('pageerror', (e) => { if (!IGNORABLE.test(e.message)) errores.push(e.message); });
   page.on('response', (r) => {
     peticiones.push(`${r.status()} ${r.url().slice(-60)}`);
     if (r.status() >= 400) fallosRed.push(`${r.status()} ${r.url()}`);
@@ -75,6 +79,10 @@ async function abrirYEsperar(page) {
   // Que arranque de verdad: EJS no crea canvas hasta que el core está listo.
   try {
     await page.waitForFunction(() => window.__advanceEmu?.state === 'started', null, { timeout: 45_000 });
+    // Barrera: esperar a que el core haya dibujado de verdad. Sin esto la
+    // primera captura puede salir a medio pintar y los tests se vuelven
+    // intermitentes (pasaba con el test de "imagen no negra").
+    await page.waitForFunction(() => (window.__advanceEmu?.drawCalls ?? 0) > 20, null, { timeout: 30_000 });
   } catch (err) {
     // Fallar sin decir por qué es INDESCIFRABLE: volcar el estado real.
     const st = await page.evaluate(() => window.__advanceEmu).catch(() => '(sin estado)');
@@ -96,6 +104,30 @@ async function brilloCentro(page) {
   const { width, height, channels, pixels } = decodePng(buf);
   const i = ((height >> 1) * width + (width >> 1)) * channels;
   return 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+}
+
+/**
+ * Lee la tira de 10 celdas de la esquina superior izquierda de la ROM de test
+ * y devuelve los índices de las que están blancas.
+ *
+ * Cada celda es de 8x8 píxeles GBA, y el canvas de EJS es 720x480 = 3x, así que
+ * el centro de la celda i está en (i*8+4)*3. Orden = bits de REG_KEYINPUT:
+ * A B SELECT START RIGHT LEFT UP DOWN R L
+ */
+async function botonesPulsados(page) {
+  const buf = await page.locator('#gba-mount canvas').screenshot();
+  const { width, channels, pixels } = decodePng(buf);
+  const escala = width / 240;
+
+  const blancos = [];
+  for (let i = 0; i < 10; i++) {
+    const x = Math.round((i * 8 + 4) * escala);
+    const y = Math.round(4 * escala);
+    const p = (y * width + x) * channels;
+    const lum = 0.299 * pixels[p] + 0.587 * pixels[p + 1] + 0.114 * pixels[p + 2];
+    if (lum > 128) blancos.push(i);
+  }
+  return blancos;
 }
 
 async function fotograma(page) {
@@ -237,6 +269,115 @@ test('sin ROM no se queda en negro: avisa', async () => {
   const st = await page.evaluate(() => window.__advanceEmu);
   expect(st.state).toBe('error');
   await expect(page.locator('#error-overlay')).toHaveClass(/visible/);
+
+  await page.close();
+});
+
+// Los botones de la GBA, en el orden de los bits de REG_KEYINPUT.
+const BOTONES_GBA = ['A', 'B', 'SELECT', 'START', 'DERECHA', 'IZQUIERDA', 'ARRIBA', 'ABAJO', 'R', 'L'];
+
+test('cada tecla del teclado llega a su botón de la GBA', async () => {
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  const TECLAS = [
+    ['KeyZ', 0], ['KeyX', 1], ['KeyV', 2], ['Enter', 3],
+    ['ArrowRight', 4], ['ArrowLeft', 5], ['ArrowUp', 6], ['ArrowDown', 7],
+    ['KeyS', 8], ['KeyA', 9],
+  ];
+
+  for (const [code, bit] of TECLAS) {
+    const page = await browser.newPage();
+    await abrirYEsperar(page);
+    await page.waitForTimeout(350);
+
+    await page.keyboard.down(code);
+    await page.waitForTimeout(250);
+    const pressed = await botonesPulsados(page);
+    await page.keyboard.up(code);
+
+    expect(pressed, `${code} debería pulsar ${BOTONES_GBA[bit]} y solo eso`).toEqual([bit]);
+    await page.close();
+  }
+});
+
+test('cada botón en pantalla llega a su botón de la GBA', async () => {
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  const BOTONES_UI = [
+    ['#btn-a', 0], ['#btn-b', 1], ['#btn-select', 2], ['#btn-start', 3],
+    ['#dpad-right', 4], ['#dpad-left', 5], ['#dpad-up', 6], ['#dpad-down', 7],
+    ['#btn-r', 8], ['#btn-l', 9],
+  ];
+
+  for (const [sel, bit] of BOTONES_UI) {
+    const page = await browser.newPage();
+    await abrirYEsperar(page);
+    await page.waitForTimeout(350);
+
+    const el = page.locator(sel);
+    await expect(el).toBeVisible();
+    const box = await el.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(250);
+    const pressed = await botonesPulsados(page);
+    await page.mouse.up();
+
+    expect(pressed, `${sel} debería pulsar ${BOTONES_GBA[bit]} y solo eso`).toEqual([bit]);
+    await page.close();
+  }
+});
+
+test('el d-pad se mueve de verdad: el jugador camina hacia la derecha', async () => {
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  // Con la ROM de test el d-pad no mueve nada (solo cambia colores), así que
+  // esto mide la sincronía real: mantener la flecha tiene que mantener el bit.
+  const page = await browser.newPage();
+  await abrirYEsperar(page);
+  await page.waitForTimeout(350);
+
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(200);
+  expect(await botonesPulsados(page)).toEqual([4]);
+  await page.waitForTimeout(600);
+  expect(await botonesPulsados(page), 'soltó la flecha solo tras 600 ms').toEqual([4]);
+  await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(200);
+  expect(await botonesPulsados(page), 'soltar la flecha dejó el botón pegado').toEqual([]);
+
+  await page.close();
+});
+
+test('las teclas también llegan con el foco en otro sitio', async () => {
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  // Reproduce el fallo real: EJS escucha en el contenedor del emulador, así que
+  // si el foco está en body (p.ej. tras hacer clic en la barra de título) las
+  // teclas no le llegan y el juego no responde. Con el reenvío de respaldo
+  // tienen que llegar igual.
+  const page = await browser.newPage();
+  await abrirYEsperar(page);
+  await page.waitForTimeout(400);
+
+  await page.evaluate(() => document.getElementById('btn-start').focus());
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('btn-start');
+
+  await page.keyboard.down('KeyZ');
+  await page.waitForTimeout(250);
+  expect(await botonesPulsados(page), 'con el foco fuera del emulador, Z no llegó a la ROM').toEqual([0]);
+  await page.keyboard.up('KeyZ');
+  await page.waitForTimeout(200);
+  expect(await botonesPulsados(page), 'soltar Z dejó el botón pegado').toEqual([]);
+
+  // Y con dos teclas a la vez (correr hacia arriba mientras se salta).
+  await page.keyboard.down('ArrowUp');
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(250);
+  // en orden de bit: DERECHA(4) antes que ARRIBA(6)
+  expect(await botonesPulsados(page)).toEqual([4, 6]);
+  await page.keyboard.up('ArrowUp');
+  await page.keyboard.up('ArrowRight');
 
   await page.close();
 });

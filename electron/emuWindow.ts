@@ -112,8 +112,12 @@ export function createEmulatorWindow(romPath: string): void {
   emuWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     report('error', `[emulador] No se pudo cargar ${url} → ${desc} (código ${code})`);
   });
+  // El navegador rechaza Wake Lock y el audio automático si no hay gesto del
+  // usuario. No son fallos del emulador, así que no se pasan al log como errores
+  // (si no, cada arranque asusta al usuario con un aviso rojo).
+  const IGNORABLE = /Wake Lock|NotAllowedError|play\(\) request|user gesture|AudioContext/i;
   emuWindow.webContents.on('console-message', (_e, level, message, line, source) => {
-    if (level >= 2) {
+    if (level >= 2 && !IGNORABLE.test(message)) {
       report('error', `[emulador] ${message} (${String(source).split('/').pop()}:${line})`);
     }
   });
