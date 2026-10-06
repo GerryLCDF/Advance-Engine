@@ -118,6 +118,7 @@ const MENU_ITEMS: Record<string, MenuItemDef[]> = {
 
 export function EditorTopBar() {
   const editorTab = useAppStore((s) => s.editorTab);
+  const emulatorRunning = useAppStore((s) => s.emulatorRunning);
   const setEditorTab = useAppStore((s) => s.setEditorTab);
   const setActiveScreen = useAppStore((s) => s.setActiveScreen);
   const resetDraft = useAppStore((s) => s.resetDraft);
@@ -413,40 +414,36 @@ export function EditorTopBar() {
               </div>
             )}
           </div>
+          {/* Un solo botón que commuta: PLAY mientras no haya emulador y STOP en
+              cuanto se abre. Antes eran dos botones y el STOP no cambiaba nunca,
+              así que no decía si había algo corriendo. El estado viene de la
+              ventana real (playEmulator/stopEmulator y también el evento cuando
+              el usuario la cierra con la X o con Esc). */}
           <motion.button
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
-            onClick={() => useAppStore.getState().playEmulator()}
+            onClick={() => {
+              if (emulatorRunning) useAppStore.getState().stopEmulator();
+              else useAppStore.getState().playEmulator();
+            }}
+            title={emulatorRunning ? 'Detener el emulador' : 'Compilar y ejecutar en el emulador'}
             style={{
-              background: 'rgba(80,200,80,0.15)',
-              border: '1px solid var(--green)',
+              background: emulatorRunning ? 'rgba(200,80,80,0.15)' : 'rgba(80,200,80,0.15)',
+              border: `1px solid ${emulatorRunning ? 'var(--red)' : 'var(--green)'}`,
               borderRadius: 4,
-              color: 'var(--green)',
+              color: emulatorRunning ? 'var(--red)' : 'var(--green)',
               fontSize: 11,
               fontWeight: 700,
               padding: '2px 12px',
               cursor: 'pointer',
-              marginRight: 4,
+              display: 'flex',
+              alignItems: 'center',
             }}
           >
-            <span style={{ display: 'grid', placeItems: 'center', marginRight: 4 }}><PlayIcon size={11} /></span>PLAY
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={() => useAppStore.getState().stopEmulator()}
-            style={{
-              background: 'rgba(200,80,80,0.15)',
-              border: '1px solid var(--red)',
-              borderRadius: 4,
-              color: 'var(--red)',
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '2px 12px',
-              cursor: 'pointer',
-            }}
-          >
-            <span style={{ display: 'grid', placeItems: 'center', marginRight: 4 }}><StopIcon size={11} /></span>STOP
+            <span style={{ display: 'grid', placeItems: 'center', marginRight: 4 }}>
+              {emulatorRunning ? <StopIcon size={11} /> : <PlayIcon size={11} />}
+            </span>
+            {emulatorRunning ? 'STOP' : 'PLAY'}
           </motion.button>
         </div>
       </div>

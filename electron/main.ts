@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { exec, execFileSync, spawn } from 'child_process';
-import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning, resolveEmulatorFile, setEmulatorStatusSink, reportEmulatorStatus, pushLogToEmulator } from './emuWindow';
+import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning, resolveEmulatorFile, setEmulatorStatusSink, reportEmulatorStatus, pushLogToEmulator, setMainWindowRef } from './emuWindow';
 
 // isDev: true cuando se corre con NODE_ENV=development (npm run dev)
 // app.isPackaged es seguro de leer en cualquier momento del proceso principal
@@ -80,7 +80,8 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'));
   }
 
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => { mainWindow = null; setMainWindowRef(null); });
+  setMainWindowRef(mainWindow);
 
   // ── Window Snapping (like Windows Aero Snap) ──────────────────────────────
   if (process.platform === 'win32') {

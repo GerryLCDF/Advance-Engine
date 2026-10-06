@@ -368,6 +368,9 @@ interface AppState {
   setProjectDir: (dir: string | null) => void;
   resetEditorState: () => void;
   exportLog: string[];
+  /** ¿Hay una ventana de emulador abierta? Lo usa el botón PLAY/STOP único. */
+  emulatorRunning: boolean;
+  setEmulatorRunning: (v: boolean) => void;
   addExportLog: (msg: string) => void;
   clearExportLog: () => void;
   /**
@@ -874,6 +877,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       fxAssets: [],
       dirty: false,
       exportLog: [],
+      emulatorRunning: false,
       selectedNodeId: '',
       _songsUndoStack: [],
       _songsRedoStack: [],
@@ -1009,6 +1013,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     imagenZoom: 1,
   }),
   exportLog: [],
+  emulatorRunning: false,
+  setEmulatorRunning: (v) => set({ emulatorRunning: v }),
   addExportLog: (msg) => set((s) => ({ exportLog: [...s.exportLog, msg].slice(-LOG_MAX) })),
   clearExportLog: () => set({ exportLog: [] }),
   beginExportRun: () => set({ exportLog: [] }),
@@ -1944,6 +1950,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // La ventana del emulador tiene su propia pestaña Registro: se le manda el
       // log que ya hay (la compilación entera) y a partir de ahí sigue en vivo.
       try { await api.emu.sendLog?.(get().exportLog); } catch { /* best-effort */ }
+      set({ emulatorRunning: true });
       return true;
     } catch (err: any) {
       set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
@@ -1953,8 +1960,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   stopEmulator: async () => {
     try {
       await window.advanceAPI.emu.stop();
+      set({ emulatorRunning: false });
       return true;
-    } catch { return false; }
+    } catch {
+      set({ emulatorRunning: false });
+      return false;
+    }
   },
 
   // ── Mundo ──────────────────────────────────────────────────────────────
@@ -2640,6 +2651,12 @@ if (typeof window !== 'undefined' && !emuLogSuscrito) {
     window.advanceAPI?.emu?.onEmulatorStatus(({ level, msg }) => {
       const linea = level === 'error' ? `[ERROR] ${msg}` : msg;
       useAppStore.setState((s) => ({ exportLog: [...s.exportLog, linea].slice(-LOG_MAX) }));
+    });
+
+    // El estado de la ventana, para que el botón PLAY/STOP refleje también cuando
+    // el usuario la cierra con la X o con Esc (no pasa por stopEmulator).
+    window.advanceAPI?.emu?.onEmulatorState(({ state }) => {
+      useAppStore.setState({ emulatorRunning: state !== 'closed' });
     });
   } catch {
     // Sin preload de emulador (p.ej. la vista web de Vite): no pasa nada.

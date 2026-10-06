@@ -50,6 +50,49 @@ async function esperarVentanaPrincipal(app) {
   throw new Error('la ventana principal de la app no apareció');
 }
 
+test('el estado de la ventana comuta para el botón PLAY/STOP', async () => {
+  // El botón de la barra es un ternario sobre emulatorRunning, así que lo que hay
+  // que comprobar aquí es el cableado que hay debajo: que la ventana avise de su
+  // estado (abrir y cerrar). No se puede pulsar el botón real porque la app
+  // arranca en el menú y sin proyecto abierto no hay barra de editor.
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  const perfil = mkdtempSync(join(tmpdir(), 'ae-emu-toggle-'));
+  const app = await electron.launch({
+    args: [ROOT, '--no-sandbox', '--disable-gpu-sandbox', `--user-data-dir=${perfil}`],
+    cwd: ROOT,
+    env: { ...process.env, NODE_ENV: 'production' },
+  });
+
+  try {
+    const principal = await esperarVentanaPrincipal(app);
+    await principal.waitForFunction(() => !!window.advanceAPI, null, { timeout: 20_000 });
+
+    // Recoger los eventos de estado mientras se abre y se cierra.
+    await principal.evaluate(() => {
+      window.__estados = [];
+      window.__offEstado = window.advanceAPI.emu.onEmulatorState(({ state }) => window.__estados.push(state));
+    });
+
+    await principal.evaluate((rom) => window.advanceAPI.emu.play(rom), romPath);
+    const ventana = await app.waitForEvent('window', { timeout: 30_000 });
+    await ventana.waitForLoadState('domcontentloaded');
+    await ventana.waitForFunction(() => window.__advanceEmu?.state === 'started', null, { timeout: 60_000 });
+
+    // Cerrar la ventana a saco: es el camino que NO pasa por stopEmulator (el
+    // usuario pulsa la X o Esc), y el botón tiene que enterarse igual.
+    await ventana.close();
+
+    await principal.waitForFunction(() => window.__estados.includes('closed'), null, { timeout: 20_000 });
+    const estados = await principal.evaluate(() => window.__estados);
+    expect(estados[0], `no avisó al abrir la ventana: ${JSON.stringify(estados)}`).toBe('starting');
+    expect(estados).toContain('closed');
+    expect(await principal.evaluate(() => window.advanceAPI.emu.isRunning())).toBe(false);
+  } finally {
+    await app.close().catch(() => {});
+  }
+});
+
 test('la app abre el emulador por app://, dibuja y mapea los botones', async () => {
   test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
 

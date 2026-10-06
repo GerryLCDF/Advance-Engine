@@ -477,11 +477,20 @@ if (MODE === 'game') {
 
     const canvas = window.EJS_emulator?.canvas || mount.querySelector('canvas');
     if (!canvas || !canvas.width) return;
+
+    // EJS pone el canvas a 0x0 cuando el contenedor se oculta (pestaña Registro),
+    // así que el tamaño y el tipo de contexto se apuntan aquí para no perderlos.
+    window.__advanceEmu.canvasW = canvas.width;
+    window.__advanceEmu.canvasH = canvas.height;
+
     if (envuelto && envuelto.canvas === canvas) return;
 
     // Con el tipo correcto, getContext devuelve el contexto YA creado por EJS.
     const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
     if (!gl) return;
+    if (!window.__advanceEmu.webgl) {
+      window.__advanceEmu.webgl = canvas.getContext('webgl2') ? 'WebGL 2' : 'WebGL 1';
+    }
 
     for (const name of DRAW_METHODS) {
       const fn = gl[name];
@@ -741,19 +750,8 @@ boot();
     ['FPS', (e) => (e.fps > 0 ? e.fps + '' : '—'), (v) => (v === '—' ? '' : 'ok')],
     ['Frames', (e) => (e.drawnFrames ?? 0) + '', () => ''],
     ['Core', () => (window.EJS_emulator?.ejs_version ? 'mGBA/WASM' : '—'), () => ''],
-    ['Resolución', () => {
-      const c = window.EJS_emulator?.canvas;
-      return c && c.width ? c.width + 'x' + c.height : '—';
-    }, () => ''],
-    ['WebGL', () => {
-      const c = window.EJS_emulator?.canvas;
-      if (!c) return '—';
-      try {
-        return c.getContext('webgl2') ? 'WebGL 2' : 'WebGL 1';
-      } catch (_) {
-        return '—';
-      }
-    }, () => ''],
+    ['Resolución', (e) => (e.canvasW ? e.canvasW + 'x' + e.canvasH : '—'), () => ''],
+    ['WebGL', (e) => (e.webgl ? e.webgl : '—'), () => ''],
     ['ROM', (e) => e.romName || '—', () => ''],
     ['Arranque', (e) => (e.startedAt ? ((performance.now() - e.startedAt) / 1000).toFixed(1) + ' s' : '—'), () => ''],
   ];

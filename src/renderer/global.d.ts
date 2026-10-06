@@ -10,6 +10,8 @@ interface AdvanceAPI {
     onEmulatorStatus: (cb: (payload: { level: 'info' | 'error'; msg: string }) => void) => () => void;
     /** Manda el log actual a la ventana del emulador (pestaña Registro). */
     sendLog: (lines: string[]) => Promise<{ success: boolean }>;
+    /** Estado real de la ventana del emulador (para el botón PLAY/STOP). */
+    onEmulatorState: (cb: (p: { state: 'starting' | 'started' | 'closed' }) => void) => () => void;
   };
   projects: {
     getAll: () => Promise<Project[]>;
@@ -84,6 +86,10 @@ interface AdvanceEmuState {
   /** Total de fotogramas dibujados desde que arrancó. */
   drawnFrames?: number;
   startedAt?: number;
+  /** Tamaño real del canvas (EJS lo pone a 0 al ocultar la pestaña de juego). */
+  canvasW?: number;
+  canvasH?: number;
+  webgl?: string;
   everChanged?: boolean;
 }
 

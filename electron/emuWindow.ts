@@ -21,6 +21,22 @@ export function reportEmulatorStatus(level: 'info' | 'error', msg: string): void
   report(level, msg);
 }
 
+/**
+ * Estado real de la ventana del emulador, para que el botón PLAY/STOP de la barra
+ * sepa si está corriendo. Se manda al abrir, al arrancar el juego y al cerrar
+ * (la puede cerrar el usuario con la X o con Esc).
+ */
+export function emitEmulatorState(state: 'starting' | 'started' | 'closed'): void {
+  try {
+    mainWindowRef?.webContents.send('emu:state', { state });
+  } catch { /* best-effort */ }
+}
+
+let mainWindowRef: BrowserWindow | null = null;
+export function setMainWindowRef(w: BrowserWindow | null): void {
+  mainWindowRef = w;
+}
+
 function report(level: 'info' | 'error', msg: string): void {
   try {
     statusSink?.(level, msg);
@@ -165,9 +181,12 @@ export function createEmulatorWindow(romPath: string): void {
   });
   emuWindow.webContents.on('render-process-gone', (_e, details) => {
     report('error', `[emulador] el proceso de render murió (${details.reason})`);
+    emitEmulatorState('closed');
   });
 
   emuCargada = false;
+  emitEmulatorState('starting');
+
   emuWindow.webContents.on('did-finish-load', () => {
     emuCargada = true;
     if (logPendiente) pushLogToEmulator(logPendiente);
@@ -178,6 +197,7 @@ export function createEmulatorWindow(romPath: string): void {
     currentRomPath = null;
     emuCargada = false;
     logPendiente = null;
+    emitEmulatorState('closed');
   });
 
   const romUrl = `app://emu/rom/${encodeURIComponent(path.basename(romPath))}`;
