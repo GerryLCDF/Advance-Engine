@@ -1940,6 +1940,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         set((s) => ({ exportLog: [...s.exportLog, `[ERROR] Emulador: ${emuResult.reason}`] }));
         return false;
       }
+
+      // La ventana del emulador tiene su propia pestaña Registro: se le manda el
+      // log que ya hay (la compilación entera) y a partir de ahí sigue en vivo.
+      try { await api.emu.sendLog?.(get().exportLog); } catch { /* best-effort */ }
       return true;
     } catch (err: any) {
       set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));

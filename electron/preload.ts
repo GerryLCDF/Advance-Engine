@@ -19,6 +19,8 @@ export interface AdvanceAPI {
     isRunning: () => Promise<boolean>;
     /** Estado real del emulador: loading | ready | started | error | closed */
     onEmulatorStatus: (cb: (p: { level: 'info' | 'error'; msg: string }) => void) => () => void;
+    /** Manda el log actual a la ventana del emulador (pestaña Registro). */
+    sendLog: (lines: string[]) => Promise<{ success: boolean }>;
   };
   // Proyectos
   projects: {
@@ -100,6 +102,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
       ipcRenderer.on('emu:log', listener);
       return () => ipcRenderer.removeListener('emu:log', listener);
     },
+    sendLog: (lines: string[]) => ipcRenderer.invoke('emu:sendLog', lines),
   },
   projects: {
     getAll: () => ipcRenderer.invoke('projects:getAll'),

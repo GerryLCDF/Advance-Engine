@@ -27,6 +27,36 @@ function report(level: 'info' | 'error', msg: string): void {
   } catch {
     /* el log es best-effort: nunca debe romper el emulador */
   }
+
+  // También a la ventana del emulador, para su pestaña Registro: si estás
+  // mirando el juego tienes que ver el log sin cambiar de pestaña en el editor.
+  try {
+    emuWindow?.webContents.send('emu:log', { level, msg });
+  } catch {
+    /* la ventana puede estar cerrándose */
+  }
+}
+
+/**
+ * Log que se le pasa a la ventana del emulador para su pestaña Registro.
+ *
+ * Se guarda en un búfer y se entrega cuando la página ha cargado, porque
+ * emu:play devuelve nada más crear la ventana: si se mandara el log en ese
+ * momento, la página todavía no tiene preload escuchando y el mensaje se
+ * pierde. (Costó un test en rojo descubrirlo.)
+ */
+let logPendiente: string[] | null = null;
+let emuCargada = false;
+
+export function pushLogToEmulator(lines: string[]): void {
+  logPendiente = Array.isArray(lines) ? lines.slice(-400) : [];
+
+  if (!emuCargada || !emuWindow || emuWindow.isDestroyed()) return;
+
+  try {
+    emuWindow.webContents.send('emu:log:snapshot', { lines: logPendiente });
+    logPendiente = null;
+  } catch { /* best-effort */ }
 }
 
 /**
@@ -91,7 +121,10 @@ export function createEmulatorWindow(romPath: string): void {
 
   emuWindow = new BrowserWindow({
     width: 780,
-    height: 660,
+    // La altura no es arbitraria: 32 (título) + 31 (pestañas) + 24 (padding) +
+    // 480 (pantalla) + 20 (huecos) + 104 (mandos) + 14 (estado) + 12 (ayuda)
+    // ≈ 717. Con 660 la pantalla de juego quedaba cortada por arriba.
+    height: 770,
     resizable: false,
     maximizable: false,
     minimizable: true,
@@ -134,9 +167,17 @@ export function createEmulatorWindow(romPath: string): void {
     report('error', `[emulador] el proceso de render murió (${details.reason})`);
   });
 
+  emuCargada = false;
+  emuWindow.webContents.on('did-finish-load', () => {
+    emuCargada = true;
+    if (logPendiente) pushLogToEmulator(logPendiente);
+  });
+
   emuWindow.on('closed', () => {
     emuWindow = null;
     currentRomPath = null;
+    emuCargada = false;
+    logPendiente = null;
   });
 
   const romUrl = `app://emu/rom/${encodeURIComponent(path.basename(romPath))}`;

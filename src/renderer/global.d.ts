@@ -8,6 +8,8 @@ interface AdvanceAPI {
     isRunning: () => Promise<boolean>;
     /** Estado real del emulador; así los fallos se ven desde cualquier pestaña. */
     onEmulatorStatus: (cb: (payload: { level: 'info' | 'error'; msg: string }) => void) => () => void;
+    /** Manda el log actual a la ventana del emulador (pestaña Registro). */
+    sendLog: (lines: string[]) => Promise<{ success: boolean }>;
   };
   projects: {
     getAll: () => Promise<Project[]>;
@@ -79,6 +81,9 @@ interface AdvanceEmuState {
   romName: string | null;
   /** Fotogramas distintos detectados en el último segundo. */
   fps?: number;
+  /** Total de fotogramas dibujados desde que arrancó. */
+  drawnFrames?: number;
+  startedAt?: number;
   everChanged?: boolean;
 }
 

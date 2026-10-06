@@ -109,6 +109,15 @@ test('la app abre el emulador por app://, dibuja y mapea los botones', async () 
     const res = await principal.evaluate((rom) => window.advanceAPI.emu.play(rom), romPath);
     expect(res.success, `emu:play falló: ${res.reason ?? '(sin motivo)'}`).toBe(true);
 
+    // El log se manda AHORA MISMO, antes de que la página haya cargado, igual que
+    // hace la app: comprueba que el búfer existe y no se pierde el mensaje.
+    await principal.evaluate((rom) => window.advanceAPI.emu.sendLog([
+      `[INFO] ROM de prueba: ${rom.split('/').pop()}`,
+      '[OK] Compilada sin errores',
+      '[WARN] Un aviso de prueba',
+      '[ERROR] Un error de prueba',
+    ]), romPath);
+
     ventana = await app.waitForEvent('window', { timeout: 30_000 });
     await ventana.waitForLoadState('domcontentloaded');
 
@@ -158,6 +167,38 @@ test('la app abre el emulador por app://, dibuja y mapea los botones', async () 
       await ventana.mouse.up();
       expect(await esperarLeds([]), `${sel} se quedó pulsado`).toEqual([]);
     }
+
+    // ── la pestaña Registro ──────────────────────────────────────────────
+    await expect(ventana.locator('#tab-log')).toBeVisible();
+    await ventana.locator('#tab-log').click();
+
+    await expect(ventana.locator('#log-panel')).toHaveClass(/activo/);
+    // La de Juego se oculta al cambiar de pestaña.
+    await expect(ventana.locator('#container')).toBeHidden();
+
+    // Diagnóstico: estado y FPS tienen que salir de verdad, no guiones.
+    const diag = await ventana.locator('#diag .celda').allTextContents();
+    expect(diag.join(' | '), 'el panel de diagnóstico está vacío').toContain('Estado');
+    expect(diag.join(' '), `no se ve el core en el diagnóstico: ${JSON.stringify(diag)}`).toContain('mGBA/WASM');
+    expect(diag.join(' '), `no se ve la resolución: ${JSON.stringify(diag)}`).toMatch(/\d+x\d+/);
+
+    // Y el log que mandó el editor tiene que estar ahí, con la ROM de prueba.
+    const lineas = await ventana.locator('#log-list .l').allTextContents();
+    expect(lineas.length, 'la pestaña Registro llegó vacía').toBeGreaterThan(0);
+    const texto = lineas.join('\n');
+    expect(texto, 'el log no llegó (o se perdió por mandarlo antes de que cargara la página)').toContain('testrom.gba');
+    expect(texto).toContain('Compilada sin errores');
+
+    // Las líneas se colorean por gravedad y el contador marca los errores.
+    await expect(ventana.locator('#log-list .l.error')).toHaveText('[ERROR] Un error de prueba');
+    await expect(ventana.locator('#log-list .l.warn')).toHaveText('[WARN] Un aviso de prueba');
+    await expect(ventana.locator('#log-contador')).toHaveText('1');
+
+    // Volver a Juego y comprobar que el emulador sigue vivo.
+    await ventana.locator('#tab-juego').click();
+    await expect(ventana.locator('#log-panel')).toBeHidden();
+    await ventana.locator('#gba-mount canvas').screenshot();
+    expect(await esperarLeds([]), 'el emulador se paró al cambiar de pestaña').toEqual([]);
 
     // ── el log no debe llenarse de ruido ────────────────────────────────
     // Electron suelta avisos de seguridad y de Autofill por consola, y el

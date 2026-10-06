@@ -7,6 +7,9 @@
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #0f0f1a; color: #ccc; user-select: none; }
+/* El alto de #container descuenta las dos barras superiores (título 32 + pestañas
+   31). Con la barra de pestañas sin descontar, el contenido se salía de la
+   ventana por abajo y el botón de ABAJO quedaba sin poder pulsar. */
 
 #titlebar {
   display: flex; align-items: center; justify-content: space-between;
@@ -34,11 +37,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 
 #container {
   display: flex; flex-direction: column; align-items: center;
-  height: calc(100% - 32px); padding: 16px; gap: 12px;
+  height: calc(100% - 63px); padding: 12px; gap: 10px;
+  justify-content: center; overflow: hidden;
 }
 
 #screen-wrapper {
-  position: relative; width: 720px; height: 480px;
+  position: relative; width: 720px; height: 480px; flex-shrink: 0;
   background: #000; border-radius: 8px; overflow: hidden;
   box-shadow: 0 0 30px rgba(0,0,0,0.5), inset 0 0 60px rgba(0,0,0,0.3);
   flex-shrink: 0;
@@ -69,21 +73,21 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
   display: flex; gap: 24px; align-items: center; flex-wrap: wrap; justify-content: center;
 }
 
-#dpad { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+#dpad { position: relative; width: 104px; height: 104px; flex-shrink: 0; }
 #dpad button {
-  position: absolute; width: 36px; height: 36px; border: none; border-radius: 4px;
+  position: absolute; width: 32px; height: 32px; border: none; border-radius: 4px;
   background: #2a2a3e; color: #888; font-size: 14px; cursor: pointer;
   transition: background 0.1s, transform 0.1s; display: flex; align-items: center; justify-content: center;
 }
 #dpad button:active, #dpad button.pressed { background: #446; color: #aae; transform: scale(0.92); }
-#dpad-up { top: 0; left: 42px; }
-#dpad-down { bottom: 0; left: 42px; }
-#dpad-left { left: 0; top: 42px; }
-#dpad-right { right: 0; top: 42px; }
+#dpad-up { top: 0; left: 36px; }
+#dpad-down { bottom: 0; left: 36px; }
+#dpad-left { left: 0; top: 36px; }
+#dpad-right { right: 0; top: 36px; }
 
 #face-buttons { display: flex; gap: 8px; }
 #face-buttons button {
-  width: 48px; height: 48px; border-radius: 50%; border: none;
+  width: 44px; height: 44px; border-radius: 50%; border: none;
   font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.1s, transform 0.1s;
 }
 #face-buttons button:active, #face-buttons button.pressed { transform: scale(0.88); }
@@ -94,7 +98,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 
 #shoulder-buttons { display: flex; gap: 6px; }
 #shoulder-buttons button {
-  width: 44px; height: 28px; border: none; border-radius: 6px 6px 0 0;
+  width: 42px; height: 26px; border: none; border-radius: 6px 6px 0 0;
   background: #2a2a3e; color: #888; font-size: 11px; font-weight: 600; cursor: pointer;
   transition: background 0.1s, transform 0.1s;
 }
@@ -108,6 +112,67 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 }
 #sys-buttons button:active, #sys-buttons button.pressed { background: #554; color: #ee4; }
 
+/* ── Pestañas ──────────────────────────────────────────────────────────── */
+#tabbar {
+  display: flex; gap: 2px; flex-shrink: 0;
+  background: #14141a; border-bottom: 1px solid #1a1a2e; padding: 0 8px;
+}
+#tabbar button {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: #666; font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+  padding: 7px 14px; cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+#tabbar button:hover { color: #aaa; }
+#tabbar button.activo { color: #c4a0f0; border-bottom-color: #7c5cf0; }
+#tabbar button .contador {
+  display: inline-block; min-width: 15px; margin-left: 6px; padding: 0 4px;
+  border-radius: 7px; background: #7f1d1d; color: #fca5a5;
+  font-size: 9px; line-height: 14px; vertical-align: 1px;
+}
+
+/* ── Panel Registro ────────────────────────────────────────────────────── */
+#log-panel { display: none; height: calc(100% - 63px); overflow: hidden; background: #0d0d0d; }
+#log-panel.activo { display: flex; flex-direction: column; }
+
+#diag {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px; background: #1a1a1e; flex-shrink: 0;
+  border-bottom: 1px solid #1a1a1e;
+}
+#diag .celda { background: #0d0d0d; padding: 7px 10px; }
+#diag .celda .k {
+  font-size: 8px; text-transform: uppercase; letter-spacing: 0.7px;
+  color: #4a4a5a; display: block; margin-bottom: 2px;
+}
+#diag .celda .v { font-family: monospace; font-size: 11px; color: #c4a0f0; }
+#diag .celda .v.malo { color: #f87171; }
+#diag .celda .v.ok { color: #4ade80; }
+
+#log-list {
+  flex: 1; overflow: auto; padding: 6px 10px;
+  font-family: monospace; font-size: 11px; line-height: 1.5;
+  user-select: text;
+}
+#log-list .l { white-space: pre-wrap; word-break: break-word; color: #7fbf7f; }
+#log-list .l.info { color: #7fbf7f; }
+#log-list .l.ok { color: #4ade80; }
+#log-list .l.warn { color: #fbbf24; }
+#log-list .l.error { color: #f87171; }
+#log-list .l.head { color: #6b7280; }
+#log-vacio { padding: 12px; color: #3a3a4a; font-family: monospace; font-size: 11px; }
+
+#log-panel .toolbar {
+  display: flex; gap: 6px; align-items: center; flex-shrink: 0;
+  padding: 5px 10px; background: #14141a; border-bottom: 1px solid #1a1a1e;
+}
+#log-panel .toolbar button {
+  background: transparent; border: 1px solid #1a1a1e; border-radius: 4px;
+  color: #888; font-size: 10px; cursor: pointer; padding: 3px 8px;
+  font-family: inherit;
+}
+#log-panel .toolbar button:hover { background: #2a2a3e; color: #ccc; }
+#log-panel .toolbar .crece { margin-left: auto; color: #4a4a5a; font-size: 9px; }
+
 #status { font-size: 10px; color: #555; text-align: center; }
 #status .fps { color: #484; margin-left: 12px; }
 #keys-hint { font-size: 9px; color: #3a3a4a; text-align: center; }
@@ -118,6 +183,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 <div id="titlebar">
   <span>🎮 Emulador GBA</span>
   <button id="btn-close" title="Cerrar (Esc)">✕</button>
+</div>
+
+<div id="tabbar">
+  <button id="tab-juego" class="activo">Juego</button>
+  <button id="tab-log">Registro<span id="log-contador" class="contador" hidden>0</span></button>
 </div>
 
 <div id="container">
@@ -163,6 +233,17 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
   </div>
 </div>
 
+<div id="log-panel">
+  <div id="diag"></div>
+  <div class="toolbar">
+    <button id="log-copiar">Copiar</button>
+    <button id="log-limpiar">Limpiar</button>
+    <span class="crece" id="log-nota">El log del editor en vivo</span>
+  </div>
+  <div id="log-vacio">Sin mensajes todavía.</div>
+  <div id="log-list"></div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
 // Emulador GBA — EmulatorJS (core mGBA/WebAssembly), self-hosteado en ./ejs/
@@ -198,6 +279,8 @@ window.__advanceEmu = {
   mode: MODE,
   romName: ROM_URL ? ROM_URL.split('/').pop().split('?')[0] : null,
   frames: 0,
+  /** Momento en ms en que el juego arrancó (para el tiempo de arranque). */
+  startedAt: 0,
 };
 
 const setState = (state, err) => {
@@ -314,6 +397,7 @@ window.EJS_defaultControls = {
 window.EJS_ready = function () { setState('ready'); };
 window.EJS_onGameStart = function () {
   setState('started');
+  window.__advanceEmu.startedAt = performance.now();
   // EJS escucha el teclado en elements.parent (este mismo div), así que hace
   // falta que el foco esté aquí dentro: si se queda en body, las teclas reales
   // no pasan por el contenedor al propagarse y el juego no ve nada.
@@ -561,6 +645,162 @@ if (MODE === 'game') {
 }
 
 boot();
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Pestaña Registro: el log del editor en vivo + el estado del emulador
+//
+// Lo que NO se puede ver aquí: lo que el juego imprime. EJS no da acceso a la
+// memoria de la GBA, el registro de depuración de mGBA (0x4FFF780) no llega al
+// navegador y el buffer de la SRAM sale borrado, así que un printf dentro de la
+// ROM no se puede recoger desde fuera (haría falta compilar el propio mGBA a
+// WASM). Lo que sí es fiable es esto: lo que pasó al compilar y cómo va el
+// emulador, sin tener que cambiar a la pestaña Mundo del editor.
+// ═══════════════════════════════════════════════════════════════════════════
+(function logPanel() {
+  const tabJuego = document.getElementById('tab-juego');
+  const tabLog = document.getElementById('tab-log');
+  const panelLog = document.getElementById('log-panel');
+  const container = document.getElementById('container');
+  const lista = document.getElementById('log-list');
+  const vacio = document.getElementById('log-vacio');
+  const diag = document.getElementById('diag');
+  const contador = document.getElementById('log-contador');
+  const nota = document.getElementById('log-nota');
+
+  if (!tabLog || !panelLog) return;
+
+  const MAX_LINEAS = 800;
+  let lineas = [];
+  let errores = 0;
+
+  function clase(msg) {
+    if (msg.startsWith('[ERROR]')) return 'error';
+    if (msg.startsWith('[OK]')) return 'ok';
+    if (msg.startsWith('[WARN]')) return 'warn';
+    if (msg.startsWith('[INFO]')) return 'info';
+    return '';
+  }
+
+  function anadir(msg) {
+    lineas.push(msg);
+    if (lineas.length > MAX_LINEAS) lineas = lineas.slice(-MAX_LINEAS);
+
+    const div = document.createElement('div');
+    div.className = 'l ' + clase(msg);
+    div.textContent = msg;
+    lista.appendChild(div);
+    lista.scrollTop = lista.scrollHeight;
+    vacio.style.display = 'none';
+
+    if (clase(msg) === 'error') {
+      errores++;
+      contador.textContent = String(errores);
+      contador.hidden = false;
+    }
+  }
+
+  function pintar() {
+    lista.textContent = '';
+    errores = 0;
+    for (const m of lineas) {
+      const div = document.createElement('div');
+      div.className = 'l ' + clase(m);
+      div.textContent = m;
+      lista.appendChild(div);
+      if (clase(m) === 'error') errores++;
+    }
+    vacio.style.display = lineas.length ? 'none' : 'block';
+    lista.scrollTop = lista.scrollHeight;
+    contador.hidden = errores === 0;
+    contador.textContent = String(errores);
+  }
+
+  function verLog() {
+    container.style.display = 'none';
+    panelLog.classList.add('activo');
+    tabLog.classList.add('activo');
+    tabJuego.classList.remove('activo');
+    refrescarDiag();
+  }
+
+  function verJuego() {
+    panelLog.classList.remove('activo');
+    container.style.display = '';
+    tabJuego.classList.add('activo');
+    tabLog.classList.remove('activo');
+    try { document.getElementById('gba-mount')?.focus({ preventScroll: true }); } catch (_) {}
+  }
+
+  tabJuego.addEventListener('click', verJuego);
+  tabLog.addEventListener('click', verLog);
+
+  // ── Diagnóstico del emulador ──────────────────────────────────────────
+  const CELDAS = [
+    ['Estado', (e) => e.state, (v) => (v === 'started' ? 'ok' : v === 'error' ? 'malo' : '')],
+    ['FPS', (e) => (e.fps > 0 ? e.fps + '' : '—'), (v) => (v === '—' ? '' : 'ok')],
+    ['Frames', (e) => (e.drawnFrames ?? 0) + '', () => ''],
+    ['Core', () => (window.EJS_emulator?.ejs_version ? 'mGBA/WASM' : '—'), () => ''],
+    ['Resolución', () => {
+      const c = window.EJS_emulator?.canvas;
+      return c && c.width ? c.width + 'x' + c.height : '—';
+    }, () => ''],
+    ['WebGL', () => {
+      const c = window.EJS_emulator?.canvas;
+      if (!c) return '—';
+      try {
+        return c.getContext('webgl2') ? 'WebGL 2' : 'WebGL 1';
+      } catch (_) {
+        return '—';
+      }
+    }, () => ''],
+    ['ROM', (e) => e.romName || '—', () => ''],
+    ['Arranque', (e) => (e.startedAt ? ((performance.now() - e.startedAt) / 1000).toFixed(1) + ' s' : '—'), () => ''],
+  ];
+
+  function refrescarDiag() {
+    const e = window.__advanceEmu || {};
+    if (!diag) return;
+    diag.textContent = '';
+    for (const [clave, leer, tono] of CELDAS) {
+      let v;
+      try { v = String(leer(e)); } catch (_) { v = '—'; }
+      const celda = document.createElement('div');
+      celda.className = 'celda';
+      const k = document.createElement('span');
+      k.className = 'k';
+      k.textContent = clave;
+      const val = document.createElement('span');
+      val.className = 'v ' + tono(v);
+      val.textContent = v;
+      celda.appendChild(k);
+      celda.appendChild(val);
+      diag.appendChild(celda);
+    }
+  }
+
+  document.getElementById('log-copiar')?.addEventListener('click', () => {
+    try { navigator.clipboard.writeText(lineas.join('\n')); } catch (_) {}
+  });
+  document.getElementById('log-limpiar')?.addEventListener('click', () => {
+    lineas = [];
+    pintar();
+  });
+
+  // Refresco del diagnóstico mientras la pestaña esté visible.
+  setInterval(() => {
+    if (panelLog.classList.contains('activo')) refrescarDiag();
+  }, 1000);
+
+  // ── Log en vivo desde el editor ───────────────────────────────────────
+  if (window.__advanceEmuBridge?.onLog) {
+    window.__advanceEmuBridge.onLog(({ msg }) => anadir(msg));
+  } else {
+    // Sin preload (export web, .exe): el shell funciona igual, solo sin log.
+    if (nota) nota.textContent = 'El log del editor no está disponible fuera de la app';
+  }
+
+  window.__advanceEmuLog = { anadir, ver: verLog };
 })();
 </script>
 </body>

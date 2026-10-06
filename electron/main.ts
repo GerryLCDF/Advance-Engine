@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { exec, execFileSync, spawn } from 'child_process';
-import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning, resolveEmulatorFile, setEmulatorStatusSink, reportEmulatorStatus } from './emuWindow';
+import { createEmulatorWindow, closeEmulatorWindow, isEmulatorRunning, resolveEmulatorFile, setEmulatorStatusSink, reportEmulatorStatus, pushLogToEmulator } from './emuWindow';
 
 // isDev: true cuando se corre con NODE_ENV=development (npm run dev)
 // app.isPackaged es seguro de leer en cualquier momento del proceso principal
@@ -1039,6 +1039,12 @@ ipcMain.handle('emu:stop', () => {
 
 ipcMain.handle('emu:isRunning', () => {
   return isEmulatorRunning();
+});
+
+// Instantánea del log para la pestaña Registro del emulador.
+ipcMain.handle('emu:sendLog', (_e, lines: string[]) => {
+  pushLogToEmulator(Array.isArray(lines) ? lines : []);
+  return { success: true };
 });
 
 // Los mensajes del emulador (fallos de carga, errores de consola, y el estado
