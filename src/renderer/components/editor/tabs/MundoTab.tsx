@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAppStore } from '../../../store/useAppStore';
+import { useAppStore, LOG_TERMINAL_LINES } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
@@ -2817,9 +2817,12 @@ export function MundoTab() {
             {exportLog.length === 0 ? (
               <div style={{ color: 'var(--text-dim)' }}>{'>'} Listo para compilar</div>
             ) : (
-              exportLog.map((msg, i) => (
-                <div key={i} style={{
-                  color: msg.startsWith('[ERROR]') ? 'var(--red)' : msg.startsWith('[OK]') ? 'var(--green)' : 'var(--terminal-green)',
+              // El recorte va aquí, no en el store: el store lo deja crecer para
+              // que los índices sean estables y GlobalAlerts siga viendo las
+              // líneas nuevas (ver LOG_TERMINAL_LINES).
+              exportLog.slice(-LOG_TERMINAL_LINES).map((msg, i) => (
+                <div key={exportLog.length - LOG_TERMINAL_LINES + i} style={{
+                  color: msg.startsWith('[ERROR]') ? 'var(--red)' : msg.startsWith('[OK]') ? 'var(--green)' : msg.startsWith('[WARN]') ? 'var(--yellow, #d8a657)' : 'var(--terminal-green)',
                 }}>
                   {`${'>'} ${msg}`}
                 </div>

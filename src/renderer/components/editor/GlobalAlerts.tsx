@@ -12,6 +12,7 @@ import { TriangleAlertIcon, XIcon } from './tabs/icons';
  * donde estaba (MundoTab), para consultarlo entero.
  */
 const DURACION_MS = 7000;
+const MAX_VISIBLES = 3;
 
 export function GlobalAlerts() {
   const exportLog = useAppStore((s) => s.exportLog);
@@ -24,7 +25,7 @@ export function GlobalAlerts() {
   const vistosRef = useRef<Set<number>>(new Set());
   const vistoMaxRef = useRef(-1);
 
-  useEffect(() => {
+useEffect(() => {
     // El log se vacía al empezar cada exportación o Play (beginExportRun), así
     // que los índices se reinician. Si el log se ha encogido, es que hubo un
     // vaciado: hay que olvidar el rastreo o los errores siguientes pasarían
@@ -42,19 +43,25 @@ export function GlobalAlerts() {
 
     const nuevos: { id: number; msg: string }[] = [];
     for (let i = Math.max(0, vistoMaxRef.current + 1); i < exportLog.length; i++) {
-      if (exportLog[i].startsWith('[ERROR]') && !vistosRef.current.has(i)) {
+      // Tolera el prefijo [INFO] delante: los errores que se emiten con
+      // `add('[ERROR] …')` (no con `error()`) salían como "[INFO] [ERROR] …" y
+      // con startsWith no avisaban nunca.
+      const m = /^\s*(?:\[INFO\]\s*)?\[ERROR\]\s*(.+)$/.exec(exportLog[i]);
+      if (m && !vistosRef.current.has(i)) {
         vistosRef.current.add(i);
-        nuevos.push({ id: idSeq.current++, msg: exportLog[i].replace(/^\[ERROR\]\s*/, '') });
+        nuevos.push({ id: idSeq.current++, msg: m[1] });
       }
     }
     if (nuevos.length === 0) return;
 
     vistoMaxRef.current = exportLog.length - 1;
-    setAvisos((prev) => [...prev, ...nuevos]);
+    // Una exportación fallida puede escupir decenas de errores (p.ej. un script
+    // de AdvanceCode con 20 fallos). Apilar 20 toasts tapa la pantalla: se
+    // enseñan los primeros y el resto sigue íntegro en la terminal.
+    setAvisos((prev) => [...prev, ...nuevos].slice(-MAX_VISIBLES));
 
-    const ids = nuevos.map((n) => n.id);
-    const timers = ids.map((id) =>
-      setTimeout(() => setAvisos((prev) => prev.filter((a) => a.id !== id)), DURACION_MS)
+    const timers = nuevos.map((n) =>
+      setTimeout(() => setAvisos((prev) => prev.filter((a) => a.id !== n.id)), DURACION_MS)
     );
     return () => timers.forEach(clearTimeout);
   }, [exportLog]);
@@ -65,6 +72,8 @@ export function GlobalAlerts() {
 
   return (
     <div
+      role="alert"
+      aria-live="assertive"
       style={{
         position: 'absolute',
         left: '50%',

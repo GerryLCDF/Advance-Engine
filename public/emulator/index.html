@@ -41,9 +41,41 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
   justify-content: center; overflow: hidden;
 }
 
+#game-info {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 720px; flex-shrink: 0;
+  padding: 4px 8px; background: #14141a; border-radius: 8px 8px 0 0;
+}
+#game-info .rom-name {
+  font-size: 11px; color: #888; letter-spacing: 0.4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 480px;
+}
+#game-info .fps-counter {
+  font-size: 11px; color: #4ade80; font-family: monospace; letter-spacing: 0.4px;
+}
+#game-info .fps-counter.fps-bajo { color: #fbbf24; }
+
+#botones-presionados {
+  display: flex; gap: 6px; align-items: center; justify-content: center;
+  width: 720px; flex-shrink: 0;
+  padding: 4px 8px; background: #14141a; border-radius: 0 0 8px 8px;
+  min-height: 22px;
+}
+#botones-presionados .bp {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 2px 8px; border-radius: 3px;
+  background: #1a1a2e; color: #555;
+  transition: background 0.08s, color 0.08s, transform 0.08s;
+}
+#botones-presionados .bp.activo {
+  background: #2a2a4e; color: #c4a0f0;
+  transform: scale(1.1);
+  box-shadow: 0 0 6px rgba(124, 92, 240, 0.3);
+}
+
 #screen-wrapper {
   position: relative; width: 720px; height: 480px; flex-shrink: 0;
-  background: #000; border-radius: 8px; overflow: hidden;
+  background: #000; border-radius: 0 0 8px 8px; overflow: hidden;
   box-shadow: 0 0 30px rgba(0,0,0,0.5), inset 0 0 60px rgba(0,0,0,0.3);
   flex-shrink: 0;
 }
@@ -53,21 +85,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
   font-size: 14px; color: #555; letter-spacing: 1px;
 }
 #screen { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
-
-#error-overlay {
-  display: none; position: absolute; inset: 0;
-  background: rgba(0,0,0,0.85); align-items: center; justify-content: center;
-  flex-direction: column; gap: 12px; padding: 20px; text-align: center;
-}
-#error-overlay.visible { display: flex; }
-#error-overlay .icon { font-size: 36px; }
-#error-overlay .msg { font-size: 13px; color: #f88; max-width: 400px; line-height: 1.4; }
-#error-overlay .actions { display: flex; gap: 8px; margin-top: 8px; }
-#error-overlay button {
-  padding: 8px 24px; border: none; border-radius: 6px;
-  background: #444; color: #fff; font-size: 12px; cursor: pointer; transition: background 0.15s;
-}
-#error-overlay button:hover { background: #666; }
 
 #controls {
   display: flex; gap: 24px; align-items: center; flex-wrap: wrap; justify-content: center;
@@ -111,6 +128,23 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
   transition: background 0.1s;
 }
 #sys-buttons button:active, #sys-buttons button.pressed { background: #554; color: #ee4; }
+
+#error-overlay {
+  display: none; position: absolute; inset: 0;
+  background: rgba(0,0,0,0.85); align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px; padding: 20px; text-align: center;
+}
+#error-overlay.visible { display: flex; }
+#error-overlay .icon { font-size: 36px; }
+#error-overlay .msg { font-size: 13px; color: #f88; max-width: 400px; line-height: 1.4; }
+#error-overlay .actions { display: flex; gap: 8px; margin-top: 8px; }
+#error-overlay button {
+  padding: 8px 24px; border: none; border-radius: 6px;
+  background: #444; color: #fff; font-size: 12px; cursor: pointer; transition: background 0.15s;
+}
+#error-overlay button:hover { background: #666; }
+
+
 
 /* ── Pestañas ──────────────────────────────────────────────────────────── */
 #tabbar {
@@ -173,9 +207,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
 #log-panel .toolbar button:hover { background: #2a2a3e; color: #ccc; }
 #log-panel .toolbar .crece { margin-left: auto; color: #4a4a5a; font-size: 9px; }
 
-#status { font-size: 10px; color: #555; text-align: center; }
-#status .fps { color: #484; margin-left: 12px; }
-#keys-hint { font-size: 9px; color: #3a3a4a; text-align: center; }
+
 </style>
 </head>
 <body>
@@ -190,7 +222,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
   <button id="tab-log">Registro<span id="log-contador" class="contador" hidden>0</span></button>
 </div>
 
-<div id="container">
+  <div id="container">
+  <div id="game-info">
+    <span class="rom-name" id="game-rom">—</span>
+    <span class="fps-counter" id="game-fps">— FPS</span>
+  </div>
   <div id="screen-wrapper" class="loading">
     <div id="gba-mount" tabindex="0"></div>
     <div id="error-overlay">
@@ -224,13 +260,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI
     </div>
   </div>
 
-  <div id="status">
-    <span id="status-rom">—</span>
-    <span class="fps" id="status-fps">— FPS</span>
-  </div>
-  <div id="keys-hint">
-    Z=A &nbsp; X=B &nbsp; A=L &nbsp; S=R &nbsp; Enter=Start &nbsp; V=Select &nbsp; Flechas=D-Pad
-  </div>
+  <div id="botones-presionados"></div>
 </div>
 
 <div id="log-panel">
@@ -266,8 +296,8 @@ const MODE = params.get('mode') === 'game' ? 'game' : 'editor';
 const screenWrapper = document.getElementById('screen-wrapper');
 const errorOverlay = document.getElementById('error-overlay');
 const errorMsg = document.getElementById('error-msg');
-const statusRom = document.getElementById('status-rom');
-const statusFps = document.getElementById('status-fps');
+const gameRom = document.getElementById('game-rom');
+const gameFps = document.getElementById('game-fps');
 const titlebar = document.getElementById('titlebar');
 
 // ── Estado observable ─────────────────────────────────────────────────────
@@ -414,7 +444,7 @@ function boot() {
     return;
   }
   setState('loading');
-  if (statusRom) statusRom.textContent = window.__advanceEmu.romName || ROM_URL;
+  if (gameRom) gameRom.textContent = window.__advanceEmu.romName || ROM_URL;
   // loader.js se inyecta desde aquí (no con un <script src>) para poder
   // capturar onerror y avisar si falta la carpeta ejs/.
   loadScript();
@@ -519,30 +549,76 @@ if (MODE === 'game') {
     window.__advanceEmu.fps = porSegundo;
     window.__advanceEmu.everDrawn = draws > 0;
 
-    if (statusFps) {
-      statusFps.textContent = porSegundo > 0 ? porSegundo + ' FPS' : '— FPS';
+    if (gameFps) {
+      gameFps.textContent = porSegundo > 0 ? porSegundo + ' FPS' : '— FPS';
+      gameFps.classList.toggle('fps-bajo', porSegundo > 0 && porSegundo < 55);
     }
   }, 1000);
 })();
 
-// ── Botones en pantalla ────────────────────────────────────────────────────
+// ── Teclado ───────────────────────────────────────────────────────────────
 // EJS NO escucha en window: se engancha a elements.parent (el contenedor del
-// jugador) y compara t.keyCode, no t.code. Por eso un evento sintético lanzado
-// en window no llegaba a la ROM (el test lo cazó: la tecla de verdad sí, el
-// botón en pantalla no).
-const KEYCODES = {
-  KeyZ: 90, KeyX: 88, KeyV: 86, Enter: 13,
+// jugador) y compara t.keyCode, no t.code. Hay que reenviar los eventos.
+
+// keyCode de cada tecla física (lo que EJS compara en t.keyCode)
+const CODE_KEYCODE = {
+  KeyZ: 90, KeyX: 88, KeyC: 67, KeyV: 86, KeyB: 66, KeyN: 78, KeyM: 77,
+  KeyA: 65, KeyS: 83, KeyD: 68, KeyF: 70, KeyG: 71, KeyH: 72,
+  KeyJ: 74, KeyK: 75, KeyL: 76, KeyQ: 81, KeyW: 87, KeyE: 69,
+  KeyR: 82, KeyT: 84, KeyY: 89, KeyU: 85, KeyI: 73, KeyO: 79, KeyP: 80,
+  Digit1: 49, Digit2: 50, Digit3: 51, Digit4: 52, Digit5: 53,
+  Digit6: 54, Digit7: 55, Digit8: 56, Digit9: 57, Digit0: 48,
   ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
-  KeyA: 65, KeyS: 83,
+  Enter: 13, Space: 32,
+  ShiftLeft: 16, ShiftRight: 16, ControlLeft: 17, ControlRight: 17,
+  Tab: 9, Backspace: 8, Escape: 27, CapsLock: 20,
+  Comma: 188, Period: 190, Slash: 191, Semicolon: 186, Quote: 222,
+  BracketLeft: 219, BracketRight: 221, Backslash: 220, Minus: 189, Equal: 187,
+  Home: 36, End: 35, PageUp: 33, PageDown: 34, Insert: 45, Delete: 46,
+  F1: 112, F2: 113, F3: 114, F4: 115, F5: 116, F6: 117,
+  F7: 118, F8: 119, F9: 120, F10: 121, F11: 122, F12: 123,
 };
 
-const BTN_CODE = {
-  'btn-a': 'KeyZ', 'btn-b': 'KeyX',
-  'btn-select': 'KeyV', 'btn-start': 'Enter',
-  'dpad-up': 'ArrowUp', 'dpad-down': 'ArrowDown',
-  'dpad-left': 'ArrowLeft', 'dpad-right': 'ArrowRight',
-  'btn-l': 'KeyA', 'btn-r': 'KeyS',
+// Remapeo configurado en Ajustes → Play (viaja en la URL como JSON)
+const KEYMAP_DEFAULT = {
+  A: 'KeyZ', B: 'KeyX', L: 'KeyA', R: 'KeyS',
+  SELECT: 'KeyV', START: 'Enter',
+  UP: 'ArrowUp', DOWN: 'ArrowDown', LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
 };
+
+const GBA_BTN_ID = {
+  A: 'btn-a', B: 'btn-b', SELECT: 'btn-select', START: 'btn-start',
+  UP: 'dpad-up', DOWN: 'dpad-down', LEFT: 'dpad-left', RIGHT: 'dpad-right',
+  L: 'btn-l', R: 'btn-r',
+};
+
+function parseKeymap() {
+  try {
+    const raw = params.get('keymap');
+    if (!raw) return { ...KEYMAP_DEFAULT };
+    const parsed = JSON.parse(decodeURIComponent(raw));
+    const out = { ...KEYMAP_DEFAULT };
+    for (const btn of Object.keys(GBA_BTN_ID)) {
+      if (typeof parsed[btn] === 'string' && parsed[btn] in CODE_KEYCODE) {
+        out[btn] = parsed[btn];
+      }
+    }
+    return out;
+  } catch { return { ...KEYMAP_DEFAULT }; }
+}
+
+const KEYMAP = parseKeymap();
+const KEYCODES = {};
+const CODE_TO_KEY = {};
+const BTN_CODE = {};
+
+for (const [btn, code] of Object.entries(KEYMAP)) {
+  KEYCODES[code] = CODE_KEYCODE[code];
+  CODE_TO_KEY[code] = btn;
+  BTN_CODE[GBA_BTN_ID[btn]] = code;
+}
+
+const GAME_KEYS = new Set(Object.keys(KEYCODES));
 
 /** Nodo al que EJS engancha sus oyentes de teclado. */
 function nodoEjs() {
@@ -554,12 +630,13 @@ function sendKey(code, down) {
   if (!target) return;
 
   const keyCode = KEYCODES[code] ?? 0;
-  const key = code.startsWith('Arrow') ? code.slice(5).toLowerCase() : code.replace(/^Key/, '').toLowerCase();
+  const key = code.startsWith('Arrow') ? code.slice(5).toLowerCase()
+    : code.replace(/^(Key|Digit)/, '').toLowerCase();
 
   const ev = new KeyboardEvent(down ? 'keydown' : 'keyup', {
     key,
     code,
-    keyCode,          // EJS compara t.keyCode (Chrome lo acepta en el init dict)
+    keyCode,
     which: keyCode,
     charCode: 0,
     bubbles: true,
@@ -569,6 +646,24 @@ function sendKey(code, down) {
 }
 
 const keysHeld = new Set();
+const barraBotones = document.getElementById('botones-presionados');
+
+function pintarBotonesPresionados() {
+  if (!barraBotones) return;
+  const activos = new Set();
+  for (const code of keysHeld) {
+    const nombre = CODE_TO_KEY[code];
+    if (nombre) activos.add(nombre);
+  }
+  const orden = ['L', 'R', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'B', 'A', 'SELECT', 'START'];
+  barraBotones.textContent = '';
+  for (const nombre of orden) {
+    const span = document.createElement('span');
+    span.className = 'bp' + (activos.has(nombre) ? ' activo' : '');
+    span.textContent = nombre;
+    barraBotones.appendChild(span);
+  }
+}
 
 for (const [id, code] of Object.entries(BTN_CODE)) {
   const el = document.getElementById(id);
@@ -577,12 +672,12 @@ for (const [id, code] of Object.entries(BTN_CODE)) {
   const down = (e) => {
     e.preventDefault();
     el.classList.add('pressed');
-    if (!keysHeld.has(code)) { keysHeld.add(code); sendKey(code, true); }
+    if (!keysHeld.has(code)) { keysHeld.add(code); sendKey(code, true); pintarBotonesPresionados(); }
   };
   const up = (e) => {
     e.preventDefault();
     el.classList.remove('pressed');
-    if (keysHeld.has(code)) { keysHeld.delete(code); sendKey(code, false); }
+    if (keysHeld.has(code)) { keysHeld.delete(code); sendKey(code, false); pintarBotonesPresionados(); }
   };
 
   el.addEventListener('pointerdown', down);
@@ -591,49 +686,46 @@ for (const [id, code] of Object.entries(BTN_CODE)) {
   el.addEventListener('pointercancel', up);
 }
 
-// ── Teclado ───────────────────────────────────────────────────────────────
-// Mismo mapa que BTN_CODE para que los botones se iluminen al teclear.
-const CODE_TO_BTN = {
-  KeyZ: 'btn-a', KeyX: 'btn-b', KeyV: 'btn-select', Enter: 'btn-start',
-  ArrowUp: 'dpad-up', ArrowDown: 'dpad-down', ArrowLeft: 'dpad-left', ArrowRight: 'dpad-right',
-  KeyA: 'btn-l', KeyS: 'btn-r',
-};
-const held = new Set();
+const CODE_TO_BTN = Object.fromEntries(
+  Object.entries(KEYMAP).map(([btn, code]) => [code, GBA_BTN_ID[btn]])
+);
+
+function iluminarBoton(code, activo) {
+  const btn = CODE_TO_BTN[code];
+  if (!btn) return;
+  const el = document.getElementById(btn);
+  if (el) el.classList.toggle('pressed', activo);
+}
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || (e.ctrlKey && e.key === 'w')) { closeEmulator(); return; }
-  const btn = CODE_TO_BTN[e.code];
-  if (!btn) return;
+  if (!GAME_KEYS.has(e.code)) return;
 
-  // Respaldo: si el evento no ha pasado por el contenedor de EJS (porque el
-  // foco estaba en otro sitio), se le reenvía. Si ya pasó por ahí, contains()
-  // da true y no se duplica.
   const mount = document.getElementById('gba-mount');
   if (mount && !mount.contains(e.target)) sendKey(e.code, true);
-  if (!held.has(e.code)) {
-    held.add(e.code);
-    const el = document.getElementById(btn);
-    if (el) el.classList.add('pressed');
+
+  if (!keysHeld.has(e.code)) {
+    keysHeld.add(e.code);
+    iluminarBoton(e.code, true);
+    pintarBotonesPresionados();
   }
-  // No hacemos preventDefault: EJS ya gestiona el teclado del juego.
 });
 window.addEventListener('keyup', (e) => {
-  const btn = CODE_TO_BTN[e.code];
-  if (!btn) return;
+  if (!GAME_KEYS.has(e.code)) return;
 
-  const mount0 = document.getElementById('gba-mount');
-  if (mount0 && !mount0.contains(e.target)) sendKey(e.code, false);
+  const mount = document.getElementById('gba-mount');
+  if (mount && !mount.contains(e.target)) sendKey(e.code, false);
 
-  held.delete(e.code);
-  const el = document.getElementById(btn);
-  if (el) el.classList.remove('pressed');
+  keysHeld.delete(e.code);
+  iluminarBoton(e.code, false);
+  pintarBotonesPresionados();
 });
-// Si se sueltan varias a la vez (alt-tab), limpiar las que se quedaron pegadas.
 window.addEventListener('blur', () => {
-  held.clear();
   keysHeld.clear();
-  document.querySelectorAll('.pressed').forEach((el) => el.classList.remove('pressed'));
+  pintarBotonesPresionados();
 });
+
+pintarBotonesPresionados();
 
 // ── Ventana ────────────────────────────────────────────────────────────────
 function closeEmulator() {
@@ -646,11 +738,10 @@ document.getElementById('btn-close-err')?.addEventListener('click', closeEmulato
 document.getElementById('btn-retry')?.addEventListener('click', () => location.reload());
 window.addEventListener('beforeunload', () => setState('closed'));
 
-// En modo juego no hay titlebar ni botones: el .exe va directo al juego.
 if (MODE === 'game') {
   titlebar?.remove();
   document.getElementById('controls')?.remove();
-  document.getElementById('keys-hint')?.remove();
+  document.getElementById('botones-presionados')?.remove();
 }
 
 boot();

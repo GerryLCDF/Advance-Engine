@@ -131,7 +131,7 @@ export function resolveEmulatorFile(requestUrl: string): string | null {
   }
 }
 
-export function createEmulatorWindow(romPath: string): void {
+export function createEmulatorWindow(romPath: string, keymapJson?: string): void {
   closeEmulatorWindow();
   currentRomPath = romPath;
 
@@ -201,7 +201,10 @@ export function createEmulatorWindow(romPath: string): void {
   });
 
   const romUrl = `app://emu/rom/${encodeURIComponent(path.basename(romPath))}`;
-  emuWindow.loadURL(`app://emu/index.html?rom=${encodeURIComponent(romUrl)}&mode=editor`);
+  // El remapeo de botones viaja en la URL: la página lo lee al arrancar y
+  // construye el mapa tecla→botón a partir de él (ver index.html).
+  const keymapParam = keymapJson ? `&keymap=${encodeURIComponent(keymapJson)}` : '';
+  emuWindow.loadURL(`app://emu/index.html?rom=${encodeURIComponent(romUrl)}&mode=editor${keymapParam}`);
 }
 
 export function closeEmulatorWindow(): void {

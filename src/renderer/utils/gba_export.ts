@@ -4,27 +4,35 @@ import { scriptEffectiveCCode, type ACodTranspileResult } from './advanceCode';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
-function noteToPeriodIdx(note: string, octave: number): number {
+// Length del blip por defecto (78 ms), igual que el secuenciador del editor.
+const SONG_LEN_PULSE_DEFAULT = 44;  // (64-44)/64 s
+const SONG_LEN_WAVE_DEFAULT = 236;  // (256-236)/256 s
+
+/** Misma fórmula que gba_audio.ts: frecuencia de la nota (nota vacía → A4). */
+function noteToFreq(note: string, octave: number): number {
   const i = NOTE_NAMES.indexOf(note);
-  if (i < 0) return -1;
-  return (octave - 1) * 12 + i;
+  if (i < 0) return 440;
+  const midi = i + (octave + 1) * 12;
+  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
-function calcPeriod(freq: number): number {
-  const p = Math.round(2048 - (131072 / freq));
-  return Math.max(0, Math.min(2047, p));
+/** "C4" → frecuencia. */
+function noteNameToFreq(name: string): number {
+  const m = /^([A-G]#?)(-?\d+)$/.exec((name || 'C4').toUpperCase());
+  if (!m) return 440;
+  return noteToFreq(m[1], parseInt(m[2]));
 }
 
-function buildPeriodTable(): number[] {
-  const table: number[] = [];
-  for (let o = 1; o <= 8; o++) {
-    for (let n = 0; n < 12; n++) {
-      const midiIdx = (o + 1) * 12 + n;
-      const freq = 440 * Math.pow(2, (midiIdx - 69) / 12);
-      table.push(calcPeriod(freq));
-    }
+/** Los 8 u16 de Wave RAM con la senoide de 32 dígitos del editor (0-15). */
+function sineWaveWords(): string {
+  const nibbles: number[] = [];
+  for (let i = 0; i < 32; i++) nibbles.push(Math.round((Math.sin((i / 32) * Math.PI * 2) + 1) / 2 * 15));
+  const words: string[] = [];
+  for (let w = 0; w < 8; w++) {
+    const n0 = nibbles[w * 4], n1 = nibbles[w * 4 + 1], n2 = nibbles[w * 4 + 2], n3 = nibbles[w * 4 + 3];
+    words.push(`0x${((n0 << 12) | (n1 << 8) | (n2 << 4) | n3).toString(16).padStart(4, '0')}`);
   }
-  return table;
+  return words.join(', ');
 }
 
 function dutyToGBA(dutyVal: number): number {
@@ -37,9 +45,6 @@ function dutyToGBA(dutyVal: number): number {
 }
 
 function generateSoundTypes(): string {
-  const periods = buildPeriodTable();
-  const TABLE_SIZE = periods.length;
-
   return `
 // ── GBA Sound Registers & Types ─────────────────────────────────────────
 #define REG_SND1SWEEP *(vu16*)(0x04000060)
@@ -65,26 +70,36 @@ typedef struct {
   u8 sweepShift;
   u8 sweepTime;
   u8 sweepDir;
+  u8 lenP;   // length de pulse/noise (0-63): (64-n)/64 s
+  u8 lenW;   // length del canal wave (0-255): (256-n)/256 s
 } GBAInst;
 
 typedef struct {
-  u8 periodIdx;  // 0-${TABLE_SIZE - 1}, 0xFF=rest
+  u16 period;    // valor directo del registro FREQ (pulse/wave) o bits ratio|cs<<3 (noise); 0xFFFF=rest
   u8 instIdx;
 } GBANote;
 
 typedef struct {
-  GBANote ch[4]; // [pulse1, pulse2, wave, noise]
+  GBANote ch[4];  // [pulse1, pulse2, wave, noise]
+  u16 pcmSample;  // índice de muestra (0xFFFF = sin nota PCM)
+  u16 pcmTimer;   // reload del timer 1 para la altura de la nota
+  u16 pcmFrames;  // vsyncs que suena (0 = bucle)
 } GBAStep;
 
-// ── Note period table (C1-B8, ${TABLE_SIZE} notes) ──────────────────────
-const u16 gNotePeriods[${TABLE_SIZE}] = {${periods.map((p) => `0x${p.toString(16).padStart(4, '0')}`).join(', ')}};
+// Volumen del canal wave (bits 13-14 de SND3CNT_H): 0=mute, 1=100%, 2=50%, 3=25%.
+// Misma escala que el editor: índice = round(vol/5) clamp 0-3.
+static u16 waveVolCode(u8 vol) {
+  int idx = ((vol * 2) + 5) / 10;   /* round(vol/5) */
+  if (idx < 0) idx = 0;
+  if (idx > 3) idx = 3;
+  return (u16)idx;
+}
 
+// Wave RAM: misma senoide de 32 dígitos que usa el editor (gba_audio.ts).
+// Cada u16 = 4 dígitos de 4 bits, el dígito alto primero (n0<<12|n1<<8|n2<<4|n3).
 static void initWaveRAM(void) {
   vu16* wave = (vu16*)0x04000090;
-  const u16 waveData[8] = {
-    0x0123, 0x4567, 0x89AB, 0xCDEF,
-    0x0123, 0x4567, 0x89AB, 0xCDEF
-  };
+  const u16 waveData[8] = {${sineWaveWords()}};
   int i;
   for (i = 0; i < 8; i++) wave[i] = waveData[i];
 }
@@ -104,46 +119,178 @@ static void initSound(void) {
   REG_SNDCNTX = 0x0080;
   REG_SNDCNTH = 0x0002;
   REG_SNDCTL = 0xFF77;
-  REG_SND3CNT_L = 0x0080;
-  REG_SND3CNT_H = 0x0001;
+  REG_SND3CNT_L = 0x0080;   // canal 3: playback ON, un banco de 32 dígitos
   initWaveRAM();
 }
 
+// Enciende una nota. "period" es el valor del registro de frecuencia ya
+// calculado (pulse: 2048-131072/f; wave: 2048-65536/f; noise: ratio|cs<<3).
+// El contador de length corta la nota sola, igual que los blips de 80 ms del
+// editor (pulse/noise: (64-n)/256s; wave: (256-n)/256s).
 static void noteOn(int ch, const GBAInst* inst, u16 period) {
-  u16 dutyVal = (inst->duty & 3) << 0;
-  u16 envVal = ((inst->volume & 0xF) << 11) | ((inst->envDir & 1) << 8) | ((inst->envSweep & 7) << 4);
-  u16 freqVal = 0xC000 | (period & 0x07FF);
+  u16 dutyVal = (inst->duty & 3) << 6;                                                  // bits 6-7
+  u16 envVal = ((inst->volume & 0xF) << 12) | ((inst->envDir & 1) << 11) | ((inst->envSweep & 7) << 8);
+  u16 freqVal = 0xC000 | (period & 0x07FF);   // restart + length flag
   switch (ch) {
   case 0: {
-    u16 sweepVal = (inst->sweepShift & 7) | ((inst->sweepTime & 7) << 3) | ((inst->sweepDir & 1) << 6);
+    u16 sweepVal = (inst->sweepShift & 7) | ((inst->sweepDir & 1) << 3) | ((inst->sweepTime & 7) << 4);
     REG_SND1SWEEP = sweepVal;
-    REG_SND1CNT = dutyVal | envVal;
+    REG_SND1CNT = dutyVal | envVal | inst->lenP;
     REG_SND1FREQ = freqVal;
     break;
   }
   case 1:
-    REG_SND2CNT = dutyVal | envVal;
+    REG_SND2CNT = dutyVal | envVal | inst->lenP;
     REG_SND2FREQ = freqVal;
     break;
   case 2:
+    // Volumen del canal wave en bits 13-14 (0=mute, 1=100%, 2=50%, 3=25%),
+    // misma escala que el editor: índice = round(vol/5) clamp 0-3
     REG_SND3CNT_L = 0x0080;
-    REG_SND3CNT_H = 0x0001;
-    REG_SND3FREQ = freqVal >> 1;
+    REG_SND3CNT_H = (u16)(inst->lenW | (waveVolCode(inst->volume) << 13));
+    REG_SND3FREQ = freqVal;
     break;
   case 3:
-    REG_SND4CNT = envVal;
-    REG_SND4FREQ = 0xC031;
+    REG_SND4CNT = envVal | inst->lenP;
+    REG_SND4FREQ = freqVal;   // bits 0-2 = ratio, bit 3 = width 7-bit, shift s=0
     break;
   }
 }
 `;
 }
 
-function generateSongData(song: Song, suffix: string = ''): string {
+/** Decodifica base64 a bytes con signo (PCM 8-bit de la GBA). */
+function base64ToS8(b64: string): number[] {
+  const bin = atob(b64);
+  const out: number[] = new Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    const b = bin.charCodeAt(i);
+    out[i] = b < 128 ? b : b - 256;
+  }
+  return out;
+}
+
+export interface PcmSoundMeta { id: string; index: number; name: string; bytes: number; rate: number; loop: boolean; }
+
+/**
+ * Sonidos PCM (importados y ya convertidos a 8-bit mono): datos en ROM +
+ * runtime de reproducción por DMA (direct sound). La GBA no decodifica MP3/OGG:
+ * reproduce PCM de 8 bits con signo alimentando el FIFO_A con el DMA1, a la
+ * velocidad que marca el timer 0. `sound_play(idx)` se puede llamar desde un
+ * script de C Directo (p.ej. al recoger una moneda).
+ */
+export function generatePcmSoundData(sounds: any[]): { code: string; meta: PcmSoundMeta[] } {
+  const pcm = (sounds ?? []).filter((s) => s && typeof s.pcmBase64 === 'string' && s.pcmBase64 && (s.pcmBytes ?? 0) > 0);
+  const meta: PcmSoundMeta[] = pcm.map((s, i) => ({
+    id: s.id, index: i, name: s.name ?? `sonido ${i}`,
+    bytes: (s.pcmBytes ?? 0), rate: s.pcmRate || 11025, loop: !!s.loop,
+  }));
+
+  if (pcm.length === 0) {
+    return {
+      meta,
+      code: `
+// ── Sonido PCM por DMA: sin sonidos importados ─────────────────────────
+#define SOUND_COUNT 0
+static void soundPlay(int idx, int loop) { (void)idx; (void)loop; }
+static void soundStop(void) {}
+static void soundTick(void) {}
+static void pcmVoicePlay(int sampleIdx, u16 timerReload, u16 frames) { (void)sampleIdx; (void)timerReload; (void)frames; }
+static void pcmVoiceStop(void) {}
+`,
+    };
+  }
+
+  // Los datos primero: en C la tabla de punteros necesita los arrays declarados.
+  let dataCode = '';
+  for (let i = 0; i < pcm.length; i++) {
+    const bytes = base64ToS8(pcm[i].pcmBase64);
+    while (bytes.length % 4 !== 0) bytes.push(0);
+    dataCode += `// ${meta[i].name} — ${meta[i].rate} Hz, ${bytes.length} bytes\n`;
+    dataCode += `static const s8 snd_${i}[${bytes.length}] = {\n`;
+    const lines: string[] = [];
+    for (let j = 0; j < bytes.length; j += 24) {
+      lines.push('  ' + bytes.slice(j, j + 24).join(', '));
+    }
+    dataCode += lines.join(',\n') + '\n};\n\n';
+  }
+
+  let code = dataCode + `
+// ── Sonido PCM por DMA (direct sound) ──────────────────────────────────
+#define AE_TM0CNT_L  *(vu16*)(0x04000100)
+#define AE_TM0CNT_H  *(vu16*)(0x04000102)
+#define AE_DMA1SAD   *(vu32*)(0x040000BC)
+#define AE_DMA1DAD   *(vu32*)(0x040000C0)
+#define AE_DMA1CNT_H *(vu16*)(0x040000C6)
+#define AE_FIFO_A    *(vu32*)(0x040000A0)
+#define AE_TM1CNT_L  *(vu16*)(0x04000104)
+#define AE_TM1CNT_H  *(vu16*)(0x04000106)
+#define AE_DMA2SAD   *(vu32*)(0x040000C8)
+#define AE_DMA2DAD   *(vu32*)(0x040000CC)
+#define AE_DMA2CNT_H *(vu16*)(0x040000CE)
+#define AE_FIFO_B    *(vu32*)(0x040000A4)
+#define SOUND_COUNT ${pcm.length}
+
+static const s8* const gSndData[SOUND_COUNT] = { ${pcm.map((_, i) => `snd_${i}`).join(', ')} };
+static const u32 gSndBytes[SOUND_COUNT] = { ${pcm.map((s) => (s.pcmBytes + 3) & ~3).join(', ')} };
+static const u16 gSndRate[SOUND_COUNT] = { ${pcm.map((s) => s.pcmRate || 11025).join(', ')} };
+
+static int gSoundFrames;   // vsyncs que le quedan al sonido (0 = parado)
+static int gPcmFrames;     // vsyncs de la voz PCM del secuenciador
+
+// Voz PCM del secuenciador (canal B: timer 1 + DMA2 -> FIFO_B). Se usa para
+// instrumentos muestreados a distintas alturas, en paralelo a los 4 canales PSG.
+static void pcmVoiceStop(void) { AE_DMA2CNT_H = 0; gPcmFrames = 0; }
+
+static void pcmVoicePlay(int sampleIdx, u16 timerReload, u16 frames) {
+  if (sampleIdx < 0 || sampleIdx >= SOUND_COUNT) return;
+  pcmVoiceStop();
+  AE_TM1CNT_H = 0;
+  AE_TM1CNT_L = timerReload;
+  AE_TM1CNT_H = 0x0080;                    // prescaler 1, timer 1 encendido
+  AE_DMA2SAD = (u32)gSndData[sampleIdx];
+  AE_DMA2DAD = (u32)&AE_FIFO_B;
+  AE_DMA2CNT_H = 0xB640;                   // 32-bit, destino fijo, repeat, especial
+  REG_SNDCNTH |= 0x7008;                   // DMA B 100% a L y R, timer 1
+  gPcmFrames = frames ? frames : 0x7FFFFFFF;
+}
+
+static void soundStop(void) {
+  AE_DMA1CNT_H = 0;
+  REG_SNDCNTH = 0x0002;    // PSG 100%, DMA A apagado
+  gSoundFrames = 0;
+}
+
+static void soundPlay(int idx, int loop) {
+  if (idx < 0 || idx >= SOUND_COUNT) return;
+  soundStop();
+  REG_SNDCNTX = 0x0080;    // master de sonido encendido (aunque no haya PSG)
+  REG_SNDBIAS = 0x200;
+  AE_TM0CNT_H = 0;
+  AE_TM0CNT_L = (u16)(65536 - (16777216 / gSndRate[idx]));
+  AE_TM0CNT_H = 0x0080;                    // prescaler 1, timer encendido
+  AE_DMA1SAD = (u32)gSndData[idx];
+  AE_DMA1DAD = (u32)&AE_FIFO_A;
+  AE_DMA1CNT_H = 0xB640;                   // 32-bit, destino fijo, repeat, timing especial
+  // SOUNDCNT_H (GBATEK): bits 0-1 vol PSG, bit 2 vol DMA A, bit 8 A-derecha,
+  // bit 9 A-izquierda, bit 10 timer A (0 = timer 0), bit 11 reset FIFO A (0).
+  REG_SNDCNTH = 0x0306;                     // PSG 100%, DMA A 100% a L y R, timer 0
+  gSoundFrames = loop ? 0x7FFFFFFF : ((gSndBytes[idx] * 60) / gSndRate[idx] + 2);
+}
+
+static void soundTick(void) {
+  if (gSoundFrames > 0 && --gSoundFrames == 0) soundStop();
+  if (gPcmFrames > 0 && --gPcmFrames == 0) pcmVoiceStop();
+}
+
+`;
+  return { code, meta };
+}
+
+function generateSongData(song: Song, suffix: string = '', pcmMeta: PcmSoundMeta[] = []): string {
   const allSteps = song.patterns.flatMap((p) => p.rows);
   const stepCount = allSteps.length;
   const insts = song.instruments;
-  const TABLE_SIZE = buildPeriodTable().length;
 
   let code = `
 // ── Song: ${song.name} ──────────────────────────────────────────────────
@@ -156,8 +303,19 @@ const GBAInst gInstruments${suffix}[${insts.length}] = {`;
     const initialVol = Math.round(Math.max(1, Math.min(15, env.sustain * 15)));
     const envDir = env.attack > env.decay ? 1 : 0;
     const envSweep = Math.min(7, Math.max(0, Math.round(Math.max(env.attack, env.decay) * 7)));
+    const sweepShift = Math.min(7, Math.max(0, inst.sweepShift ?? 0));
+    const sweepTime = Math.min(7, Math.max(0, inst.sweepTime ?? 0));
+    // Length: si el preset la define (lengthEnabled) se usa (en frames de 60 Hz
+    // → 0.266s para 16, 0.53s para 32, 1s para 64). Si no, el blip de 78ms que
+    // usa el secuenciador del editor.
+    let lenP = SONG_LEN_PULSE_DEFAULT;
+    let lenW = SONG_LEN_WAVE_DEFAULT;
+    if (inst.lengthEnabled && inst.length) {
+      lenP = Math.max(0, Math.min(63, 64 - Math.round((inst.length / 60) * 64)));
+      lenW = Math.max(0, Math.min(255, 256 - Math.round((inst.length / 60) * 256)));
+    }
     code += `
-  {${initialVol}, ${dutyToGBA(inst.dutyCycle)}, ${envDir}, ${envSweep}, 0, 0, 0},`;
+  {${initialVol}, ${dutyToGBA(inst.dutyCycle)}, ${envDir}, ${envSweep}, ${sweepShift}, ${sweepTime}, 0, ${lenP}, ${lenW}},`;
   }
   code += `
 };
@@ -170,15 +328,50 @@ const GBAStep gSongData${suffix}[SONG_STEPS${suffix}] = {`;
     for (let c = 0; c < channels.length; c++) {
       const nr = row[channels[c]];
       if (nr && nr.note && nr.instrumentId) {
-        const rawIdx = noteToPeriodIdx(nr.note, nr.octave);
-        const pIdx = Math.max(0, Math.min(TABLE_SIZE - 1, rawIdx));
-        const iIdx = insts.findIndex((i) => i.id === nr.instrumentId);
-        parts.push(`{${pIdx}, ${iIdx >= 0 ? iIdx : 0}}`);
+        const freq = noteToFreq(nr.note, nr.octave);
+        const rawI = insts.findIndex((i) => i.id === nr.instrumentId);
+        const iIdx = rawI >= 0 ? rawI : 0;
+        let period: number;
+        if (c === 2) {
+          // El canal wave reproduce los 32 dígitos del buffer por ciclo:
+          // rate del registro = freq*32 → period = 2048 - 65536/freq
+          period = Math.round(2048 - 65536 / freq);
+        } else if (c === 3) {
+          // Noise: ratio (bits 0-2) + width 7-bit (bit 3), shift s=0.
+          // Misma fórmula que gba_audio.ts para que suene igual que el editor.
+          const inst = insts[iIdx];
+          const instDutyPct = Math.round((inst?.dutyCycle ?? 0.5) * 100);
+          const baseRatio = Math.max(0, Math.min(7, Math.round(instDutyPct / 12.5) - 1));
+          const octaveShift = Math.max(0, Math.min(7, 7 - Math.floor(Math.log2(Math.max(1, freq) / 50))));
+          const ratio = Math.max(0, Math.min(7, Math.round((baseRatio + octaveShift) / 2)));
+          const cs = (inst?.sweepShift ?? 0) > 0 ? 1 : 0;
+          period = ratio | (cs << 3);
+        } else {
+          // Pulse: rate = 131072/(2048-n) → period = 2048 - 131072/freq
+          period = Math.round(2048 - 131072 / freq);
+        }
+        period = Math.max(0, Math.min(0x7FF, Math.round(period)));
+        parts.push(`{${period}, ${iIdx}}`);
       } else {
-        parts.push('{0xFF, 0}');
+        parts.push('{0xFFFF, 0}');
       }
     }
-    code += '\n  {{' + parts.join(', ') + '}}';
+    // Voz PCM (instrumento muestreado) del step: muestra + timer por altura.
+    let pcmSample = 0xFFFF, pcmTimer = 0, pcmFrames = 0;
+    const pcmNote = row['ch-pcm'];
+    if (pcmNote && pcmNote.note && pcmNote.instrumentId) {
+      const inst = insts.find((i) => i.id === pcmNote.instrumentId);
+      const meta = inst?.sampleId ? pcmMeta.find((m) => m.id === inst.sampleId) : undefined;
+      if (meta) {
+        const freq = noteToFreq(pcmNote.note, pcmNote.octave);
+        const baseFreq = noteNameToFreq(inst?.baseNote ?? 'C4');
+        const rate = meta.rate * Math.max(0.25, Math.min(4, freq / baseFreq));
+        pcmTimer = Math.max(0, Math.min(65535, Math.round(65536 - 16777216 / rate)));
+        pcmSample = meta.index;
+        pcmFrames = meta.loop ? 0 : Math.min(65535, Math.ceil((meta.bytes / meta.rate) * 60));
+      }
+    }
+    code += '\n  {{' + parts.join(', ') + '}, ' + pcmSample + ', ' + pcmTimer + ', ' + pcmFrames + '}';
     if (s < stepCount - 1) code += ',';
   }
   code += `
@@ -189,13 +382,14 @@ static void playStep${suffix}(int step) {
   const GBAStep* s = &gSongData${suffix}[step];
   int c;
   for (c = 0; c < 4; c++) {
-    if (s->ch[c].periodIdx != 0xFF) {
+    if (s->ch[c].period != 0xFFFF) {
       if (s->ch[c].instIdx < ${insts.length}) {
         const GBAInst* inst = &gInstruments${suffix}[s->ch[c].instIdx];
-        noteOn(c, inst, gNotePeriods[s->ch[c].periodIdx]);
+        noteOn(c, inst, s->ch[c].period);
       }
     }
   }
+  if (s->pcmSample != 0xFFFF) pcmVoicePlay(s->pcmSample, s->pcmTimer, s->pcmFrames);
 }
 `;
 
@@ -214,14 +408,20 @@ export interface ExportManifest {
 export interface ExportLog {
   messages: string[];
   add(msg: string): void;
+  warn(msg: string): void;
   error(msg: string): void;
 }
 
+// El prefijo es lo que lee GlobalAlerts para sacar el aviso (`[ERROR] …`), así
+// que aquí no se antepone nada: antes los errores de AdvanceCode se añadían con
+// `add('[ERROR] …')` y salían como "[INFO] [ERROR] …", que no casa con el
+// filtro y el script roto se omitía de la ROM sin que nadie se enterara.
 export function createLog(): ExportLog {
   const messages: string[] = [];
   return {
     messages,
     add(msg: string) { messages.push(`[INFO] ${msg}`); },
+    warn(msg: string) { messages.push(`[WARN] ${msg}`); },
     error(msg: string) { messages.push(`[ERROR] ${msg}`); },
   };
 }
@@ -295,10 +495,10 @@ function generateTransitionData(
   const flatOrderStr = '{' + flatOrder.join(',') + '}';
 
   // totalDurationSec = desired total transition time in seconds
-  // Each group animates through all tilesetFrames at full speed,
-  // then waits `frameDelay` VSyncs before forcing the tile.
-  // If there are too many groups to fit in the available VSync budget,
-  // merge consecutive brightness bins so each bin gets at least 1 VSync.
+  // Cada grupo reproduce TODOS los frames del tileset (uno por VSync) y
+  // después fuerza el tile a su color final antes de pasar al grupo siguiente.
+  // Si hay demasiados grupos para el presupuesto de VSyncs, se fusionan bins
+  // de brillo consecutivos para que a cada grupo le toque al menos 1 VSync.
   const totalVSyncs = totalDurationSec * 60;
   const maxGroups = Math.max(1, Math.floor(totalVSyncs));
   const groupsArr: { brightness: number; indices: number[] }[] = [];
@@ -334,7 +534,16 @@ function generateTransitionData(
   const finalGroupOffsetsStr = '{' + finalGroupOffsets.join(',') + '}';
   const finalFlatOrderStr = '{' + finalFlatOrder.join(',') + '}';
 
-  const frameDelay = Math.max(1, Math.round(totalVSyncs / finalNumGroups));
+  // VSyncs que se conceden a cada grupo. La duración real es
+  // finalNumGroups × frameDelay ≈ totalVSyncs, así que la que pide el inspector
+  // se respeta. El bug anterior era otro: los tilesetFrames frames de cada grupo
+  // se pintaban seguidos SIN esperar, de modo que solo se veía el último y la
+  // animación píxel a píxel no existía. Ahora se dibuja un frame por VSync y el
+  // índice de frame se avanza proporcionalmente a los VSyncs del grupo: si el
+  // grupo tiene menos VSyncs que frames, se muestrean (se ven menos fotogramas,
+  // pero la transición dura lo pedido en vez de alargarse × tilesetFrames).
+  const frameDelay = Math.max(1, Math.round(totalVSyncs / Math.max(1, finalNumGroups)));
+  const tilesetFramesC = Math.max(1, tilesetFrames);
   const forceTile = (color: string, txVar: string, tyVar: string) => `        int iy;
         for (iy = 0; iy < ${tileSize} && (${tyVar} * ${tileSize} + iy) < 160; iy++) {
           int ix;
@@ -363,16 +572,20 @@ function generateTransitionData(
   const seqSceneForce = 'scene[py * 240 + px]';
   const exitTag = tag === 'Exit';
 
+  const finalTileCount = Math.max(1, finalFlatOrder.length);
   const seqFn = (fnName: string, cmp: string, val: string, forceVal: string, clearBeforeFrame: boolean, reverseFrames: boolean, drawActors: boolean) => `
 static void ${fnName}(const u16* scene, int totalFrames) {
   u16* screen = (u16*)VRAM;
-  const int gGroupOffsets_${tag}[${finalNumGroups + 1}] = ${finalGroupOffsetsStr};
-  const int gTileOrder_${tag}[${tileCount}] = ${finalFlatOrderStr};
+  static const int gGroupOffsets_${tag}[${finalNumGroups + 1}] = ${finalGroupOffsetsStr};
+  static const int gTileOrder_${tag}[${finalTileCount}] = ${finalFlatOrderStr};
   int g;
 ${drawActors ? '  initActors();\n  drawAllActors(screen, 0);\n' : ''}  for (g = 0; g < ${finalNumGroups}; g++) {
-    ${reverseFrames ? `int f = ${tilesetFrames};
-    while (f-- > 0) {` : `int f;
-    for (f = 0; f < ${tilesetFrames}; f++) {`}
+    int v;
+    for (v = 0; v < ${frameDelay}; v++) {
+      /* Un frame del tileset por VSync. El índice avanza proporcionalmente:
+         con menos VSyncs que frames se muestrean, con más, algunos frames se
+         repiten. Así la duración es la pedida y la animación se ve. */
+      int f = (v * ${tilesetFramesC}) / ${frameDelay};
       int ti;
       for (ti = gGroupOffsets_${tag}[g]; ti < gGroupOffsets_${tag}[g + 1]; ti++) {
         int idx = gTileOrder_${tag}[ti];
@@ -391,10 +604,7 @@ ${clearBeforeFrame ? `        {
         }
 ` : ''}${maskTile(arrName, cmp, val, 'tx2', 'ty2', 'f')}
       }
-    }
-    {
-      int w;
-      for (w = 0; w < ${frameDelay}; w++) waitVSync();
+      waitVSync();
     }
     {
       int ti;
@@ -541,10 +751,10 @@ export function generateGBAProject(
     const r = scriptEffectiveCCode(s);
     if (s.mode === 'language') {
       if (r.ok) {
-        r.warnings.forEach((w) => log.add(`[WARN] AdvanceCode "${s.name ?? 'sin nombre'}": ${w}`));
+        r.warnings.forEach((w) => log.warn(`AdvanceCode "${s.name ?? 'sin nombre'}": ${w}`));
       } else {
-        r.errors.forEach((e) => log.add(`[ERROR] AdvanceCode "${s.name ?? 'sin nombre'}": ${e}`));
-        log.add(`[ERROR] Script "${s.name ?? 'sin nombre'}": errores de AdvanceCode — NO se incluye en la ROM`);
+        r.errors.forEach((e) => log.error(`AdvanceCode "${s.name ?? 'sin nombre'}": ${e}`));
+        log.error(`Script "${s.name ?? 'sin nombre'}": errores de AdvanceCode — NO se incluye en la ROM`);
       }
     }
     scriptC.set(s.id, r);
@@ -560,7 +770,7 @@ export function generateGBAProject(
   const needsAreaRuntime = (anyActiveNeedsAreas || anyActorHasArea) && hasActors;
   const anyActiveNeedsEdge = activeScripts.some((s: any) => scriptC.get(s.id)?.needsEdge);
   cScripts.forEach((s: any) => {
-    if (!actorScriptIds.has(s.id)) log.add(`[WARN] Script "${s.name ?? 'sin nombre'}" NO está asignado a ningún actor — no se ejecuta`);
+    if (!actorScriptIds.has(s.id)) log.warn(`Script "${s.name ?? 'sin nombre'}" NO está asignado a ningún actor — no se ejecuta`);
   });
   const sceneSongSuffix = (hasSceneMusic && hasMusic && splashSong!.id !== sceneSong!.id) ? '_Scene' : '';
   const hasScene = !!sceneImageCArray || !!sceneBackgroundColor;
@@ -626,11 +836,11 @@ export function generateGBAProject(
         );
       }
 
-      if (!hasUpd) log.add(`[WARN] Script "${s.name}": no define script_update() — no hará nada cada frame`);
+      if (!hasUpd) log.warn(`Script "${s.name}": no define script_update() — no hará nada cada frame`);
 
       const indices = (actors ?? []).map((a: GBAExportedActor, ai: number) => (a.scriptId === s.id ? ai : -1)).filter((ai) => ai >= 0);
       if (indices.length === 0) {
-        log.add(`[WARN] Script "${s.name}" está asignado a un actor que no se exporta en esta escena`);
+        log.warn(`Script "${s.name}" está asignado a un actor que no se exporta en esta escena`);
         return;
       }
       log.add(`Script "${s.name}": asignado a ${indices.length} actor(es) → gSelf=gActors[${indices.join(', ')}]`);
@@ -709,6 +919,7 @@ function sceneInit(): string {
 
   function actorLoopBody(): string {
     const lines: string[] = [];
+    lines.push('soundTick();');
     if (anyActiveNeedsEdge) lines.push('{ u16 kn = ~REG_KEYINPUT & 0x3FF; gJp = (u16)(kn & ~gKeysPrev); gKeysPrev = kn; }');
     if (hasActors) {
       lines.push(`if (gDirty) { blitDirtyRect(); gDirty = 0; }`, 'advanceAllActors();', 'updatePlayer();');
@@ -721,9 +932,10 @@ function sceneInit(): string {
   }
 
   function sceneLoop(suffix: string = sceneSongSuffix): string {
+    const sceneSoundLine = sceneSoundIdx >= 0 ? `  soundPlay(${sceneSoundIdx}, 1);\n` : '';
     if (hasSceneMusic) {
       return `  initSound();
-
+${sceneSoundLine}
   {
     int step = 0;
     u32 accum = 0;
@@ -741,13 +953,26 @@ function sceneInit(): string {
   }
 `;
     }
+    if (sceneSoundIdx >= 0) {
+      return `  initSound();
+${sceneSoundLine}` + ((hasActors || hasActiveScripts)
+        ? `
+  while (1) {
+    waitVSync();
+${actorLoopBody().replace(/^      /gm, '    ').trimEnd()}
+  }
+`
+        : `
+  while (1) { waitVSync(); soundTick(); }
+`);
+    }
     return (hasActors || hasActiveScripts)
       ? `  while (1) {
     waitVSync();
 ${actorLoopBody().replace(/^      /gm, '    ').trimEnd()}
   }
 `
-      : `  while (1) waitVSync();
+      : `  while (1) { waitVSync(); soundTick(); }
 `;
   }
 
@@ -880,15 +1105,24 @@ ${lines.join(',\n')}
 
   cCode += generateSoundTypes();
 
+  // Sonidos PCM importados (DMA direct sound). El índice es el orden de
+  // state.sounds filtrado por los que tienen PCM: sound_play(idx) desde script.
+  const pcmSnd = generatePcmSoundData(state.sounds ?? []);
+  cCode += pcmSnd.code;
+  const splashSoundIdx = pcmSnd.meta.find((m) => m.id === state.splashSoundId)?.index ?? -1;
+  const startSceneSound = state.scenes?.find((sc) => sc.id === state.splashScreen?.nextSceneId);
+  const sceneSoundIdx = pcmSnd.meta.find((m) => m.id === startSceneSound?.backgroundSoundId)?.index ?? -1;
+  pcmSnd.meta.forEach((m) => log.add(`Sonido PCM ${m.index}: "${m.name}" (${(m.bytes / 1024).toFixed(1)} KB, ${m.rate} Hz)${m.loop ? ' [bucle]' : ''}`));
+
   if (hasMusic) {
-    cCode += generateSongData(splashSong!, '');
+    cCode += generateSongData(splashSong!, '', pcmSnd.meta);
     log.add(`Cancion splash: "${splashSong!.name}" (${splashSong!.patterns.length} patrones)`);
   }
   if (hasSceneMusic && sceneSongSuffix === '_Scene') {
-    cCode += generateSongData(sceneSong!, '_Scene');
+    cCode += generateSongData(sceneSong!, '_Scene', pcmSnd.meta);
     log.add(`Cancion escena: "${sceneSong!.name}" (${sceneSong!.patterns.length} patrones) — distinta de splash`);
   } else if (hasSceneMusic && !hasMusic) {
-    cCode += generateSongData(sceneSong!, '');
+    cCode += generateSongData(sceneSong!, '', pcmSnd.meta);
     log.add(`Cancion escena: "${sceneSong!.name}" (${sceneSong!.patterns.length} patrones)`);
   } else if (hasSceneMusic) {
     log.add(`Cancion escena: "${sceneSong!.name}" (misma que splash)`);
@@ -945,6 +1179,7 @@ int main() {
   u16* screen = (u16*)VRAM;
 `;
 
+  const splashSoundLine = splashSoundIdx >= 0 ? `  soundPlay(${splashSoundIdx}, 1);\n` : '';
   if (hasSplash) {
     cCode += `
   {
@@ -956,7 +1191,7 @@ int main() {
       const song = splashSong!;
       cCode += `
   initSound();
-
+${splashSoundLine}
   {
     int step = 0;
     u32 accum = 0;
@@ -986,7 +1221,7 @@ int main() {
     int i;
     for (i = 0; i < frames; i++) waitVSync();
   }
-`;
+${splashSoundIdx >= 0 ? `  initSound();\n  soundPlay(${splashSoundIdx}, 1);\n` : ''}`;
       cCode += hasTransition ? `  ${getCoverCall()};
 
   ${getRevealCall()};
@@ -1082,6 +1317,8 @@ export interface GBAExportedSceneBundle {
   camY: number;
   actors: GBAExportedActor[];
   song?: Song;
+  /** Id del sonido de fondo de la escena (PCM por DMA en la ROM). */
+  soundId?: string;
 }
 
 // Transición que se reproduce al cambiar de escena con switchScene(n[, "nombre"]).
@@ -1239,7 +1476,7 @@ function generateActorsData(actors: GBAExportedActor[], log: ExportLog, hasColli
   });
 
   log.add(`Actores exportados: ${actors.length} (${images.length} imágenes de sprite únicas)`);
-  if (actors.length > 64) log.add(`[WARN] ${actors.length} actores, el render por software soporta hasta 64 — se exportan los primeros 64`);
+  if (actors.length > 64) log.warn(`${actors.length} actores, el render por software soporta hasta 64 — se exportan los primeros 64`);
 
 const playerDemo = `
 // ── Physica runtime (colisiones tiles + actor-actor) ─────────────────────
@@ -1827,14 +2064,13 @@ function generateGBAProjectMulti(
   const sceneCount = scenes.length;
   let startIdx = scenes.findIndex((sc) => sc.id === startSceneId);
   if (startIdx < 0) {
-    log.add(`[WARN] startSceneId "${startSceneId}" no está en la lista de escenas — usando índice 0`);
+    log.warn(`startSceneId "${startSceneId}" no está en la lista de escenas — usando índice 0`);
     startIdx = 0;
   }
 
   const hasSplash = splashImageCArray && splashDuration && splashDuration > 0;
   const hasMusic = splashSong && splashSong.patterns.length > 0 && splashSong.patterns.some((p) => p.rows.length > 0);
   const hasSceneMusic = sceneSong && sceneSong.patterns.length > 0 && sceneSong.patterns.some((p) => p.rows.length > 0);
-  const sceneSongSuffix = (hasSceneMusic && hasMusic && splashSong!.id !== sceneSong!.id) ? '_Scene' : '';
 
   const entryType = entryTransitionType || 'fade';
   const exitType = exitTransitionType || 'fade';
@@ -1882,10 +2118,10 @@ function generateGBAProjectMulti(
     const r = scriptEffectiveCCode(s);
     if (s.mode === 'language') {
       if (r.ok) {
-        r.warnings.forEach((w) => log.add(`[WARN] AdvanceCode "${s.name ?? 'sin nombre'}": ${w}`));
+        r.warnings.forEach((w) => log.warn(`AdvanceCode "${s.name ?? 'sin nombre'}": ${w}`));
       } else {
-        r.errors.forEach((e) => log.add(`[ERROR] AdvanceCode "${s.name ?? 'sin nombre'}": ${e}`));
-        log.add(`[ERROR] Script "${s.name ?? 'sin nombre'}": errores de AdvanceCode — NO se incluye en la ROM`);
+        r.errors.forEach((e) => log.error(`AdvanceCode "${s.name ?? 'sin nombre'}": ${e}`));
+        log.error(`Script "${s.name ?? 'sin nombre'}": errores de AdvanceCode — NO se incluye en la ROM`);
       }
     }
     scriptC.set(s.id, r);
@@ -1898,7 +2134,7 @@ function generateGBAProjectMulti(
   const anyActiveNeedsAreas = activeScripts.some((s: any) => scriptC.get(s.id)?.needsAreas);
   const anyActiveNeedsEdge = activeScripts.some((s: any) => scriptC.get(s.id)?.needsEdge);
   cScripts.forEach((s: any) => {
-    if (!allAssignedIds.has(s.id)) log.add(`[WARN] Script "${s.name ?? 'sin nombre'}" NO está asignado a ningún actor de ninguna escena — no se ejecuta`);
+    if (!allAssignedIds.has(s.id)) log.warn(`Script "${s.name ?? 'sin nombre'}" NO está asignado a ningún actor de ninguna escena — no se ejecuta`);
   });
 
   const DEF_FN = (nm: string) => new RegExp(`void\\s+${nm}\\s*\\(\\s*(?:void)?\\s*\\)`);
@@ -1997,7 +2233,7 @@ function generateGBAProjectMulti(
         );
       }
 
-      if (!hasUpd) log.add(`[WARN] Script "${s.name}": no define script_update() — no hará nada cada frame`);
+      if (!hasUpd) log.warn(`Script "${s.name}": no define script_update() — no hará nada cada frame`);
       scriptBodies.push(`// ── Script ${i + 1}: ${s.name ?? 'sin nombre'}\n${body}`);
     });
     scenes.forEach((sc, si) => {
@@ -2166,20 +2402,31 @@ static const s16 gSceneCamY[SCENE_COUNT] = { ${camYs.join(', ')} };
 
   c += generateSoundTypes();
 
+  // Sonidos PCM (DMA direct sound): tabla global + índice por escena.
+  const pcmSnd = generatePcmSoundData(state.sounds ?? []);
+  c += pcmSnd.code;
+  const splashSoundIdx = pcmSnd.meta.find((m) => m.id === state.splashSoundId)?.index ?? -1;
+  const splashSoundLine = splashSoundIdx >= 0 ? `  soundPlay(${splashSoundIdx}, 1);\n` : '';
+  const sceneSoundIdxs = scenes.map((sc) => pcmSnd.meta.find((m) => m.id === (sc as any).soundId)?.index ?? -1);
+  pcmSnd.meta.forEach((m) => log.add(`Sonido PCM ${m.index}: "${m.name}" (${(m.bytes / 1024).toFixed(1)} KB, ${m.rate} Hz)${m.loop ? ' [bucle]' : ''}`));
+
   if (hasMusic) {
-    c += generateSongData(splashSong!, '');
+    c += generateSongData(splashSong!, '', pcmSnd.meta);
     log.add(`Cancion splash: "${splashSong!.name}" (${splashSong!.patterns.length} patrones)`);
   }
-  if (hasSceneMusic && sceneSongSuffix === '_Scene') {
-    c += generateSongData(sceneSong!, '_Scene');
-    log.add(`Cancion escena: "${sceneSong!.name}" (${sceneSong!.patterns.length} patrones) — distinta de splash`);
-  } else if (hasSceneMusic && !hasMusic) {
-    c += generateSongData(sceneSong!, '');
-    log.add(`Cancion escena: "${sceneSong!.name}" (${sceneSong!.patterns.length} patrones)`);
-  } else if (hasSceneMusic) {
-    log.add(`Cancion escena: "${sceneSong!.name}" (misma que splash)`);
-  }
-  if (!hasMusic && !hasSceneMusic) log.add('Sin cancion de fondo para la ROM');
+  // Música POR ESCENA: cada escena lleva su canción (_S<si>). Las que no
+  // tienen, quedan en silencio (gSceneSongBpm[gScene] = 0 en la tabla).
+  scenes.forEach((sc, si) => {
+    const sg = sc.song;
+    if (sg && sg.patterns.length > 0 && sg.patterns.some((p) => (p.rows ?? []).length > 0)) {
+      c += generateSongData(sg, `_S${si}`, pcmSnd.meta);
+      c += `
+static void songStep_S${si}(int step) { playStep_S${si}(step); }
+`;
+      log.add(`Musica escena ${si} ("${sc.name}"): "${sg.name}" (${sg.patterns.length} patrones)`);
+    }
+  });
+  if (!hasMusic && !scenes.some((sc) => sc.song)) log.add('Sin cancion de fondo para la ROM');
 
   if (entryType === 'custom' && hasCustomEntry) {
     c += generateTransitionData(
@@ -2745,12 +2992,23 @@ ${scriptFnUpds.join('\n\n')}
 `;
 
   // ── Registro de funciones por escena + dispatcher initActors ───────────
+  const sceneHasSong = scenes.map((sc) => !!sc.song && sc.song.patterns.some((p) => (p.rows ?? []).length > 0));
+  const sceneSongBpm = scenes.map((sc, si) => sceneHasSong[si] ? (sc.song!.bpm ?? 120) : 0);
+  const sceneSongSteps = scenes.map((sc, si) => sceneHasSong[si] ? sc.song!.patterns.reduce((s, p) => s + (p.rows?.length ?? 0), 0) : 0);
   c += `
 typedef void (*SceneFn)(void);
+typedef void (*SongFn)(int);
 
 static const SceneFn gSceneActorInit[SCENE_COUNT] = { ${scenes.map((_, si) => `sceneInitActors_${si}`).join(', ')} };
 static const SceneFn gSceneScriptInit[SCENE_COUNT] = { ${scenes.map((_, si) => `sceneScriptInit_${si}`).join(', ')} };
 static const SceneFn gSceneScriptUpdate[SCENE_COUNT] = { ${scenes.map((_, si) => `sceneScriptUpdate_${si}`).join(', ')} };
+static const SongFn gSceneSongStep[SCENE_COUNT] = { ${scenes.map((_, si) => sceneHasSong[si] ? `songStep_S${si}` : '0').join(', ')} };
+static const int gSceneSoundIdx[SCENE_COUNT] = { ${sceneSoundIdxs.join(', ')} };
+static const u16 gSceneSongBpm[SCENE_COUNT] = { ${sceneSongBpm.join(', ')} };
+static const u16 gSceneSongSteps[SCENE_COUNT] = { ${sceneSongSteps.join(', ')} };
+
+int gSongStep;
+u32 gSongAccum;
 
 static void initActors(void) { if (gSceneActorInit[gScene]) gSceneActorInit[gScene](); }
 `;
@@ -2773,6 +3031,9 @@ static void loadSceneState(int n) {
   if (gSceneActorInit[n]) gSceneActorInit[n]();
   if (gSceneScriptInit[n]) gSceneScriptInit[n]();
   drawAllActors(gBackBuf, 0);
+  gSongStep = 0;
+  gSongAccum = 0;
+  if (gSceneSoundIdx[n] >= 0) soundPlay(gSceneSoundIdx[n], 1); else soundStop();
   gDirty = 1; gDirtyX0 = 0; gDirtyY0 = 0; gDirtyX1 = SCREEN_W - 1; gDirtyY1 = SCREEN_H - 1;
 }
 `;
@@ -2795,12 +3056,10 @@ static void loadSceneState(int n) {
 ` : '') + `  if (actorsChanged()) { computeDirtyRect(); drawAllActors(gBackBuf, 1); gDirty = 1; }`;
 
   let sceneLoopCode: string;
-  if (hasSceneMusic) {
-    sceneLoopCode = `  initSound();
+  sceneLoopCode = `  initSound();
+  if (gSceneSoundIdx[gScene] >= 0) soundPlay(gSceneSoundIdx[gScene], 1);
 
   {
-    int step = 0;
-    u32 accum = 0;
     while (1) {
       waitVSync();
       if (gSceneTarget != -1 && gSceneTarget != gScene) {
@@ -2828,49 +3087,24 @@ static void loadSceneState(int n) {
         gKeysPrev = ~REG_KEYINPUT & 0x3FF;
       }
       { u16 kn = ~REG_KEYINPUT & 0x3FF; gJp = (u16)(kn & ~gKeysPrev); gKeysPrev = kn; }
-      accum += SONG_BPM${sceneSongSuffix};
-      if (accum >= 900) {
-        accum -= 900;
-        playStep${sceneSongSuffix}(step);
-        step++;
-        if (step >= SONG_STEPS${sceneSongSuffix}) step = 0;
+      soundTick();
+      /* Música por escena: cada escena con canción avanza con su propio BPM;
+         las que no tienen, gSceneSongBpm = 0 → silencio. */
+      if (gSceneSongBpm[gScene]) {
+        gSongAccum += gSceneSongBpm[gScene];
+        if (gSongAccum >= 900) {
+          gSongAccum -= 900;
+          if (gSceneSongStep[gScene]) {
+            if (gSongStep >= gSceneSongSteps[gScene]) gSongStep = 0;
+            gSceneSongStep[gScene](gSongStep);
+          }
+          gSongStep++;
+        }
       }
 ${actorLines.split('\n').map((l) => '      ' + l.trim()).join('\n').trimEnd()}
     }
   }
 `;
-  } else {
-    sceneLoopCode = `  while (1) {
-    waitVSync();
-    if (gSceneTarget != -1 && gSceneTarget != gScene) {
-      int from = gScene;
-      int n = gSceneTarget;
-      const char* nm = gSceneTransName;
-      gSceneTarget = -1;
-      gSceneTransName = 0;
-      int ti = findTransition(from, n, nm);
-      if (ti < 0) {
-        fadeToBlack(gSceneImg[from], SCENE_SWITCH_FRAMES);
-        loadSceneState(n);
-        fadeToScene(gSceneImg[n], SCENE_SWITCH_FRAMES);
-      } else if (gTransKind[ti] == 0) {
-        loadSceneState(n);
-      } else if (gTransKind[ti] == 1) {
-        fadeToBlack(gSceneImg[from], gTransFrames[ti]);
-        loadSceneState(n);
-        fadeToScene(gSceneImg[n], gTransFrames[ti]);
-      } else {
-        if (gTransCover[ti]) gTransCover[ti](gSceneImg[from], gTransFrames[ti]);
-        loadSceneState(n);
-        if (gTransReveal[ti]) gTransReveal[ti](gSceneImg[n], gTransFrames[ti]);
-      }
-      gKeysPrev = ~REG_KEYINPUT & 0x3FF;
-    }
-    { u16 kn = ~REG_KEYINPUT & 0x3FF; gJp = (u16)(kn & ~gKeysPrev); gKeysPrev = kn; }
-${actorLines.replace(/^  /gm, '    ').trimEnd()}
-  }
-`;
-  }
 
   c += `
 // ── Entry Point ─────────────────────────────────────────────────────────
@@ -2890,7 +3124,7 @@ int main() {
     if (hasMusic) {
       c += `
   initSound();
-
+${splashSoundLine}
   {
     int step = 0;
     u32 accum = 0;
@@ -2915,7 +3149,7 @@ int main() {
     int i;
     for (i = 0; i < frames; i++) waitVSync();
   }
-`;
+${splashSoundIdx >= 0 ? `  initSound();\n  soundPlay(${splashSoundIdx}, 1);\n` : ''}`;
     }
   } else {
     c += `

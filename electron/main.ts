@@ -148,6 +148,29 @@ function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+/**
+ * Escritura atómica: se escribe a un temporal y se renombra encima.
+ *
+ * Con `writeFileSync` directo, un corte de luz (o un cierre de la app) a mitad
+ * deja el JSON truncado y el proyecto queda ilegible para siempre. `rename`
+ * dentro del mismo sistema de ficheros es atómico, así que el destino siempre
+ * contiene la versión anterior COMPLETA o la nueva completa, nunca media.
+ */
+function writeFileAtomic(file: string, data: string) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, data, 'utf-8');
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* nada que hacer */ }
+    throw err;
+  }
+}
+
+function writeJsonAtomic(file: string, value: unknown) {
+  writeFileAtomic(file, JSON.stringify(value, null, 2));
+}
+
 // Normaliza rutas recibidas del frontend: los separadores `\` (Windows) se
 // convierten a `/` para que funcionen igual en Linux y en Windows.
 function normPath(p: string | undefined): string {
@@ -161,11 +184,23 @@ ipcMain.handle('project:ensureProjectsDir', () => {
 
 ipcMain.handle('project:save', async (_e, projectId: string, data: { name: string; state: any }) => {
   try {
+    if (!data?.state || typeof data.state !== 'object') {
+      return { success: false, reason: 'Datos de proyecto inválidos (sin estado). No se ha escrito nada.' };
+    }
     const dir = path.join(GBA_PROJECTS_DIR, data.name);
     ensureDir(dir);
     for (const folder of PROJECT_FOLDERS) {
       ensureDir(path.join(dir, folder));
     }
+
+    // Save editor state (primero, y con copia de seguridad del anterior).
+    // El manifest va después: si algo peta en medio, el proyecto sigue siendo
+    // el de antes, no uno a medio escribir.
+    const statePath = path.join(dir, 'editor-state.json');
+    if (fs.existsSync(statePath)) {
+      try { fs.copyFileSync(statePath, `${statePath}.bak`); } catch { /* el .bak es un extra, no debe bloquear */ }
+    }
+    writeJsonAtomic(statePath, data.state);
 
     // Save project.json
     const manifest = {
@@ -175,10 +210,7 @@ ipcMain.handle('project:save', async (_e, projectId: string, data: { name: strin
       version: '0.26.0',
       updatedAt: new Date().toISOString(),
     };
-    fs.writeFileSync(path.join(dir, 'project.json'), JSON.stringify(manifest, null, 2), 'utf-8');
-
-    // Save editor state
-    fs.writeFileSync(path.join(dir, 'editor-state.json'), JSON.stringify(data.state, null, 2), 'utf-8');
+    writeJsonAtomic(path.join(dir, 'project.json'), manifest);
 
     return { success: true, path: dir };
   } catch (err) {
@@ -189,9 +221,25 @@ ipcMain.handle('project:save', async (_e, projectId: string, data: { name: strin
 ipcMain.handle('project:load', async (_e, projectPath: string) => {
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(projectPath, 'project.json'), 'utf-8'));
-    const stateRaw = fs.readFileSync(path.join(projectPath, 'editor-state.json'), 'utf-8');
+    const statePath = path.join(projectPath, 'editor-state.json');
+    let stateRaw: string;
+    try {
+      stateRaw = fs.readFileSync(statePath, 'utf-8');
+    } catch {
+      // Sin estado (proyecto recién creado, o borrado): no es un error grave,
+      // se abre vacío. Antes devolvía success:false y el usuario no podía
+      // entrar a su proyecto.
+      return { success: true, manifest, state: null };
+    }
     let state: any;
     try { state = JSON.parse(stateRaw); } catch { state = null; }
+    if (!state) {
+      // Estado corrupto: se intenta el .bak de la última escritura buena antes
+      // de rendirse.
+      try {
+        state = JSON.parse(fs.readFileSync(`${statePath}.bak`, 'utf-8'));
+      } catch { state = null; }
+    }
     return { success: true, manifest, state };
   } catch (err) {
     return { success: false, reason: String(err) };
@@ -1016,7 +1064,7 @@ ipcMain.handle('system:installDevkitPro', async () => installDevkitPro());
 
 // ── IPC: Emulador ───────────────────────────────────────────────────────────
 
-ipcMain.handle('emu:play', async (_e, romPath: string) => {
+ipcMain.handle('emu:play', async (_e, romPath: string, keymap?: string) => {
   try {
     if (!fs.existsSync(romPath)) {
       const reason = `ROM no encontrada: ${romPath}`;
@@ -1024,7 +1072,7 @@ ipcMain.handle('emu:play', async (_e, romPath: string) => {
       return { success: false, reason };
     }
     closeEmulatorWindow();
-    createEmulatorWindow(romPath);
+    createEmulatorWindow(romPath, keymap);
     return { success: true };
   } catch (err) {
     const reason = String(err);

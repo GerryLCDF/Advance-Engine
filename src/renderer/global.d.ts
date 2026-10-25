@@ -2,8 +2,10 @@ import type { Project } from './types';
 
 interface AdvanceAPI {
   platform: string;
+  /** Ruta en disco de un File soltado (para drag & drop de archivos). */
+  filePathFor?: (file: File) => string;
   emu: {
-    play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
+    play: (romPath: string, keymap?: string) => Promise<{ success: boolean; reason?: string }>;
     stop: () => Promise<{ success: boolean }>;
     isRunning: () => Promise<boolean>;
     /** Estado real del emulador; así los fallos se ven desde cualquier pestaña. */

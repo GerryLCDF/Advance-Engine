@@ -193,14 +193,21 @@ export function EditorTopBar() {
 
   // Auto-detect unsaved changes
   useEffect(() => {
-    const watchKeys = ['scenes', 'spriteSheets', 'backgrounds', 'songs', 'dialogues', 'sounds', 'scripts', 'sceneConnections'] as const;
-    let prev = watchKeys.map(k => JSON.stringify(useAppStore.getState()[k as keyof typeof useAppStore.getState]));
+    const watchKeys = ['scenes', 'spriteSheets', 'backgrounds', 'songs', 'instrumentPresets', 'dialogues', 'sounds', 'scripts', 'sceneConnections'] as const;
+    const snapshot = () => watchKeys.map(k => JSON.stringify(useAppStore.getState()[k as keyof typeof useAppStore.getState]));
+    let prev = snapshot();
+    // Al abrir un proyecto el store pone las colecciones a vacío y las repone
+    // al terminar la carga: sin esto, ese salto se leía como "el usuario cambió
+    // todo" y el título aparecía con un * nada más abrir.
+    let resincronizar = false;
     const unsub = useAppStore.subscribe((state) => {
+      if (state.projectLoading) { resincronizar = true; return; }
+      if (resincronizar) { resincronizar = false; prev = snapshot(); return; }
       const curr = watchKeys.map(k => JSON.stringify((state as any)[k]));
       if (curr.some((v, i) => v !== prev[i])) {
         if (!state.dirty) state.setDirty(true);
-        prev = curr;
       }
+      prev = curr;
     });
     return unsub;
   }, [editorProjectId]);

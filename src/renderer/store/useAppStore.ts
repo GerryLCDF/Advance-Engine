@@ -8,6 +8,10 @@ import type {
 import { createCollisionMap, makeDefaultConnection, defaultSoundEffect } from '../types/editor';
 import type { GBAExportedActor, GBAExportedActorFrame, GBAExportedSceneBundle, GBASceneTransition } from '../utils/gba_export';
 import { scriptEffectiveCCode, acodSkeleton } from '../utils/advanceCode';
+import {
+  defaultInstrumentPresets, mergeInstrumentPresets, songInstrumentsForExport,
+} from '../utils/instrumentPresets';
+import type { InstrumentPreset } from '../types/editor';
 
 const DEFAULT_CREDITS: CreditEntry[] = [
   { id: '1', name: 'Gerardo Montaño(LCDF)', role: 'Desarrollador principal', url: 'https://github.com/GerryLCDF', linkEnabled: true },
@@ -343,6 +347,9 @@ interface AppState {
   setFlatColors: (val: boolean) => void;
   codeFontSize: number;
   setCodeFontSize: (val: number) => void;
+  emulatorKeyMap: EmuButtonMap;
+  setEmuKeyMap: (map: EmuButtonMap) => void;
+  resetEmuKeyMap: () => void;
   setGridLineOpacity: (val: number) => void;
   mundoShowGrid: boolean;
   setMundoShowGrid: (val: boolean) => void;
@@ -368,6 +375,17 @@ interface AppState {
   setProjectDir: (dir: string | null) => void;
   resetEditorState: () => void;
   exportLog: string[];
+  /**
+   * Hay una carga de proyecto en curso.
+   *
+   * While es true, el estado del editor está a medio poblar (escenas vacías).
+   * Guardar en ese momento escribía esas escenas vacías encima del proyecto en
+   * disco, o sea: abrir un proyecto y pulsar Ctrl+S rápido lo borraba. El
+   * guardado se niega mientras dure la carga, y el vigilante de "cambios sin
+   * guardar" se resincroniza al terminar para no marcar el proyecto como
+   * modificado recién abierto.
+   */
+  projectLoading: boolean;
   /** ¿Hay una ventana de emulador abierta? Lo usa el botón PLAY/STOP único. */
   emulatorRunning: boolean;
   setEmulatorRunning: (v: boolean) => void;
@@ -461,6 +479,9 @@ interface AppState {
 
   // ── Music ──────────────────────────────────────────────────────────────
   songs: Song[];
+  /** Biblioteca de presets de instrumento (la edita el inspector de Music). */
+  instrumentPresets: InstrumentPreset[];
+  updateInstrumentPreset: (id: string, patch: Partial<InstrumentPreset>) => void;
   addSong: () => void;
   updateSong: (id: string, patch: Partial<Song>) => void;
   removeSong: (id: string) => void;
@@ -515,14 +536,39 @@ interface AppState {
 }
 
 /**
- * Tope de líneas del log de exportación.
+ * Cuántas líneas se pintan en la terminal de MundoTab.
  *
- * El log crece con cada operación (compilación, emulador, avisos globales) y sin
- * tope una sesión larga acaba con decenas de miles de líneas: a partir de cierto
- * punto.scrollback se come la CPU y leerlo es inútil. Se queda solo el final,
- * que es donde está el error.
+ * El log **no** se recorta en el store a propósito: GlobalAlerts rastrea las
+ * líneas nuevas por índice, y con `slice(-LOG_MAX)` el array se mantenía en 600
+ * elementos desplazando el contenido, así que al llegar al tope la longitud ya
+ * nunca crecía y el bucle "busca lo nuevo" no iteraba nunca más — a partir de
+ * ahí ningún error se volvía a avisar. Recortar solo al pintar mantiene los
+ * índices estables para el rastreo y acota el DOM.
  */
-const LOG_MAX = 600;
+export const LOG_TERMINAL_LINES = 600;
+
+// Cola de guardado: `saveProject` se encadena aquí para que dos guardados no
+// se escriban a la vez (ver saveProject).
+let saveChain: Promise<unknown> = Promise.resolve();
+
+// Espera activa de la carga en curso: quien pulse Ctrl+S mientras el proyecto
+// se está abriendo no se le niega el guardado, se le espera (ver saveProject).
+let ultimaCargaOk = true;
+let esperaCarga: (() => void)[] = [];
+
+/**
+ * Espera a que termine la carga del proyecto en curso.
+ *
+ * Mientras carga, el estado del editor está a medio poblar (escenas vacías):
+ * guardar o compilar en ese momento escribe/compila un proyecto vacío. Quien
+ * llama no se le deniega la operación, se le espera. Devuelve `false` si la
+ * carga falló, en cuyo caso el estado sigue vacío y hay que abortar.
+ */
+async function esperarFinDeCarga(): Promise<boolean> {
+  if (!useAppStore.getState().projectLoading) return true;
+  await new Promise<void>((resolve) => { esperaCarga.push(resolve); });
+  return ultimaCargaOk;
+}
 
 // ── Global settings persistence (localStorage) ──────────────────────────────
 const GLOBAL_SETTINGS_KEY = 'advance-engine-settings';
@@ -533,6 +579,94 @@ interface GlobalSettings {
   connColorOut: string; connColorIn: string; connStrokeWidth: number;
   clickAnimation: boolean; showGrid: boolean; gridLineOpacity: number; imageSmoothing: boolean;
   flatColors: boolean; codeFontSize: number;
+  emulatorKeyMap: EmuButtonMap;
+}
+
+// ── Remapeo de botones del emulador ─────────────────────────────────────────
+// Cada botón de la GBA se asigna a un `code` de teclado (KeyboardEvent.code).
+// La restricción clave: una misma tecla NO puede estar en dos botones. Quien
+// asigna a un botón la tecla de otro, las intercambia (como VS Code): así el
+// mapa sigue siendo una biyección y nunca hay duplicados ni teclas huérfanas.
+export type EmuButton = 'A' | 'B' | 'L' | 'R' | 'SELECT' | 'START' | 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
+export type EmuButtonMap = Record<EmuButton, string>;
+
+export const EMU_BUTTONS: { id: EmuButton; label: string }[] = [
+  { id: 'A', label: 'A' }, { id: 'B', label: 'B' },
+  { id: 'L', label: 'L' }, { id: 'R', label: 'R' },
+  { id: 'SELECT', label: 'Select' }, { id: 'START', label: 'Start' },
+  { id: 'UP', label: '↑ Arriba' }, { id: 'DOWN', label: '↓ Abajo' },
+  { id: 'LEFT', label: '← Izquierda' }, { id: 'RIGHT', label: '→ Derecha' },
+];
+
+export const EMU_KEY_MAP_DEFAULT: EmuButtonMap = {
+  A: 'KeyZ', B: 'KeyX', L: 'KeyA', R: 'KeyS',
+  SELECT: 'KeyV', START: 'Enter',
+  UP: 'ArrowUp', DOWN: 'ArrowDown', LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
+};
+
+/** Teclas que se pueden asignar, con su etiqueta legible. */
+export const EMU_KEY_OPTIONS: { code: string; label: string }[] = [
+  { code: 'ArrowUp', label: '↑ Arriba' }, { code: 'ArrowDown', label: '↓ Abajo' },
+  { code: 'ArrowLeft', label: '← Izquierda' }, { code: 'ArrowRight', label: '→ Derecha' },
+  { code: 'KeyZ', label: 'Z' }, { code: 'KeyX', label: 'X' },
+  { code: 'KeyC', label: 'C' }, { code: 'KeyV', label: 'V' },
+  { code: 'KeyB', label: 'B' }, { code: 'KeyN', label: 'N' }, { code: 'KeyM', label: 'M' },
+  { code: 'KeyA', label: 'A' }, { code: 'KeyS', label: 'S' }, { code: 'KeyD', label: 'D' },
+  { code: 'KeyF', label: 'F' }, { code: 'KeyG', label: 'G' }, { code: 'KeyH', label: 'H' },
+  { code: 'KeyJ', label: 'J' }, { code: 'KeyK', label: 'K' }, { code: 'KeyL', label: 'L' },
+  { code: 'KeyQ', label: 'Q' }, { code: 'KeyW', label: 'W' }, { code: 'KeyE', label: 'E' },
+  { code: 'KeyR', label: 'R' }, { code: 'KeyT', label: 'T' }, { code: 'KeyY', label: 'Y' },
+  { code: 'KeyU', label: 'U' }, { code: 'KeyI', label: 'I' }, { code: 'KeyO', label: 'O' },
+  { code: 'KeyP', label: 'P' },
+  { code: 'Digit1', label: '1' }, { code: 'Digit2', label: '2' }, { code: 'Digit3', label: '3' },
+  { code: 'Digit4', label: '4' }, { code: 'Digit5', label: '5' }, { code: 'Digit6', label: '6' },
+  { code: 'Digit7', label: '7' }, { code: 'Digit8', label: '8' }, { code: 'Digit9', label: '9' },
+  { code: 'Digit0', label: '0' },
+  { code: 'Enter', label: '↵ Enter' }, { code: 'Space', label: 'Espacio' },
+  { code: 'ShiftLeft', label: 'Shift izq' }, { code: 'ShiftRight', label: 'Shift der' },
+  { code: 'ControlLeft', label: 'Ctrl izq' }, { code: 'ControlRight', label: 'Ctrl der' },
+  { code: 'Tab', label: 'Tab' }, { code: 'Backspace', label: 'Retroceso' },
+  { code: 'Escape', label: 'Esc' }, { code: 'CapsLock', label: 'Bloq Mayús' },
+  { code: 'Comma', label: ',' }, { code: 'Period', label: '.' }, { code: 'Slash', label: '/' },
+  { code: 'Semicolon', label: ';' }, { code: 'Quote', label: "'" },
+  { code: 'BracketLeft', label: '[' }, { code: 'BracketRight', label: ']' },
+  { code: 'Backslash', label: '\\' }, { code: 'Minus', label: '-' }, { code: 'Equal', label: '=' },
+  { code: 'Home', label: 'Inicio' }, { code: 'End', label: 'Fin' },
+  { code: 'PageUp', label: 'Re Pág' }, { code: 'PageDown', label: 'Av Pág' },
+  { code: 'Insert', label: 'Insertar' }, { code: 'Delete', label: 'Supr' },
+  ...Array.from({ length: 12 }, (_, i) => ({ code: `F${i + 1}`, label: `F${i + 1}` })),
+];
+
+/**
+ * Normaliza un mapa recibido (de localStorage o de la URL): se asegura de que
+ * tenga los 10 botones con una tecla válida y SIN duplicados. Lo que no encaja
+ * se resuelve cambiando el valor por la tecla libre que le toque por defecto.
+ */
+export function normalizeEmuKeyMap(raw: unknown): EmuButtonMap {
+  const out: EmuButtonMap = { ...EMU_KEY_MAP_DEFAULT };
+  if (!raw || typeof raw !== 'object') return out;
+  const valid = new Set(EMU_KEY_OPTIONS.map((o) => o.code));
+  const usados = new Set<string>();
+  const libre = (): string => {
+    const d = EMU_KEY_MAP_DEFAULT;
+    const preferido = Object.values(d).find((c) => valid.has(c) && !usados.has(c));
+    if (preferido) return preferido;
+    return EMU_KEY_OPTIONS.find((o) => !usados.has(o.code))?.code ?? 'Space';
+  };
+  for (const btn of EMU_BUTTONS) {
+    const code = (raw as Record<string, string>)[btn.id];
+    if (typeof code === 'string' && valid.has(code) && !usados.has(code)) {
+      out[btn.id] = code;
+      usados.add(code);
+    } else if (typeof code === 'string' && valid.has(code) && usados.has(code)) {
+      // Tecla duplicada en la fuente: se le busca otra libre para que el mapa
+      // siga siendo usable (no debería pasar: el setter lo evita).
+      const l = libre();
+      out[btn.id] = l;
+      usados.add(l);
+    }
+  }
+  return out;
 }
 
 function loadGlobalSettings(): Partial<GlobalSettings> {
@@ -871,23 +1005,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       spriteSheets: [],
       backgrounds: [],
       songs: [],
+      instrumentPresets: defaultInstrumentPresets(),
       dialogues: [],
       sounds: [],
       scripts: [],
       fxAssets: [],
       dirty: false,
       exportLog: [],
+      projectLoading: true,
       emulatorRunning: false,
       selectedNodeId: '',
       _songsUndoStack: [],
       _songsRedoStack: [],
       _mundoUndoStack: [],
       _mundoRedoStack: [],
+      _spriteUndoStack: [],
+      _spriteRedoStack: [],
     }));
-    // Cargar datos guardados del proyecto
+    // Cargar datos guardados del proyecto. Se espera: mientras dura, el estado
+    // está a medio poblar y cualquier guardado (Ctrl+S) lo escribiría vacío.
     const st = get();
     if (st.projectDir) {
-      get().loadProject(st.projectDir);
+      await get().loadProject(st.projectDir);
+    } else {
+      set({ projectLoading: false });
     }
   },
 
@@ -962,9 +1103,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   gridLineOpacity: _saved.gridLineOpacity ?? 0.08,
   setGridLineOpacity: (val) => set({ gridLineOpacity: val }),
   imageSmoothing: _saved.imageSmoothing ?? false,
-  flatColors: _saved.flatColors ?? false,
-  setFlatColors: (val) => set({ flatColors: val }),
-  codeFontSize: clampFontSize(_saved.codeFontSize ?? 12),
+      flatColors: _saved.flatColors ?? false,
+      setFlatColors: (val) => set({ flatColors: val }),
+      codeFontSize: clampFontSize(_saved.codeFontSize ?? 12),
+      emulatorKeyMap: normalizeEmuKeyMap(_saved.emulatorKeyMap),
+      setEmuKeyMap: (map) => set({ emulatorKeyMap: normalizeEmuKeyMap(map) }),
+      resetEmuKeyMap: () => set({ emulatorKeyMap: { ...EMU_KEY_MAP_DEFAULT } }),
   setCodeFontSize: (val) => set({ codeFontSize: clampFontSize(val) }),
   setImageSmoothing: (val) => set({ imageSmoothing: val }),
   mundoShowGrid: _saved.mundoShowGrid ?? true,
@@ -996,6 +1140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     spriteSheets: [],
     backgrounds: [],
     songs: [],
+    instrumentPresets: defaultInstrumentPresets(),
     dialogues: [],
     sounds: [],
     scripts: [],
@@ -1013,9 +1158,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     imagenZoom: 1,
   }),
   exportLog: [],
+  projectLoading: false,
   emulatorRunning: false,
   setEmulatorRunning: (v) => set({ emulatorRunning: v }),
-  addExportLog: (msg) => set((s) => ({ exportLog: [...s.exportLog, msg].slice(-LOG_MAX) })),
+  addExportLog: (msg) => set((s) => ({ exportLog: [...s.exportLog, msg] })),
   clearExportLog: () => set({ exportLog: [] }),
   beginExportRun: () => set({ exportLog: [] }),
   generateBuildFiles: async (opts) => {
@@ -1065,13 +1211,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const splashSongId = state.splashScreen?.backgroundSong;
-      const splashSong = splashSongId ? state.songs.find((s) => s.id === splashSongId) : undefined;
+      // La canción que llega al export lleva su tabla de instrumentos derivada
+      // de los presets usados por sus notas (songInstrumentsForExport): sin
+      // esto, generateSongData solo ve el instrumento default de la canción y
+      // TODAS las notas suenan igual en la ROM.
+      const songParaExport = (s: Song): Song => ({
+        ...s,
+        instruments: songInstrumentsForExport(s, state.instrumentPresets),
+      });
+      const splashSong = splashSongId
+        ? (state.songs.find((s) => s.id === splashSongId) ?? undefined)
+        : undefined;
+      const splashSongExport = splashSong ? songParaExport(splashSong) : undefined;
       if (splashSong) {
         log.add(`Canción de splash: "${splashSong.name}"`);
       }
       if (state.splashScreen?.backgroundSoundId) {
         const found = state.sounds.find((s) => s.id === state.splashScreen.backgroundSoundId);
-        log.add(`[WARN] Splash: sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
+        if (found?.pcmBase64) log.add(`Splash: sonido de fondo "${found.name}" → PCM por DMA`);
+        else log.add(`[WARN] Splash: "${found?.name ?? 'desconocido'}" no tiene audio convertido — impórtalo en Sound para que suene`);
       }
 
       // ── Bundles de escena para el export (multi-escena) ───────────────
@@ -1141,7 +1299,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (scene.backgroundSong) {
           const found = state.songs.find((s) => s.id === scene.backgroundSong);
           if (found) {
-            song = found;
+            song = songParaExport(found);
             log.add(`Canción de escena "${scene.name}": "${found.name}" (${found.patterns.length} patrones)`);
           } else {
             log.add(`[WARN] backgroundSong "${scene.backgroundSong}" no encontrada entre las canciones`);
@@ -1149,7 +1307,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         if (scene.backgroundSoundId) {
           const found = state.sounds.find((s) => s.id === scene.backgroundSoundId);
-          log.add(`[WARN] Escena "${scene.name}": sonido como música de fondo "${found?.name ?? 'desconocido'}": reproducción PCM no implementada en C export`);
+          if (found?.pcmBase64) log.add(`Escena "${scene.name}": sonido de fondo "${found.name}" → PCM por DMA`);
+          else log.add(`[WARN] Escena "${scene.name}": "${found?.name ?? 'desconocido'}" no tiene audio convertido — impórtalo en Sound para que suene`);
         }
         // ── Actores de la escena (sprites software OVERLAY) ───────────────
         if (scene.actors?.length) {
@@ -1242,6 +1401,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         return {
           id: scene.id, name: scene.name, imageCArray, color, collisionMap,
           collisionTileSize: scene.collisionTileSize || 8, camX, camY, actors,
+          song,
+          soundId: scene.backgroundSoundId || undefined,
         };
       }
 
@@ -1764,7 +1925,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         sounds: state.sounds ?? [],
         dialogues: state.dialogues ?? [],
         scripts: state.scripts ?? [],
-      }, project.name, project.author, log, splashCArray, splashDuration, splashSong, sceneSong, sceneCArray, sceneColor,
+        splashSoundId: state.splashScreen?.backgroundSoundId || undefined,
+      }, project.name, project.author, log, splashCArray, splashDuration, splashSongExport, sceneSong, sceneCArray, sceneColor,
         entryTilesetCArray, entryTileSize, entryTilesetFrames, entryTilesetSpeed, entryTilesetFw, entryTilesetFh,
         exitTilesetCArray, exitTileSize, exitTilesetFrames, exitTilesetSpeed, exitTilesetFw, exitTilesetFh,
         exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
@@ -1781,7 +1943,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Publicar el detalle. Al guardar (verbose: false) no se publica: son
       // ~40 líneas por guardado y el log se hacía ilegible.
-      if (verbose) set((s) => ({ exportLog: [...s.exportLog, ...log.messages].slice(-LOG_MAX) }));
+      if (verbose) set((s) => ({ exportLog: [...s.exportLog, ...log.messages] }));
       return true;
     } catch (err: any) {
       // El error siempre se publica, aussi en silencio: si no, un fallo al
@@ -1791,7 +1953,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   saveProject: async () => {
-    try {
+    // Guardados encolados: sin esto, un Ctrl+S en racha (o el guardado del
+    // menú mientras el otro corre) launches dos escrituras de project.json y de
+    // main.c a la vez, y se pisan entre sí.
+    const run = async (): Promise<boolean> => {
+      // Si el proyecto se está abriendo, se espera a que termine en vez de
+      // denegar: denegar obligaba al usuario a repetir el Ctrl+S. Guardar el
+      // estado a medio poblar era justo lo que vaciaba el proyecto en disco.
+      if (get().projectLoading) {
+        const cargado = await esperarFinDeCarga();
+        if (!cargado) {
+          set((s) => ({ exportLog: [...s.exportLog, '[ERROR] El proyecto no se pudo cargar — no se guarda (habría escrito el estado vacío encima)'] }));
+          return false;
+        }
+      }
+      try {
       const api = window.advanceAPI;
       const state = get();
       const project = state.projects.find((p) => p.id === state.editorProjectId);
@@ -1804,6 +1980,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           backgrounds: state.backgrounds ?? [],
           sprites: state.spriteSheets ?? [],
           songs: state.songs,
+          instrumentPresets: state.instrumentPresets,
           sounds: state.sounds ?? [],
           fxAssets: state.fxAssets ?? [],
           dialogues: state.dialogues ?? [],
@@ -1827,16 +2004,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
       return false;
     }
+    };
+    const chain = saveChain.then(run, run);
+    saveChain = chain.catch(() => false);
+    return chain;
   },
   loadProject: async (path) => {
+    let ok = false;
+    ultimaCargaOk = true;
+    set({ projectLoading: true });
     try {
       const api = window.advanceAPI;
       get().beginExportRun();
       set((s) => ({ exportLog: [...s.exportLog, `[INFO] Cargando proyecto: ${path}`] }));
       const result = await api.project.load(path);
-      if (!result.success || !result.state) {
-        set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${result.reason}`] }));
+      if (!result.success) {
+        ok = false;
+        set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${result.reason ?? 'No se pudo leer el proyecto'}`] }));
         return false;
+      }
+      // Un proyecto recién creado puede no tener estado todavía (o haberse
+      // borrado): se abre vacío, no es un error.
+      if (!result.state) {
+        ok = true;
+        set((s) => ({
+          exportLog: [...s.exportLog, '[INFO] El proyecto todavía no tiene escenas guardadas'],
+        }));
+        return true;
       }
       set({
         projectDir: path,
@@ -1850,6 +2044,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         backgrounds: result.state.backgrounds ?? [],
         spriteSheets: result.state.sprites ?? [],
         songs: result.state.songs ?? [],
+        instrumentPresets: mergeInstrumentPresets(result.state.instrumentPresets),
         sounds: result.state.sounds ?? [],
         fxAssets: result.state.fxAssets ?? [],
         dialogues: result.state.dialogues ?? [],
@@ -1864,13 +2059,33 @@ export const useAppStore = create<AppState>((set, get) => ({
         dirty: false,
         exportLog: [...get().exportLog, `[OK] Proyecto cargado: ${result.manifest?.name ?? 'Sin nombre'}`],
       });
+      ok = true;
       return true;
     } catch (err: any) {
+      ok = false;
       set((s) => ({ exportLog: [...s.exportLog, `[ERROR] ${String(err)}`] }));
       return false;
+    } finally {
+      ultimaCargaOk = ok;
+      // En un `set` aparte del de los datos a propósito: el vigilante de
+      // "cambios sin guardar" usa este flag para resincronizar su línea base
+      // cuando pasa a false (si shareset, vería el salto vacío→datos como un
+      // cambio del usuario y marcaría el proyecto como modificado al abrirlo).
+      set({ projectLoading: false });
+      // Se suelta a quien estuviera esperando para guardar (ver saveProject).
+      const esperando = esperaCarga;
+      esperaCarga = [];
+      esperando.forEach((fn) => fn());
     }
   },
   exportGBA: async () => {
+    // Igual que al guardar: con el proyecto a medio cargar se compilaría un
+    // main.c de un proyecto vacío.
+    if (!(await esperarFinDeCarga())) {
+      get().beginExportRun();
+      get().addExportLog('[ERROR] El proyecto no se pudo cargar — no se exporta (habría compilado el estado vacío)');
+      return false;
+    }
     try {
       // Una exportación = un log limpio. Antes se concatenaban con todo lo
       // anterior y el error real quedaba enterrado.
@@ -1908,6 +2123,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   playEmulator: async () => {
+    // Igual que al guardar y al exportar: no se lanza el emulador con el
+    // proyecto a medio cargar.
+    if (!(await esperarFinDeCarga())) {
+      get().beginExportRun();
+      get().addExportLog('[ERROR] El proyecto no se pudo cargar — no se ejecuta');
+      return false;
+    }
     try {
       // Igual que en exportGBA: lo que interesa es la última ejecución.
       get().beginExportRun();
@@ -1925,6 +2147,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Close existing emulator
       await api.emu.stop();
 
+      // El remapeo de botones elegido en Ajustes → Play viaja en la URL.
+      const keymapParam = encodeURIComponent(JSON.stringify(get().emulatorKeyMap));
+
       // Compile
       set((s) => ({ exportLog: [...s.exportLog, '[INFO] Generando build files…'] }));
       const filesOk = await get().generateBuildFiles();
@@ -1941,7 +2166,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ exportLog: [...s.exportLog, '[OK] ROM compilada, lanzando emulador…'] }));
 
       // Launch emulator
-      const emuResult = await api.emu.play(romPath);
+      const emuResult = await api.emu.play(romPath, keymapParam);
       if (!emuResult.success) {
         set((s) => ({ exportLog: [...s.exportLog, `[ERROR] Emulador: ${emuResult.reason}`] }));
         return false;
@@ -2232,7 +2457,14 @@ addActor: (sceneId, overrides) => {
 
   // ── Music ──────────────────────────────────────────────────────────────
   songs: [defaultSong(), demoSong(), marioSong()],
+  instrumentPresets: defaultInstrumentPresets(),
   addSong: () => { get()._snapshotSongs(); set((s) => ({ songs: [...s.songs, defaultSong()] })); },
+
+  // Ajustes de un preset de instrumento (biblioteca compartida por canciones).
+  // Sin snapshot de undo a propósito: cada tick de un knob dispararía uno.
+  updateInstrumentPreset: (id, patch) => set((s) => ({
+    instrumentPresets: s.instrumentPresets.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+  })),
 
   updateSong: (id, patch) => { get()._snapshotSongs(); set((s) => ({
     songs: s.songs.map((so) => (so.id === id ? { ...so, ...patch } : so)),
@@ -2632,6 +2864,7 @@ useAppStore.subscribe((state) => {
     connStrokeWidth: state.connStrokeWidth, clickAnimation: state.clickAnimation,
     showGrid: state.showGrid, gridLineOpacity: state.gridLineOpacity, imageSmoothing: state.imageSmoothing,
     flatColors: state.flatColors, codeFontSize: state.codeFontSize,
+    emulatorKeyMap: state.emulatorKeyMap,
   });
   if (json !== _prevSettingsJson) {
     _prevSettingsJson = json;
@@ -2650,7 +2883,7 @@ if (typeof window !== 'undefined' && !emuLogSuscrito) {
   try {
     window.advanceAPI?.emu?.onEmulatorStatus(({ level, msg }) => {
       const linea = level === 'error' ? `[ERROR] ${msg}` : msg;
-      useAppStore.setState((s) => ({ exportLog: [...s.exportLog, linea].slice(-LOG_MAX) }));
+      useAppStore.setState((s) => ({ exportLog: [...s.exportLog, linea] }));
     });
 
     // El estado de la ventana, para que el botón PLAY/STOP refleje también cuando

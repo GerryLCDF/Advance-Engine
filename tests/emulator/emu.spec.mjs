@@ -132,8 +132,7 @@ async function botonesPulsados(page) {
 
 /**
  * Espera a que la ROM muestre exactamente el botón esperado. Preguntar hasta que
- * pase es determinista; dormir un tiempo fijo fallaba de vez en cuando con los
- * botones en pantalla.
+ * pase es determinista; dormir un tiempo fijo fallaba de vez en cuando.
  */
 async function esperarBotones(page, esperado, ms = 4000) {
   const limite = Date.now() + ms;
@@ -261,9 +260,6 @@ test('los botones de la pantalla pulsan botones del juego', async () => {
 
   const antes = await brilloCentro(page);
 
-  // El botón virtual "START" de la parte de abajo, con un puntero de verdad.
-  // EJS escucha el teclado en elements.parent y compara keyCode, así que esto
-  // ejercita justo el camino que no va por window.
   const start = page.locator('#btn-start');
   await expect(start).toBeVisible();
   const box = await start.boundingBox();
@@ -315,33 +311,6 @@ test('cada tecla del teclado llega a su botón de la GBA', async () => {
   }
 });
 
-test('cada botón en pantalla llega a su botón de la GBA', async () => {
-  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
-
-  const BOTONES_UI = [
-    ['#btn-a', 0], ['#btn-b', 1], ['#btn-select', 2], ['#btn-start', 3],
-    ['#dpad-right', 4], ['#dpad-left', 5], ['#dpad-up', 6], ['#dpad-down', 7],
-    ['#btn-r', 8], ['#btn-l', 9],
-  ];
-
-  for (const [sel, bit] of BOTONES_UI) {
-    const page = await browser.newPage();
-    await abrirYEsperar(page);
-    await page.waitForTimeout(350);
-
-    const el = page.locator(sel);
-    await expect(el).toBeVisible();
-    const box = await el.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    const pressed = await esperarBotones(page, [bit]);
-    await page.mouse.up();
-
-    expect(pressed, `${sel} debería pulsar ${BOTONES_GBA[bit]} y solo eso`).toEqual([bit]);
-    await page.close();
-  }
-});
-
 test('el d-pad se mueve de verdad: el jugador camina hacia la derecha', async () => {
   test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
 
@@ -374,8 +343,8 @@ test('las teclas también llegan con el foco en otro sitio', async () => {
   await abrirYEsperar(page);
   await page.waitForTimeout(400);
 
-  await page.evaluate(() => document.getElementById('btn-start').focus());
-  expect(await page.evaluate(() => document.activeElement?.id)).toBe('btn-start');
+  await page.evaluate(() => document.getElementById('game-fps').focus());
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('game-fps');
 
   await page.keyboard.down('KeyZ');
   await page.waitForTimeout(250);
@@ -392,6 +361,52 @@ test('las teclas también llegan con el foco en otro sitio', async () => {
   expect(await botonesPulsados(page)).toEqual([4, 6]);
   await page.keyboard.up('ArrowUp');
   await page.keyboard.up('ArrowRight');
+
+  await page.close();
+});
+
+test('cada botón en pantalla llega a su botón de la GBA', async () => {
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  const BOTONES_UI = [
+    ['#btn-a', 0], ['#btn-b', 1], ['#btn-select', 2], ['#btn-start', 3],
+    ['#dpad-right', 4], ['#dpad-left', 5], ['#dpad-up', 6], ['#dpad-down', 7],
+    ['#btn-r', 8], ['#btn-l', 9],
+  ];
+
+  for (const [sel, bit] of BOTONES_UI) {
+    const page = await browser.newPage();
+    await abrirYEsperar(page);
+    await page.waitForTimeout(350);
+
+    const el = page.locator(sel);
+    await expect(el).toBeVisible();
+    const box = await el.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    const pressed = await esperarBotones(page, [bit]);
+    await page.mouse.up();
+
+    expect(pressed, `${sel} debería pulsar ${BOTONES_GBA[bit]} y solo eso`).toEqual([bit]);
+    await page.close();
+  }
+});
+
+test('el contador de FPS y el nombre de la ROM se ven arriba del juego', async () => {
+  test.skip(!romPath, 'devkitARM no disponible: no se puede compilar la ROM de prueba');
+
+  const page = await browser.newPage();
+  await abrirYEsperar(page);
+  await page.waitForTimeout(1200);
+
+  const info = page.locator('#game-info');
+  await expect(info).toBeVisible();
+
+  const romName = await page.locator('#game-rom').textContent();
+  expect(romName).toContain('testrom');
+
+  const fps = await page.locator('#game-fps').textContent();
+  expect(fps).toMatch(/\d+ FPS/);
 
   await page.close();
 });

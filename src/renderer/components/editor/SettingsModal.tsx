@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useAppStore } from '../../store/useAppStore';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useAppStore, EMU_BUTTONS, EMU_KEY_OPTIONS, EMU_KEY_MAP_DEFAULT, type EmuButton, type EmuButtonMap } from '../../store/useAppStore';
 import type { EditorTab } from '../../types/editor';
+import { GamepadIcon } from './tabs/icons';
 import {
   CodeIcon,
   GlobeIcon,
@@ -19,7 +20,7 @@ interface Props {
 }
 
 type SettingsTab = 'mundo' | 'scripting' | 'sprite' | 'imagen' | 'music' | 'sound' | 'dialogo' | 'general';
-type GeneralSection = 'theme' | 'idioma' | 'general' | 'mundo';
+type GeneralSection = 'theme' | 'idioma' | 'general' | 'mundo' | 'play';
 
 const EDITOR_TAB_OPTIONS: { key: EditorTab; label: string }[] = [
   { key: 'mundo', label: 'Mundo' },
@@ -48,6 +49,7 @@ const SIDEBAR_ICON: Record<string, JSX.Element> = {
   '⚙': <SettingsIcon size={14} />,
   '🎨': <PaletteIcon size={14} />,
   '🌍': <GlobeIcon size={14} />,
+  '🎮': <GamepadIcon size={14} />,
 };
 
 const PLACEHOLDER_ICON: Record<string, JSX.Element> = {
@@ -64,7 +66,11 @@ const SIDEBAR_ITEMS: { key: GeneralSection; label: string; icon: string }[] = [
   { key: 'theme', label: 'Apariencia', icon: '🎨' },
   { key: 'idioma', label: 'Idioma', icon: '🌐' },
   { key: 'mundo', label: 'Mundo', icon: '🌍' },
+  { key: 'play', label: 'Play', icon: '🎮' },
 ];
+
+// code de teclado → etiqueta legible (para pintar el valor de cada botón)
+const KEY_LABEL: Record<string, string> = Object.fromEntries(EMU_KEY_OPTIONS.map((o) => [o.code, o.label]));
 
 const THEME_PRESETS: { name: string; bgPanel: string; accent: string }[] = [
   { name: 'Advance Studio', bgPanel: '#2d2d33', accent: '#5a3fa0' },
@@ -142,6 +148,62 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const [localClickAnimation, setLocalClickAnimation] = useState(false);
   const [hoveredReset, setHoveredReset] = useState<string | null>(null);
 
+  const emulatorKeyMap = useAppStore((s) => s.emulatorKeyMap);
+  const setEmuKeyMap = useAppStore((s) => s.setEmuKeyMap);
+  const resetEmuKeyMap = useAppStore((s) => s.resetEmuKeyMap);
+  const [localEmuKeyMap, setLocalEmuKeyMap] = useState<EmuButtonMap>({ ...emulatorKeyMap });
+  // Captura: el botón que está esperando una tecla (clic → "Presiona una tecla…")
+  const [capturing, setCapturing] = useState<EmuButton | null>(null);
+  const [teclaInvalida, setTeclaInvalida] = useState(false);
+
+  useEffect(() => {
+    setLocalEmuKeyMap({ ...emulatorKeyMap });
+  }, [emulatorKeyMap]);
+
+  // Captura de tecla: mientras hay un botón esperando, la próxima tecla física
+  // se le asigna. El listener va en fase de captura (true) para correr ANTES que
+  // los atajos del editor (Ctrl+S, Ctrl+Z...): stopPropagation les corta el paso.
+  useEffect(() => {
+    if (!capturing) return;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') { setCapturing(null); setTeclaInvalida(false); return; }
+      const code = e.code;
+      if (!EMU_KEY_OPTIONS.some((o) => o.code === code)) { setTeclaInvalida(true); return; }
+      setTeclaInvalida(false);
+      const btn = capturing;
+      setLocalEmuKeyMap((m) => ({ ...m, [btn]: code }));
+      setCapturing(null);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [capturing]);
+
+  // Teclas asignadas a 2 o más botones: esas filas se marcan en rojo y bloquean
+  // la salida del modal hasta que se corrija.
+  const conflictCodes = useMemo(() => {
+    const cuenta: Record<string, number> = {};
+    Object.values(localEmuKeyMap).forEach((c) => { cuenta[c] = (cuenta[c] ?? 0) + 1; });
+    return new Set(Object.keys(cuenta).filter((c) => cuenta[c] > 1));
+  }, [localEmuKeyMap]);
+  const hasConflicts = conflictCodes.size > 0;
+
+  // "Salir" = Cancelar, clic fuera, cambiar de sección/pestaña o Aplicar. Con
+  // teclas duplicadas en Play, nada de eso pasa: el aviso rojo ya está en pantalla.
+  function puedeAbandonarPlay(): boolean {
+    if (activeSection !== 'play' || !hasConflicts) return true;
+    return false;
+  }
+
+  function handleEmuReset() {
+    setLocalEmuKeyMap({ ...EMU_KEY_MAP_DEFAULT });
+    setCapturing(null);
+    setTeclaInvalida(false);
+  }
+
+  const isEmuModified = EMU_BUTTONS.some((b) => localEmuKeyMap[b.id] !== EMU_KEY_MAP_DEFAULT[b.id]);
+
   const MUNDO_DEFAULTS = {
     showGrid: false, gridSize: 16, gridOpacity: 0.15, strokeWidth: 0.5, gridColor: '#4488ff',
     connColorOut: '#3b82f6', connColorIn: '#f59e0b', connStrokeWidth: 2, clickAnimation: false,
@@ -174,6 +236,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const snapshot = useRef({ bg: storeBg, accent: storeAccent, fontSize: storeFontSize });
 
   function handleTabClick(key: SettingsTab) {
+    if (!puedeAbandonarPlay()) return;
     if (key !== 'general') {
       setEditorTab(key as any);
       setActiveTab(key);
@@ -199,6 +262,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   }
 
   function cancel() {
+    if (!puedeAbandonarPlay()) return;
     setTheme(snapshot.current.bg, snapshot.current.accent);
     setFontSize(snapshot.current.fontSize);
     onClose();
@@ -230,6 +294,11 @@ export function SettingsModal({ onClose, initialTab }: Props) {
         break;
       case 'mundo':
         applyMundo();
+        break;
+      case 'play':
+        if (!puedeAbandonarPlay()) break;
+        setEmuKeyMap(localEmuKeyMap);
+        onClose();
         break;
     }
   }
@@ -274,7 +343,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
           border: '1px solid var(--border-color)',
           borderRadius: 12,
           width: 580,
-          height: 420,
+          height: 560,
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
         }}
@@ -320,7 +389,7 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                 {SIDEBAR_ITEMS.map((item) => (
                   <button
                     key={item.key}
-                    onClick={() => setActiveSection(item.key)}
+                    onClick={() => { if (puedeAbandonarPlay()) setActiveSection(item.key); }}
                     style={{
                       background: activeSection === item.key ? 'var(--bg-raised)' : 'transparent',
                       border: 'none', borderRadius: 0,
@@ -558,6 +627,80 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                 {activeSection === 'idioma' && (
                   <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                     <p>Opciones de idioma próximamente.</p>
+                  </div>
+                )}
+
+                {activeSection === 'play' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div>
+                      <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 700 }}>Play</span>
+                      <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '4px 0 0', lineHeight: 1.5 }}>
+                        Haz clic en un botón y pulsa la tecla para asignarla. Si 2 o más botones comparten tecla se marcan en rojo y no podrás salir hasta corregirlo.
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' }}>
+                      {EMU_BUTTONS.map((btn) => {
+                        const code = localEmuKeyMap[btn.id];
+                        const duplicado = conflictCodes.has(code);
+                        const enCaptura = capturing === btn.id;
+                        return (
+                          <div key={btn.id} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                            padding: '5px 10px', borderRadius: 6,
+                            border: duplicado ? '1px solid var(--red, #ef4444)' : '1px solid transparent',
+                            background: duplicado ? 'rgba(239, 68, 68, 0.10)' : 'transparent',
+                          }}>
+                            <span style={{ color: duplicado ? 'var(--red, #ef4444)' : 'var(--text-secondary)', fontSize: 11, fontWeight: duplicado ? 700 : 400 }}>{btn.label}</span>
+                            <button
+                              onClick={() => { setCapturing(enCaptura ? null : btn.id); setTeclaInvalida(false); }}
+                              style={{
+                                minWidth: 120, textAlign: 'center', fontFamily: 'monospace', fontSize: 11,
+                                padding: '5px 10px', borderRadius: 6, cursor: 'pointer', outline: 'none',
+                                border: enCaptura ? '1px solid var(--accent-light)' : duplicado ? '1px solid var(--red, #ef4444)' : '1px solid var(--bg-raised)',
+                                background: 'var(--bg-dark)',
+                                color: enCaptura ? 'var(--accent-lighter)' : duplicado ? 'var(--red, #ef4444)' : 'var(--text)',
+                              }}
+                            >
+                              {enCaptura ? 'Presiona una tecla…' : (KEY_LABEL[code] ?? code)}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {hasConflicts && (
+                      <div style={{ color: 'var(--red, #ef4444)', fontSize: 11, fontWeight: 700 }}>
+                        Hay botones con la misma tecla (marcados en rojo). Asigna otra tecla a cada uno, o pulsa Restablecer. No puedes salir hasta corregirlo.
+                      </div>
+                    )}
+                    {teclaInvalida && capturing && (
+                      <div style={{ color: 'var(--yellow, #d8a657)', fontSize: 11 }}>
+                        Tecla no soportada. Pulsa otra (Esc para cancelar).
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                      {(isEmuModified || hasConflicts) && (
+                        <button onClick={handleEmuReset}
+                          style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                          Restablecer
+                        </button>
+                      )}
+                      <button onClick={cancel}
+                        style={{ background: 'var(--bg-raised)', border: 'none', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
+                        Cancelar
+                      </button>
+                      <button onClick={apply}
+                        disabled={hasConflicts}
+                        style={{
+                          background: hasConflicts ? 'var(--bg-raised)' : 'var(--accent)', border: 'none', borderRadius: 6,
+                          color: hasConflicts ? 'var(--text-muted)' : '#fff', fontSize: 12, fontWeight: 600,
+                          padding: '7px 20px', cursor: hasConflicts ? 'not-allowed' : 'pointer',
+                        }}>
+                        Aplicar
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

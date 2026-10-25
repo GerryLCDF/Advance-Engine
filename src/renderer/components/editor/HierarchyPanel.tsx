@@ -45,6 +45,12 @@ interface HierarchyPanelProps {
   onRename?: (id: string, name: string) => void;
   onEditingChange?: (id: string | null) => void;
   onDoubleClick?: (id: string) => void;
+  /**
+   * Ids de cabeceras (isHeader) que deben quedar expandidas al cambiar de
+   * selección: las demás se colapsan. El usuario puede volver a expandirlas a
+   * mano después (el colapso automático solo actúa al cambiar la selección).
+   */
+  expandHeaderIds?: string[];
 }
 
 export function RowIconButton({
@@ -130,6 +136,7 @@ function ToggleButtons({ toggles }: { toggles: NonNullable<HierarchyItem['toggle
 
 export function HierarchyPanel({
   sections, selectedId, onSelect, onRemove, onContextMenu, editingId, onRename, onEditingChange, onDoubleClick,
+  expandHeaderIds,
 }: HierarchyPanelProps) {
   const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(() => {
     const m: Record<string, boolean> = {};
@@ -142,6 +149,28 @@ export function HierarchyPanel({
   };
 
   const [collapsedItems, setCollapsedItems] = useState<Record<string, boolean>>({});
+
+  // Colapso automático por selección: solo las cabeceras indicadas quedan
+  // abiertas. Se recalcula únicamente cuando cambia `selectedId`, así los
+  // toggles manuales del usuario se respetan después.
+  useEffect(() => {
+    if (!expandHeaderIds) return;
+    const keep = new Set(expandHeaderIds);
+    const headerIds: string[] = [];
+    const walk = (items: typeof sections[number]['items']) => {
+      for (const it of items) {
+        if (it.isHeader && it.children && it.children.length > 0) headerIds.push(it.id);
+        if (it.children) walk(it.children);
+      }
+    };
+    sections.forEach((s) => walk(s.items));
+    setCollapsedItems((prev) => {
+      const next = { ...prev };
+      for (const id of headerIds) next[id] = !keep.has(id);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const editingInputRef = useRef<HTMLInputElement>(null);
 

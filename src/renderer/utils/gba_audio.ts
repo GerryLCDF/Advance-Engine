@@ -86,16 +86,19 @@ function generatePulse(
   if (gbaFreq === 0) return out;
 
   const wave = DUTY_WAVES[dutyIdx];
-  const envSamples = Math.round(SAMPLE_RATE * (64 / 256)); // N/64 segundos → samples
-  const sweepSamples = Math.round(SAMPLE_RATE * (128 / 256)); // sweeps cada N/128 seg
+  // Timing REAL del GBA: el envelope avanza cada N/64 s (N = cambio, 1-7) y el
+  // sweep cada N/128 s. Antes eran 0.25 s y 0.5 s fijos, así que los presets
+  // "Fade Out"/"Sweep" no se oían desvanecerse y todos parecían iguales.
+  const envSamples = envCount > 0 ? Math.round(SAMPLE_RATE * (envCount / 64)) : 0;
+  const sweepStepSamples = sweepTime > 0 ? Math.round(SAMPLE_RATE * (sweepTime / 128)) : 0;
 
   for (let s = 0; s < totalSamples; s++) {
     // Envelope step
-    const envIdx = Math.floor(s / Math.max(1, envSamples));
+    const envIdx = envSamples > 0 ? Math.floor(s / envSamples) : 0;
     const currentVol = envelopeVol(vol, direction, envCount, envIdx);
 
     // Sweep step (solo Pulse 1)
-    const sweepIdx = sweepTime > 0 ? Math.floor(s / Math.max(1, sweepSamples * sweepTime)) : 0;
+    const sweepIdx = (sweepStepSamples > 0 && sweepShift > 0) ? Math.floor(s / sweepStepSamples) : 0;
     const sweepF = sweepFreq(gbaFreq, sweepShift, direction, sweepIdx);
     const period = Math.max(1, Math.round(SAMPLE_RATE / gbaFreqToHz(sweepF)));
 
@@ -161,11 +164,11 @@ function generateNoise(
   // Clock del LFSR: base = 524288 Hz, dividido por (dividingRatio * 2) o 0.5 si ratio=0
   const lfsrFreq = dividingRatio > 0 ? 524288 / (dividingRatio * 2) : 524288;
   const samplesPerClock = Math.round(SAMPLE_RATE / lfsrFreq);
-  const envSamples = Math.round(SAMPLE_RATE * (64 / 256));
+  const envSamples = envCount > 0 ? Math.round(SAMPLE_RATE * (envCount / 64)) : 0;
 
   for (let s = 0; s < totalSamples; s++) {
     // Envelope
-    const envIdx = Math.floor(s / Math.max(1, envSamples));
+    const envIdx = envSamples > 0 ? Math.floor(s / envSamples) : 0;
     const cv = envelopeVol(envVol, direction, envCount, envIdx);
 
     // LFSR

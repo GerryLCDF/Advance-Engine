@@ -7,6 +7,7 @@ import { EmptyState } from '../EmptyState';
 import {
   ActivityIcon,
   ClefIcon,
+  HeadphonesFilledIcon,
   EraserIcon,
   MinusIcon,
   MousePointerIcon,
@@ -19,107 +20,35 @@ import {
   StopIcon,
   WaveIcon,
 } from './icons';
-import type { InstrumentType, NoteRow } from '../../../types/editor';
-import { playGBASound } from '../../../utils/gba_audio';
+import type { InstrumentType, NoteRow, InstrumentPreset } from '../../../types/editor';
+import { PRESET_GROUP_ORDER } from '../../../utils/instrumentPresets';
+import { playGBASound, getAudioContext } from '../../../utils/gba_audio';
+import { pcmToAudioBuffer } from '../../../utils/gba_pcm';
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
-interface InstrumentPreset {
-  id: string;
-  name: string;
-  type: InstrumentType;
-  color: string;
-  lengthEnabled: boolean;
-  length: number;
-  initialVolume: number;
-  change: number;
-  dutyCycleValue: number;
-  sweepShift: number;
-  sweepTime: number;
-}
-
-const makePreset = (id: string, name: string, type: InstrumentType, color: string, overrides?: Partial<InstrumentPreset>): InstrumentPreset => ({
-  id, name, type, color,
-  lengthEnabled: false, length: 32, initialVolume: 8, change: 0,
-  dutyCycleValue: 50, sweepShift: 0, sweepTime: 1,
-  ...overrides,
-});
-
-const DUTY_PRESETS: InstrumentPreset[] = [
-  makePreset('preset-duty-1', 'Fade Out 25% Pulse', 'duty', '#57E4B3', { initialVolume: 11, change: -3, dutyCycleValue: 25 }),
-  makePreset('preset-duty-2', 'Fade Out 50% Pulse', 'duty', '#00A9CC', { initialVolume: 11, change: -3, dutyCycleValue: 50 }),
-  makePreset('preset-duty-3', 'Fade In 12,5% Pulse', 'duty', '#6C7A8E', { lengthEnabled: true, length: 64, initialVolume: 0, change: 7, dutyCycleValue: 12.5 }),
-  makePreset('preset-duty-4', 'Short 12,5% Pulse', 'duty', '#4A4579', { lengthEnabled: true, length: 16, initialVolume: 11, dutyCycleValue: 12.5 }),
-  makePreset('preset-duty-5', 'Short 25% Pulse', 'duty', '#1B8C7A', { lengthEnabled: true, length: 16, initialVolume: 11, dutyCycleValue: 25 }),
-  makePreset('preset-duty-6', 'Short 50% Pulse', 'duty', '#6CC459', { lengthEnabled: true, length: 16, initialVolume: 11, dutyCycleValue: 50 }),
-  makePreset('preset-duty-7', '12,5% Pulse', 'duty', '#A9E464', { initialVolume: 11, dutyCycleValue: 12.5 }),
-  makePreset('preset-duty-8', '25% Pulse', 'duty', '#F5E873', { initialVolume: 11, dutyCycleValue: 25 }),
-  makePreset('preset-duty-9', '50% Pulse', 'duty', '#F38D56', { initialVolume: 11, dutyCycleValue: 50 }),
-  makePreset('preset-duty-10', '75% Pulse Custom Vibrato', 'duty', '#D65576', { initialVolume: 11, dutyCycleValue: 75 }),
-  makePreset('preset-duty-11', 'Bass Drum 50% Pulse (Duty 1 Only)', 'duty', '#793D85', { lengthEnabled: true, length: 64, initialVolume: 11, change: -6, dutyCycleValue: 50, sweepShift: 1, sweepTime: 1 }),
-  makePreset('preset-duty-12', 'Soft Sweep 50% Pulse (Duty 1 Only)', 'duty', '#D63475', { initialVolume: 11, change: -3, dutyCycleValue: 50, sweepShift: 1, sweepTime: 1 }),
-  makePreset('preset-duty-13', 'Sweep 12,5% Pulse (Duty 1 Only)', 'duty', '#F3B0C3', { initialVolume: 11, change: -1, dutyCycleValue: 12.5, sweepShift: 2, sweepTime: 4 }),
-  makePreset('preset-duty-14', 'Sweep 25% Pulse (Duty 1 Only)', 'duty', '#F3BD9D', { lengthEnabled: true, length: 32, initialVolume: 11, change: -1, dutyCycleValue: 25, sweepShift: 2, sweepTime: 1 }),
-  makePreset('preset-duty-15', '(empty)', 'duty', '#A9A57E', {}),
-];
-
-const WAVE_PRESETS: InstrumentPreset[] = [
-  makePreset('preset-wave-1', '12,5% Pulse', 'wave', '#57E4B3', { dutyCycleValue: 12.5 }),
-  makePreset('preset-wave-2', '25% Pulse', 'wave', '#00A9CC', { dutyCycleValue: 25 }),
-  makePreset('preset-wave-3', '31.25% Pulse', 'wave', '#6C7A8E', { dutyCycleValue: 31.25 }),
-  makePreset('preset-wave-4', '37,50% Pulse', 'wave', '#4A4579', { dutyCycleValue: 37.5 }),
-  makePreset('preset-wave-5', '43,75% Pulse', 'wave', '#1B8C7A', { dutyCycleValue: 43.75 }),
-  makePreset('preset-wave-6', '50% Pulse', 'wave', '#6CC459', { dutyCycleValue: 50 }),
-  makePreset('preset-wave-7', '50% Pulse (Volume 5)', 'wave', '#A9E464', { initialVolume: 5 }),
-  makePreset('preset-wave-8', '50% Pulse (Volume 3)', 'wave', '#F5E873', { initialVolume: 3 }),
-  makePreset('preset-wave-9', '50% Pulse (Volume 1)', 'wave', '#F38D56', { initialVolume: 1 }),
-  makePreset('preset-wave-10', 'Square Wave with added Square Wave (2 Oktaves high...)', 'wave', '#D65576'),
-  makePreset('preset-wave-11', 'Triangular Wave', 'wave', '#793D85'),
-  makePreset('preset-wave-12', 'Triangular with added Square Wave (2 Oktaves higher)', 'wave', '#D63475'),
-  makePreset('preset-wave-13', 'Saw Wave', 'wave', '#F3B0C3'),
-  makePreset('preset-wave-14', 'Distorted Saw Wave', 'wave', '#F3BD9D'),
-  makePreset('preset-wave-15', '(empty)', 'wave', '#A9A57E'),
-];
-
-const NOISE_PRESETS: InstrumentPreset[] = [
-  makePreset('preset-noise-1', 'White Noise', 'noise', '#57E4B3', { dutyCycleValue: 12.5, initialVolume: 12 }),
-  makePreset('preset-noise-2', 'Bright Hiss', 'noise', '#00A9CC', { dutyCycleValue: 25, initialVolume: 10, change: -2 }),
-  makePreset('preset-noise-3', 'Metallic 7-bit', 'noise', '#6C7A8E', { dutyCycleValue: 37.5, initialVolume: 10, sweepShift: 1 }),
-  makePreset('preset-noise-4', 'Snare', 'noise', '#4A4579', { dutyCycleValue: 50, initialVolume: 14, change: -6, length: 24, lengthEnabled: true }),
-  makePreset('preset-noise-5', 'Hi-Hat', 'noise', '#1B8C7A', { dutyCycleValue: 12.5, initialVolume: 10, change: -3, length: 12, lengthEnabled: true }),
-  makePreset('preset-noise-6', 'Low Rumble', 'noise', '#6CC459', { dutyCycleValue: 75, initialVolume: 14, change: -2 }),
-  makePreset('preset-noise-7', 'Tiny Click', 'noise', '#A9E464', { dutyCycleValue: 12.5, initialVolume: 8, length: 4, lengthEnabled: true }),
-  makePreset('preset-noise-8', 'Noise Pop', 'noise', '#F5E873', { dutyCycleValue: 25, initialVolume: 12, change: -4, length: 16, lengthEnabled: true }),
-  makePreset('preset-noise-9', 'Gritty 7-bit', 'noise', '#F38D56', { dutyCycleValue: 62.5, initialVolume: 11, sweepShift: 1 }),
-  makePreset('preset-noise-10', 'Short Burst', 'noise', '#D65576', { dutyCycleValue: 37.5, initialVolume: 10, length: 8, lengthEnabled: true }),
-  makePreset('preset-noise-11', 'Deep Noise', 'noise', '#793D85', { dutyCycleValue: 87.5, initialVolume: 14, change: -1 }),
-  makePreset('preset-noise-12', 'Static', 'noise', '#D63475', { dutyCycleValue: 50, initialVolume: 9 }),
-  makePreset('preset-noise-13', 'Crisp Tap', 'noise', '#F3B0C3', { dutyCycleValue: 12.5, initialVolume: 11, length: 6, lengthEnabled: true }),
-  makePreset('preset-noise-14', 'Metal Hit', 'noise', '#F3BD9D', { dutyCycleValue: 37.5, initialVolume: 13, change: -3, sweepShift: 1, length: 20, lengthEnabled: true }),
-  makePreset('preset-noise-15', 'Rising Noise', 'noise', '#A9A57E', { dutyCycleValue: 25, initialVolume: 4, change: 5 }),
-];
-
-const SURDO_PRESETS: InstrumentPreset[] = [
-  makePreset('preset-surdo-1', 'Surdo grave', 'wave', '#8B4513', { initialVolume: 12 }),
-  makePreset('preset-surdo-2', 'Surdo medio', 'wave', '#A0522D', { initialVolume: 8, length: 48 }),
-  makePreset('preset-surdo-3', 'Surdo agudo', 'wave', '#CD853F', { initialVolume: 6, length: 24 }),
-  makePreset('preset-surdo-4', 'Surdo repique', 'wave', '#D2691E', { initialVolume: 10, length: 16 }),
-];
-
-const ALL_PRESETS = [...DUTY_PRESETS, ...WAVE_PRESETS, ...NOISE_PRESETS, ...SURDO_PRESETS];
 
 const CHANNELS = [
   { id: 'ch-pulse1', name: 'Pulse 1', type: 'duty', icon: <ActivityIcon /> },
   { id: 'ch-pulse2', name: 'Pulse 2', type: 'duty', icon: <ActivityIcon /> },
   { id: 'ch-wave', name: 'Wave', type: 'wave', icon: <WaveIcon /> },
   { id: 'ch-noise', name: 'Noise', type: 'noise', icon: <NoiseIcon /> },
+  // Canal extra: instrumento PCM (muestra) por DMA, como los juegos comerciales.
+  { id: 'ch-pcm', name: 'PCM', type: 'pcm', icon: <HeadphonesFilledIcon /> },
 ];
+
+// Alturas REALES de las filas del tracker (medidas en el DOM): la cabecera
+// mide 21px (lleva iconos) y cada fila de step 18px. Antes se asumía 21px por
+// fila, así que el playhead derivaba 3px por paso (al final, ~190px fuera) y
+// el clic para posicionarse apuntaba y sonaba la fila equivocada.
+const TRACKER_HEADER_H = 21;
+const TRACKER_ROW_H = 18;
 
 const CHANNEL_COLORS: Record<string, string> = {
   'ch-pulse1': '#57E4B3',
   'ch-pulse2': '#00A9CC',
   'ch-wave': '#A78BFA',
   'ch-noise': '#F97316',
+  'ch-pcm': '#38BDF8',
 };
 
 // ── Audio ──────────────────────────────────────────────────────────────────
@@ -131,6 +60,28 @@ function noteToFreq(note: string, octave: number): number {
 }
 
 function playNoteSound(preset: InstrumentPreset, freq: number, isPlayback = false) {
+  // Instrumento PCM: la muestra del sonido, reproducida a la altura de la nota
+  // (como el canal DMA de la ROM). El pitch es freq / frecuencia de la nota base.
+  if (preset.type === 'pcm') {
+    const sd = useAppStore.getState().sounds.find((s) => s.id === preset.sampleId);
+    if (!sd?.pcmBase64 || !sd.pcmRate) return;
+    try {
+      const ctx = getAudioContext();
+      const buf = pcmToAudioBuffer(sd.pcmBase64, sd.pcmRate);
+      const m = (preset.baseNote ?? 'C4').match(/^([A-G]#?)(\d)$/);
+      const baseFreq = m ? noteToFreq(m[1], parseInt(m[2])) : 440;
+      const ratio = Math.max(0.25, Math.min(4, freq / baseFreq));
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = ratio;
+      const g = ctx.createGain();
+      g.gain.value = Math.max(0, Math.min(1, (sd.masterVolume ?? 80) / 100));
+      src.connect(g); g.connect(ctx.destination);
+      src.start();
+      if (!sd.loop) src.stop(ctx.currentTime + buf.duration / ratio);
+    } catch { /* audio no disponible */ }
+    return;
+  }
   playGBASound({
     type: preset.type,
     freq,
@@ -141,12 +92,17 @@ function playNoteSound(preset: InstrumentPreset, freq: number, isPlayback = fals
     sweepTime: preset.sweepTime,
     lengthEnabled: preset.lengthEnabled,
     length: preset.length,
-    duration: isPlayback ? 0.08 : preset.type === 'noise' ? 0.12 : 0.2,
+    // La prueba (botones C3-C8 / teclado / clic en celda) dura más para que se
+    // aprecie la forma del instrumento (fade, sweep). El secuenciador usa el
+    // blip corto, igual que la nota que emite la ROM.
+    duration: isPlayback ? 0.08 : preset.type === 'noise' ? 0.3 : 0.5,
   });
 }
 
 export function MusicTab() {
   const songs = useAppStore((s) => s.songs);
+  const instrumentPresets = useAppStore((s) => s.instrumentPresets);
+  const updateInstrumentPresetStore = useAppStore((s) => s.updateInstrumentPreset);
   const selectedNodeId = useAppStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useAppStore((s) => s.setSelectedNodeId);
   const addSong = useAppStore((s) => s.addSong);
@@ -175,22 +131,30 @@ export function MusicTab() {
   const [hoverRowIdx, setHoverRowIdx] = useState<number | null>(null);
   const [hoverStepIdx, setHoverStepIdx] = useState<number | null>(null);
 
-  // ── Editable preset params (local state for the inspector) ──────────────
-  const [editablePreset, setEditablePreset] = useState<InstrumentPreset | null>(null);
-
-  // Sync editablePreset when selection changes
-  React.useEffect(() => {
-    const preset = ALL_PRESETS.find((p) => p.id === selectedNodeId);
-    if (preset) {
-      setEditablePreset({ ...preset });
-    } else {
-      setEditablePreset(null);
-    }
-  }, [selectedNodeId]);
-
+  // ── Ajustes del preset seleccionado ──────────────────────────────────────
+  // Se editan DIRECTO al store (updateInstrumentPreset): antes se guardaban en
+  // un estado local que se perdía al recargar y jamás llegaba a la ROM.
   const updateEditablePreset = (patch: Partial<InstrumentPreset>) => {
-    setEditablePreset((prev) => prev ? { ...prev, ...patch } : null);
+    if (selectedNodeId && instrumentPresets.some((p) => p.id === selectedNodeId)) {
+      updateInstrumentPresetStore(selectedNodeId, patch);
+    }
   };
+
+  const soundsWithPcm = useAppStore((s) => s.sounds).filter((sd) => !!sd.pcmBase64);
+
+  // Al seleccionar un canal (o un instrumento) se colapsan los grupos de
+  // instrumentos de los demás canales; el usuario puede reabrirlos a mano.
+  const expandHeaderIds = React.useMemo(() => {
+    const ch = CHANNELS.find((c) => c.id === selectedNodeId);
+    const preset = instrumentPresets.find((p) => p.id === selectedNodeId);
+    const groups: string[] = ch
+      ? (ch.type === 'duty' ? ['DUTY']
+        : ch.type === 'wave' ? ['WAVE']
+        : ch.type === 'noise' ? ['NOISE']
+        : ['PCM'])
+      : preset ? [preset.group] : [];
+    return groups.map((g) => `__header-${g.toLowerCase()}`);
+  }, [selectedNodeId, instrumentPresets]);
 
   const BASE = 12;
   const CELL_W = BASE * musicZoom;
@@ -254,6 +218,16 @@ export function MusicTab() {
     }));
   };
 
+  // Canales con el ojo activo: el tracker oculta su columna.
+  const visibleChannels = CHANNELS.filter((ch) => (channelStates[ch.id] ?? { visible: true }).visible);
+
+  // Espejo en refs para que playStepSounds (memoizado sin deps) lea el estado
+  // de canales actual sin recrearse en cada toggle.
+  const channelStatesRef = useRef(channelStates);
+  channelStatesRef.current = channelStates;
+  const anySoloRef = useRef(false);
+  anySoloRef.current = Object.values(channelStates).some((s) => s.solo);
+
   const selectedSong = songs.find((so) => so.id === selectedNodeId)
     ?? (selectedNodeId ? null : null);
   const selectedPattern = songs.flatMap((so) => so.patterns).find((p) => p.id === (activePattern ?? ''));
@@ -300,36 +274,18 @@ export function MusicTab() {
       id: 'instruments',
       title: 'INSTRUMENTS',
       collapsed: false,
-      items: [
-        {
-          id: '__header-duty', label: 'DUTY', isHeader: true,
-            children: DUTY_PRESETS.map((p) => ({
+      items: PRESET_GROUP_ORDER.map((group) => ({
+        id: `__header-${group.toLowerCase()}`, label: group, isHeader: true,
+        children: instrumentPresets
+          .filter((p) => p.group === group)
+          .map((p) => ({
             id: p.id, label: p.name, icon: '', subtitle: '', color: p.color, removable: false,
           })),
-        },
-        {
-          id: '__header-wave', label: 'WAVE', isHeader: true,
-          children: WAVE_PRESETS.map((p) => ({
-            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color, removable: false,
-          })),
-        },
-        {
-          id: '__header-noise', label: 'NOISE', isHeader: true,
-          children: NOISE_PRESETS.map((p) => ({
-            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color, removable: false,
-          })),
-        },
-        {
-          id: '__header-surdo', label: 'SURDO', isHeader: true,
-          children: SURDO_PRESETS.map((p) => ({
-            id: p.id, label: p.name, icon: '', subtitle: '', color: p.color, removable: false,
-          })),
-        },
-      ],
+      })),
     },
   ];
 
-  const selectedPreset = ALL_PRESETS.find((p) => p.id === selectedNodeId);
+  const selectedPreset = instrumentPresets.find((p) => p.id === selectedNodeId);
   const selectedChannel = CHANNELS.find((c) => c.id === selectedNodeId);
 
   const inspectorSections: InspectorSection[] = [];
@@ -375,8 +331,8 @@ export function MusicTab() {
         { label: 'Pan', type: 'number', value: 0, onChange: () => {} },
       ],
     });
-  } else if (selectedPreset && editablePreset) {
-    const ep = editablePreset;
+  } else if (selectedPreset) {
+    const ep = selectedPreset;
     inspectorSections.push({
       title: 'Frecuencia',
       content: (
@@ -397,7 +353,46 @@ export function MusicTab() {
             />
           </div>
 
-          {/* 3 Length toggles + checkbox */}
+          {/* Instrumento PCM: muestra (un sonido importado) + nota base */}
+          {ep.type === 'pcm' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, minWidth: 46 }}>Muestra</span>
+                <select
+                  value={ep.sampleId ?? ''}
+                  onChange={(e) => updateEditablePreset({ sampleId: e.target.value || undefined })}
+                  style={{ flex: 1, background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '3px 6px', outline: 'none' }}
+                >
+                  <option value="">— elige un sonido —</option>
+                  {soundsWithPcm.map((sd) => (
+                    <option key={sd.id} value={sd.id}>{sd.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, minWidth: 46 }}>Nota base</span>
+                <input
+                  type="text"
+                  value={ep.baseNote ?? 'C4'}
+                  onChange={(e) => {
+                    const v = e.target.value.toUpperCase();
+                    updateEditablePreset({ baseNote: v });
+                  }}
+                  placeholder="C4"
+                  style={{ width: 52, background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '3px 6px', outline: 'none', textAlign: 'center' }}
+                />
+                <span style={{ color: 'var(--text-dim)', fontSize: 10 }}>
+                  {ep.sampleId ? 'se toca a distintas alturas' : 'importa audio en Sound'}
+                </span>
+              </div>
+              <div style={{ color: 'var(--text-dim)', fontSize: 10, lineHeight: 1.4 }}>
+                Suena por el canal DMA (voz extra junto a los 4 canales PSG).
+              </div>
+            </>
+          )}
+
+          {/* 3 Length toggles + checkbox (solo PSG) */}
+          {ep.type !== 'pcm' && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Knob label="Length" value={ep.length} min={0} max={64}
               onChange={(v) => updateEditablePreset({ length: v })}
@@ -411,12 +406,13 @@ export function MusicTab() {
               onChange={(v) => updateEditablePreset({ change: v })}
             />
           </div>
+          )}
 
           {/* Probar nota */}
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
             {[3, 4, 5, 6, 7, 8].map((oct) => (
               <button key={oct} onClick={() => {
-                const p = ALL_PRESETS.find((pr) => pr.id === selectedNodeId);
+                const p = instrumentPresets.find((pr) => pr.id === selectedNodeId);
                 if (p) playNoteSound(p, noteToFreq('C', oct));
               }}
                 style={{
@@ -444,8 +440,8 @@ export function MusicTab() {
             {renderWaveGraph(ep)}
           </div>
 
-          {/* Duty cycle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Duty cycle (solo PSG) */}
+          {ep.type !== 'pcm' && <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ color: 'var(--text-muted)', fontSize: 10, minWidth: 60 }}>Duty cycle</span>
             <select
               value={String(ep.dutyCycleValue)}
@@ -457,10 +453,10 @@ export function MusicTab() {
               <option value="50">50%</option>
               <option value="75">75%</option>
             </select>
-          </div>
+          </div>}
 
-          {/* Sweep shift */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* Sweep shift (solo PSG) */}
+          {ep.type !== 'pcm' && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: 'var(--text-muted)', fontSize: 10, minWidth: 60 }}>Sweep shift</span>
               <input
@@ -481,7 +477,7 @@ export function MusicTab() {
                 <option key={i + 1} value={i + 1}>{i + 1}/128Hz</option>
               ))}
             </select>
-          </div>
+          </div>}
         </div>
       ),
     });
@@ -489,7 +485,7 @@ export function MusicTab() {
 
   const handleRemove = (id: string) => {
     if (songs.some((so) => so.id === id)) removeSong(id);
-    else if (CHANNELS.some((c) => c.id === id) || ALL_PRESETS.some((p) => p.id === id)) {
+    else if (CHANNELS.some((c) => c.id === id) || instrumentPresets.some((p) => p.id === id)) {
       // Cannot remove channels or presets
       return;
     }
@@ -507,12 +503,12 @@ export function MusicTab() {
 
   const [activeChannelId, setActiveChannelId] = useState('ch-pulse1');
   const [selectedInstId, setSelectedInstId] = useState<string>(
-    () => ALL_PRESETS[0]?.id ?? ''
+    () => useAppStore.getState().instrumentPresets[0]?.id ?? ''
   );
 
   const handleTreeSelect = useCallback((id: string) => {
     setSelectedNodeId(id);
-    const p = ALL_PRESETS.find((pr) => pr.id === id);
+    const p = useAppStore.getState().instrumentPresets.find((pr) => pr.id === id);
     if (p) {
       setSelectedInstId(p.id);
       const channel = CHANNELS.find((ch) => ch.type === p.type);
@@ -559,14 +555,19 @@ export function MusicTab() {
   const playbackPatternIdxRef = useRef(0);
   const [isPlaybackPaused, setIsPlaybackPaused] = useState(false);
 
-  // Reproduce sonidos en un step dado
+  // Reproduce sonidos en un step dado. Lee los presets y el estado de canales
+  // del store fresco (el callback va memoizado sin deps): respeta Mute/Solo
+  // igual que la jerarquía, así la previsualización suena como se ve.
   const playStepSounds = useCallback((step: number, rows: Record<string, NoteRow>[]) => {
     if (step < 0 || step >= rows.length) return;
     const stepNotes = rows[step] ?? {};
     for (const ch of CHANNELS) {
+      const cs = channelStatesRef.current[ch.id];
+      if (cs && cs.muted) continue;
+      if (anySoloRef.current && !cs?.solo) continue;
       const nr = stepNotes[ch.id];
       if (nr) {
-        const preset = ALL_PRESETS.find((p) => p.id === nr.instrumentId);
+        const preset = useAppStore.getState().instrumentPresets.find((p) => p.id === nr.instrumentId);
         if (preset) {
           playNoteSound(preset, noteToFreq(nr.note, nr.octave), true);
         }
@@ -684,7 +685,7 @@ export function MusicTab() {
     if (isTracker) {
       const rect = overlay?.getBoundingClientRect();
       if (!rect) return;
-      const step = Math.floor((e.clientY - rect.top) / 21);
+      const step = Math.floor((e.clientY - rect.top) / TRACKER_ROW_H);
       setPlayheadStep(Math.max(0, Math.min(step, patternStepCount - 1)));
       playStepSounds(step, patternRows);
     } else {
@@ -705,7 +706,7 @@ export function MusicTab() {
       const rect = grid.getBoundingClientRect();
       if (isDraggingTrackerRef.current) {
         const offsetY = e.clientY - rect.top;
-        const step = Math.floor(offsetY / 21);
+        const step = Math.floor(offsetY / TRACKER_ROW_H);
         setPlayheadStep(Math.max(0, Math.min(step, patternStepCount - 1)));
       } else {
         const offsetX = e.clientX - rect.left;
@@ -725,9 +726,8 @@ export function MusicTab() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.code === 'Space') { e.preventDefault(); isPlaying ? stopPlayback() : startPlayback(); }
       if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); resetPlayback(); }
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key === 'z') { e.preventDefault(); useAppStore.getState().undo(); }
-      if (ctrl && e.key === 'y') { e.preventDefault(); useAppStore.getState().redo(); }
+      // Ctrl+Z/Y NO se manejan aquí: EditorTopBar ya tiene el atajo global de
+      // undo/redo. Tenerlo también aquí hacía que un Ctrl+Z saltara 2 pasos.
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -775,6 +775,7 @@ export function MusicTab() {
           selectedId={selectedNodeId}
           onSelect={handleTreeSelect}
           onRemove={handleRemove}
+          expandHeaderIds={expandHeaderIds.length ? expandHeaderIds : undefined}
         />
       }
       center={
@@ -790,7 +791,7 @@ export function MusicTab() {
               background: 'var(--bg-canvas)', borderRadius: 20,
               padding: '3px 4px',
             }}>
-              <ToolBtn onClick={() => {}}><SaveIcon size={14} /></ToolBtn>
+              <ToolBtn onClick={() => useAppStore.getState().saveProject()}><SaveIcon size={14} /></ToolBtn>
               <div style={{ width: 1, height: 14, background: 'var(--bg-raised)', margin: '0 2px' }} />
 <ToolBtn onClick={isPlaying ? stopPlayback : startPlayback}><PlayIcon size={14} /></ToolBtn>
 <ToolBtn onClick={stopPlayback}><StopIcon size={14} /></ToolBtn>
@@ -826,10 +827,13 @@ export function MusicTab() {
                 >
                   {(() => {
                     const selChan = CHANNELS.find((c) => c.id === selectedNodeId);
-                    let list = selChan?.type === 'duty' ? DUTY_PRESETS
-                      : selChan?.type === 'wave' ? WAVE_PRESETS
-                      : selChan?.type === 'noise' ? NOISE_PRESETS
-                      : ALL_PRESETS;
+                    const grupo = selChan?.type === 'duty' ? 'DUTY'
+                      : selChan?.type === 'wave' ? 'WAVE'
+                      : selChan?.type === 'noise' ? 'NOISE'
+                      : selChan?.type === 'pcm' ? 'PCM' : null;
+                    const list = grupo
+                      ? instrumentPresets.filter((p) => p.group === grupo)
+                      : instrumentPresets;
                     return list.map((p) => (
                       <option key={p.id} value={p.id} style={{ color: p.color }}>{p.name}</option>
                     ));
@@ -888,7 +892,7 @@ export function MusicTab() {
                 {/* Column headers */}
                 <div style={{ display: 'flex', background: 'var(--bg-panel)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 10 }}>
                   <div style={{ width: 36, flexShrink: 0, padding: '2px 4px', color: 'var(--text-muted)', fontSize: 9, fontWeight: 700, borderRight: '1px solid var(--border-color)' }}>STEP</div>
-                  {CHANNELS.map((ch) => (
+                  {visibleChannels.map((ch) => (
                     <div key={ch.id} style={{ width: 120, flexShrink: 0, padding: '2px 4px', color: CHANNEL_COLORS[ch.id], fontSize: 9, fontWeight: 700, borderRight: '1px solid var(--border-color)' }}>
                       {ch.icon} {ch.name}
                     </div>
@@ -907,7 +911,7 @@ export function MusicTab() {
                       >
                         {String(step + 1).padStart(3, '0')}
                       </div>
-                      {CHANNELS.map((ch) => {
+                      {visibleChannels.map((ch) => {
                         const nr = stepNotes[ch.id];
                         const highlight = hoverStepIdx === step;
                         return (
@@ -915,6 +919,8 @@ export function MusicTab() {
                             key={ch.id}
                             onClick={() => {
                               if (!patternSong || !selectedPattern) return;
+                              if (toolMode === 'select') { seekPlayhead(step); return; }
+                              if (toolMode === 'eraser') { if (nr) removeNoteRow(patternSong.id, selectedPattern.id, step, ch.id); seekPlayhead(step); return; }
                               if (nr) removeNoteRow(patternSong.id, selectedPattern.id, step, ch.id);
                               else updateNoteRow(patternSong.id, selectedPattern.id, step, ch.id, { note: 'C', octave: 4, instrumentId: selectedInstId, effect: '' });
                               seekPlayhead(step);
@@ -928,7 +934,7 @@ export function MusicTab() {
                               cursor: 'pointer',
                               background: highlight ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'transparent',
                               color: nr
-                                ? (ALL_PRESETS.find((p) => p.id === nr.instrumentId)?.color ?? CHANNEL_COLORS[ch.id])
+                                ? (instrumentPresets.find((p) => p.id === nr.instrumentId)?.color ?? CHANNEL_COLORS[ch.id])
                                 : 'var(--text-muted)',
                               display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none',
                             }}
@@ -939,8 +945,8 @@ export function MusicTab() {
                                   {nr.note.includes('#') ? nr.note : nr.note + '-'}{nr.octave}
                                 </span>
                                 <span style={{ opacity: 0.5, fontSize: 9 }}>
-                                  {ALL_PRESETS.findIndex((p) => p.id === nr.instrumentId) >= 0
-                                    ? String(ALL_PRESETS.findIndex((p) => p.id === nr.instrumentId) + 1).padStart(2, '0')
+                                  {instrumentPresets.findIndex((p) => p.id === nr.instrumentId) >= 0
+                                    ? String(instrumentPresets.findIndex((p) => p.id === nr.instrumentId) + 1).padStart(2, '0')
                                     : '--'}
                                 </span>
                                 {nr.effect && <span style={{ opacity: 0.4, fontSize: 9 }}>{nr.effect}</span>}
@@ -963,14 +969,14 @@ export function MusicTab() {
                     dragGridRef.current = container as HTMLDivElement;
                     const rect = container.getBoundingClientRect();
                     const offsetY = e.clientY - rect.top;
-                    const step = Math.floor(offsetY / 21);
+                    const step = Math.floor(offsetY / TRACKER_ROW_H);
                     setPlayheadStep(Math.max(0, Math.min(step, patternStepCount - 1)));
                     playStepSounds(step, patternRows);
                     isDraggingTrackerRef.current = true;
                     setIsDraggingPlayhead(true);
                   }}
                   style={{
-                    position: 'absolute', top: playheadStep * 21 + 22, left: 0, right: 0,
+                    position: 'absolute', top: playheadStep * TRACKER_ROW_H + TRACKER_HEADER_H, left: 0, right: 0,
                     height: 19, zIndex: 10, cursor: 'ns-resize',
                     borderTop: `2px solid ${isPlaying || isDraggingPlayhead ? 'var(--accent)' : 'color-mix(in srgb, var(--accent) 50%, transparent)'}`,
                     boxShadow: isPlaying || isDraggingPlayhead ? '0 0 8px var(--accent), inset 0 0 12px color-mix(in srgb, var(--accent) 10%, transparent)' : 'none',
@@ -1025,7 +1031,7 @@ export function MusicTab() {
                       <div
                         key={label}
                         onClick={() => {
-                          const p = ALL_PRESETS.find((pr) => pr.id === selectedInstId);
+                          const p = instrumentPresets.find((pr) => pr.id === selectedInstId);
                           if (p) playNoteSound(p, noteToFreq(note, octave));
                         }}
                         style={{ height: CELL_H, position: 'relative', background: keyBg, borderBottom: isWhite ? '1px solid #bbb' : '1px solid #000' }}
@@ -1086,7 +1092,7 @@ export function MusicTab() {
               <div
                 onMouseMove={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left + (pianoRollRef.current?.scrollLeft ?? 0);
+                  const x = e.clientX - rect.left;
                   const y = e.clientY - rect.top;
                   const step = Math.floor(x / CELL_W);
                   const row = Math.floor(y / CELL_H);
@@ -1153,7 +1159,7 @@ export function MusicTab() {
                         const active = activeNote?.note === note && activeNote?.octave === octave;
 
                         const otherChId = CHANNELS
-                          .filter((ch) => ch.id !== activeChannelId)
+                          .filter((ch) => ch.id !== activeChannelId && (channelStates[ch.id] ?? { visible: true }).visible)
                           .find((ch) => {
                             const n = stepNotes[ch.id];
                             return n?.note === note && n?.octave === octave;
@@ -1163,11 +1169,11 @@ export function MusicTab() {
                         let bg = 'transparent';
                         let border = 'none';
                         if (active) {
-                          const instColor = ALL_PRESETS.find((p) => p.id === activeNote.instrumentId)?.color;
+                          const instColor = instrumentPresets.find((p) => p.id === activeNote.instrumentId)?.color;
                           bg = instColor ?? 'var(--accent)';
                           border = 'none';
                         } else if (otherNote) {
-                          const instColor = ALL_PRESETS.find((p) => p.id === otherNote.instrumentId)?.color;
+                          const instColor = instrumentPresets.find((p) => p.id === otherNote.instrumentId)?.color;
                           bg = (instColor ?? CHANNEL_COLORS[otherChId!]) + '30';
                           border = `1px solid ${(instColor ?? CHANNEL_COLORS[otherChId!])}60`;
                         }
@@ -1181,15 +1187,18 @@ export function MusicTab() {
                             }}
                             onMouseDown={(e) => {
                               if (!patternSong || !selectedPattern) return;
-                              if (e.button === 0) {
-                                updateNoteRow(patternSong.id, selectedPattern.id, step, activeChannelId, { note, octave, instrumentId: selectedInstId, effect: '' });
-                                const p = ALL_PRESETS.find((pr) => pr.id === selectedInstId);
-                                if (p) playNoteSound(p, noteToFreq(note, octave));
-                                seekPlayhead(step);
-                              } else if (e.button === 2) {
+                              if (e.button === 2) {
                                 e.preventDefault();
-                                removeNoteRow(patternSong.id, selectedPattern.id, step, activeChannelId);
+                                if (toolMode !== 'select') removeNoteRow(patternSong.id, selectedPattern.id, step, activeChannelId);
+                                return;
                               }
+                              if (e.button !== 0) return;
+                              if (toolMode === 'select') { seekPlayhead(step); return; }
+                              if (toolMode === 'eraser') { removeNoteRow(patternSong.id, selectedPattern.id, step, activeChannelId); seekPlayhead(step); return; }
+                              updateNoteRow(patternSong.id, selectedPattern.id, step, activeChannelId, { note, octave, instrumentId: selectedInstId, effect: '' });
+                              const p = instrumentPresets.find((pr) => pr.id === selectedInstId);
+                              if (p) playNoteSound(p, noteToFreq(note, octave));
+                              seekPlayhead(step);
                             }}
                             onContextMenu={(e) => e.preventDefault()}
                           />
@@ -1308,7 +1317,9 @@ export function MusicTab() {
               <span style={{ color: 'var(--accent)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', marginRight: 6 }}>
                 CH
               </span>
-              {CHANNELS.map((ch) => (
+              {CHANNELS.map((ch) => {
+                const cs = channelStates[ch.id] ?? { visible: true, solo: false, muted: false };
+                return (
                 <div
                   key={ch.id}
                   style={{
@@ -1318,13 +1329,16 @@ export function MusicTab() {
                     borderRadius: 3, fontSize: 10,
                     color: '#aaa',
                     flexShrink: 0,
+                    opacity: cs.visible ? 1 : 0.5,
                   }}
                 >
                   <span style={{ fontSize: 10, marginRight: 2 }}>{ch.icon}</span>
                   <span>{ch.name}</span>
                   <button
+                    onClick={() => toggleChannel(ch.id, 'muted')}
+                    title={cs.muted ? 'Quitar mute' : 'Silenciar canal'}
                     style={{
-                      background: 'var(--bg-raised)',
+                      background: cs.muted ? 'var(--red, #b02020)' : 'var(--bg-raised)',
                       border: 'none', borderRadius: 2,
                       color: '#fff', fontSize: 8,
                       padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
@@ -1333,8 +1347,10 @@ export function MusicTab() {
                     M
                   </button>
                   <button
+                    onClick={() => toggleChannel(ch.id, 'solo')}
+                    title={cs.solo ? 'Quitar solo' : 'Solo este canal'}
                     style={{
-                      background: 'var(--bg-raised)',
+                      background: cs.solo ? 'var(--accent)' : 'var(--bg-raised)',
                       border: 'none', borderRadius: 2,
                       color: '#fff', fontSize: 8,
                       padding: '1px 4px', cursor: 'pointer', fontWeight: 700,
@@ -1343,7 +1359,8 @@ export function MusicTab() {
                     S
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

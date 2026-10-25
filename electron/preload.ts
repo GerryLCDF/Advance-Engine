@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 export interface Project {
   id: string;
@@ -12,9 +12,11 @@ export interface Project {
 
 export interface AdvanceAPI {
   platform: string;
+  /** Ruta en disco de un File soltado (Electron 32+ quitó File.path). */
+  filePathFor: (file: File) => string;
   // Emulador GBA
   emu: {
-    play: (romPath: string) => Promise<{ success: boolean; reason?: string }>;
+    play: (romPath: string, keymap?: string) => Promise<{ success: boolean; reason?: string }>;
     stop: () => Promise<{ success: boolean }>;
     isRunning: () => Promise<boolean>;
     /** Estado real del emulador: loading | ready | started | error | closed */
@@ -95,8 +97,10 @@ export interface AdvanceAPI {
 
 contextBridge.exposeInMainWorld('advanceAPI', {
   platform: process.platform,
+  // Ruta en disco de un File soltado (Electron 32+ quitó File.path).
+  filePathFor: (file: File) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
   emu: {
-    play: (romPath: string) => ipcRenderer.invoke('emu:play', romPath),
+    play: (romPath: string, keymap?: string) => ipcRenderer.invoke('emu:play', romPath, keymap),
     stop: () => ipcRenderer.invoke('emu:stop'),
     isRunning: () => ipcRenderer.invoke('emu:isRunning'),
     onEmulatorStatus: (cb: (p: { level: 'info' | 'error'; msg: string }) => void) => {

@@ -9,6 +9,7 @@ import {
   IconClef as TablerIconClef,
   IconConeFilled as TablerIconConeFilled,
   IconDirectionArrows as TablerIconDirectionArrows,
+  IconDeviceGamepad2 as TablerIconDeviceGamepad2,
   IconEye as TablerIconEye,
   IconEyeClosed as TablerIconEyeClosed,
   IconFileCodeFilled as TablerIconFileCodeFilled,
@@ -262,3 +263,4 @@ export const PhotoPentagonIcon = tabler(TablerIconPhotoPentagon, 'IconPhotoPenta
 export const ClefIcon = tabler(TablerIconClef, 'IconClef');
 export const HeadphonesFilledIcon = tabler(TablerIconHeadphonesFilled, 'IconHeadphonesFilled');
 export const AugmentedRealityIcon = tabler(TablerIconAugmentedReality, 'IconAugmentedReality');
+export const GamepadIcon = tabler(TablerIconDeviceGamepad2, 'IconDeviceGamepad2');

@@ -233,7 +233,7 @@ export interface Background {
 }
 
 // ── Music/Sound ──────────────────────────────────────────────────────────
-export type InstrumentType = 'duty' | 'wave' | 'noise';
+export type InstrumentType = 'duty' | 'wave' | 'noise' | 'pcm';
 
 export interface SoundEffect {
   id: string;
@@ -251,6 +251,13 @@ export interface SoundEffect {
   waveData: number[];
   freq: number;
   filePath?: string;
+  /** PCM convertido para la GBA (8-bit signed mono, base64) y sus datos. */
+  pcmBase64?: string;
+  pcmRate?: number;
+  pcmBytes?: number;
+  pcmPeak?: number;
+  /** Repetir en bucle (música de fondo). */
+  loop?: boolean;
   // Playback controls
   masterVolume: number; // 0-100
   pitch: number; // semitones -12..+12
@@ -299,9 +306,40 @@ export interface Instrument {
   dutyCycle: number;
   waveData: number[];
   envelope: ADSREnvelope;
+  /** Hardware sweep del canal Pulse 1 (opcional; 0 = sin sweep). */
+  sweepShift?: number;
+  sweepTime?: number;
+  /** Longitud del preset (solo si lengthEnabled): la ROM corta la nota con ella. */
+  lengthEnabled?: boolean;
+  length?: number;
+  /** Instrumento PCM: id del sonido (Sound) que aporta la muestra y su nota base. */
+  sampleId?: string;
+  baseNote?: string;
   visible: boolean;
   muted: boolean;
   solo: boolean;
+}
+
+// Preset de instrumento del editor (biblioteca global; cada preset es de uno
+// de los 4 canales y pertenece a un grupo de la jerarquía de Music).
+export type PresetGroup = 'DUTY' | 'WAVE' | 'NOISE' | 'PCM';
+
+export interface InstrumentPreset {
+  id: string;
+  name: string;
+  type: InstrumentType;
+  group: PresetGroup;
+  color: string;
+  /** Solo para type 'pcm': sonido del proyecto que hace de muestra y nota base. */
+  sampleId?: string;
+  baseNote?: string;
+  lengthEnabled: boolean;
+  length: number;
+  initialVolume: number;
+  change: number;
+  dutyCycleValue: number;
+  sweepShift: number;
+  sweepTime: number;
 }
 
 export interface NoteRow {

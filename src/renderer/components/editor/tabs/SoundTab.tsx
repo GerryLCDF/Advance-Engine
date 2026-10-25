@@ -15,6 +15,7 @@ import {
   WaveIcon,
 } from './icons';
 import { playGBASound, getAudioContext, loadAudioFileBuffer } from '../../../utils/gba_audio';
+import { convertAudioToGbaPcm, pcmToAudioBuffer, formatBytes, GBA_SAMPLE_RATES } from '../../../utils/gba_pcm';
 import type { SoundEffect } from '../../../types/editor';
 
 // ── Waveform canvas component ────────────────────────────────────────────
@@ -34,10 +35,15 @@ const WaveformPlayer = forwardRef<WaveformPlayerHandle, { sound: SoundEffect }>(
   const rafRef = useRef<number>(0);
   const delayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load the audio buffer for waveform display
+  // Buffer a mostrar/reproducir: si ya hay PCM convertido se usa ese (suena
+  // igual que en la ROM); si no, el archivo decodificado; si no, es sintético.
   useEffect(() => {
     let cancelled = false;
-    if (sound.filePath) {
+    if (sound.pcmBase64 && sound.pcmRate) {
+      const buf = pcmToAudioBuffer(sound.pcmBase64, sound.pcmRate);
+      setAudioBuffer(buf);
+      setDuration(buf.duration);
+    } else if (sound.filePath) {
       loadAudioFileBuffer(sound.filePath).then((buf) => {
         if (cancelled || !buf) return;
         setAudioBuffer(buf);
@@ -48,7 +54,7 @@ const WaveformPlayer = forwardRef<WaveformPlayerHandle, { sound: SoundEffect }>(
       setDuration(sound.duration);
     }
     return () => { cancelled = true; };
-  }, [sound.filePath, sound.duration]);
+  }, [sound.pcmBase64, sound.pcmRate, sound.filePath, sound.duration]);
 
   // Draw waveform
   useEffect(() => {
@@ -158,12 +164,15 @@ const WaveformPlayer = forwardRef<WaveformPlayerHandle, { sound: SoundEffect }>(
     gainRef.current.gain.value = vol;
     gainRef.current.connect(ctx.destination);
 
-    if (sound.filePath) {
-      const buf = await loadAudioFileBuffer(sound.filePath);
-      if (!buf) return;
-      setAudioBuffer(buf);
-      setDuration(buf.duration);
+    // Fuente: PCM ya convertido (versión GBA) > archivo decodificado > sintético.
+    let buf: AudioBuffer | null = null;
+    if (sound.pcmBase64 && sound.pcmRate) {
+      buf = pcmToAudioBuffer(sound.pcmBase64, sound.pcmRate);
+    } else if (sound.filePath) {
+      buf = await loadAudioFileBuffer(sound.filePath);
+    }
 
+    if (buf) {
       const doPlay = () => {
         const src = ctx.createBufferSource();
         src.buffer = buf;
@@ -262,42 +271,31 @@ const WaveformPlayer = forwardRef<WaveformPlayerHandle, { sound: SoundEffect }>(
   }, []);
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-canvas)' }}>
-      {/* Waveform */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '12px 16px', minHeight: 0 }}>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', minHeight: 120, borderRadius: 6 }} />
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-canvas)', minHeight: 0 }}>
+      {/* Waveform: es lo primero que se encoge si falta altura (el aviso de
+          procesado no debe empujar los controles fuera de la ventana). */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '12px 16px', minHeight: 0, overflow: 'hidden' }}>
+        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', minHeight: 48, borderRadius: 6 }} />
       </div>
 
-      {/* Player controls */}
+      {/* Player: solo Play/Pausa (el waveform de arriba es la pista) */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-        borderTop: '1px solid var(--border-light)', background: 'var(--bg-panel)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '10px 16px',
+        borderTop: '1px solid var(--border-light)', background: 'var(--bg-panel)', flexShrink: 0,
       }}>
         <button onClick={isPlaying ? stopPlayback : startPlayback}
+          title={isPlaying ? 'Pausar' : 'Reproducir'}
           style={{
-            background: isPlaying ? '#f87171' : 'var(--accent)', border: 'none', borderRadius: 4,
-            color: '#fff', fontSize: 11, padding: '6px 14px', cursor: 'pointer',
-            fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+            background: isPlaying ? '#f87171' : 'var(--accent)', border: 'none', borderRadius: 6,
+            color: '#fff', fontSize: 12, padding: '8px 22px', cursor: 'pointer',
+            fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
           }}
         >
-          {isPlaying ? <StopIcon size={12} /> : <PlayIcon size={12} />}
-          {isPlaying ? 'Detener' : 'Reproducir'}
+          {isPlaying ? <StopIcon size={13} /> : <PlayIcon size={13} />}
+          {isPlaying ? 'Pausar' : 'Reproducir'}
         </button>
-
-        <span style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums', minWidth: 60 }}>
-          {formatTime(currentTime)} / {formatTime(duration)}
-        </span>
-
-        <div style={{ flex: 1, height: 4, background: '#2a2a3a', borderRadius: 2, position: 'relative' }}>
-          <div style={{
-            width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-            height: '100%', background: 'var(--accent-light)', borderRadius: 2,
-            transition: 'width 0.05s linear',
-          }} />
-        </div>
-
-        <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>
-          {sound.filePath ? 'Archivo' : 'Sintetizado'}
+        <span style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>
+          {formatTime(duration)}
         </span>
       </div>
     </div>
@@ -434,9 +432,19 @@ export function SoundTab() {
 
   const [isImporting, setIsImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; tone: 'info' | 'ok' | 'warn' } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerRef = useRef<WaveformPlayerHandle>(null);
 
   const selectedSound = sounds.find((sd) => sd.id === selectedNodeId);
+
+  const showNotice = useCallback((text: string, tone: 'info' | 'ok' | 'warn', autoHide = true) => {
+    setNotice({ text, tone });
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    if (autoHide) noticeTimer.current = setTimeout(() => setNotice(null), 7000);
+  }, []);
+
+  useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
 
   // Space to play/pause
   useEffect(() => {
@@ -453,14 +461,30 @@ export function SoundTab() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedSound]);
 
+  // Convierte el archivo al formato de la GBA (8-bit mono PCM) y lo guarda en el
+  // sonido. Se avisa mientras procesa: el usuario tiene que saber que el audio se
+  // transforma para que quepa y suene en la consola.
+  const convertSound = useCallback(async (id: string, filePath: string, rate: number) => {
+    showNotice(`Procesando audio para que se ajuste a la consola… (8-bit mono · ${rate} Hz)`, 'info', false);
+    try {
+      const pcm = await convertAudioToGbaPcm(filePath, rate);
+      if (!pcm) { showNotice('No se pudo leer o decodificar el audio (¿formato no soportado?).', 'warn'); return; }
+      updateSound(id, {
+        pcmBase64: pcm.base64, pcmRate: pcm.rate, pcmBytes: pcm.bytes, pcmPeak: pcm.peak, duration: pcm.duration,
+      });
+      showNotice(`Audio ajustado a la GBA: 8-bit mono · ${pcm.rate} Hz · ${formatBytes(pcm.bytes)} · ${pcm.duration.toFixed(2)}s`, 'ok');
+    } catch (e) {
+      showNotice(`Error al procesar el audio: ${String(e)}`, 'warn');
+    }
+  }, [showNotice, updateSound]);
+
   const importAudioPath = useCallback(async (filePath: string) => {
-    addSound({
-      filePath,
-      name: filePath.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Imported',
-    });
-    const all = useAppStore.getState().sounds;
-    setSelectedNodeId(all[all.length - 1]?.id || '');
-  }, [addSound, setSelectedNodeId]);
+    const name = filePath.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Imported';
+    const rate = GBA_SAMPLE_RATES[1]; // 11025 Hz por defecto
+    const id = addSound({ filePath, name, pcmRate: rate });
+    setSelectedNodeId(id);
+    await convertSound(id, filePath, rate);
+  }, [addSound, setSelectedNodeId, convertSound]);
 
   const handleImport = async () => {
     try {
@@ -478,15 +502,27 @@ export function SoundTab() {
     setDragOver(false);
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
+    let importados = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const filePath = (file as any).path;
-      if (!filePath) continue;
+      // Electron 31 expone File.path; 32+ exige webUtils (vía preload).
+      const filePath = ((file as any).path as string | undefined) || window.advanceAPI?.filePathFor?.(file) || '';
+      if (!filePath) {
+        showNotice(`No se pudo leer la ruta de "${file.name}". Usa el botón "+ Cargar WAV/MP3".`, 'warn');
+        continue;
+      }
       const ext = filePath.split('.').pop()?.toLowerCase();
-      if (!ext || !['wav', 'mp3', 'ogg', 'flac'].includes(ext)) continue;
+      if (!ext || !['wav', 'mp3', 'ogg', 'flac'].includes(ext)) {
+        showNotice(`Formato no soportado: "${file.name}". Usa WAV, MP3, OGG o FLAC.`, 'warn');
+        continue;
+      }
+      importados++;
       await importAudioPath(filePath);
     }
-  }, [importAudioPath]);
+    if (importados === 0 && files.length > 0) {
+      showNotice('No se importó ningún archivo (formato no soportado o sin ruta).', 'warn');
+    }
+  }, [importAudioPath, showNotice]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -575,19 +611,25 @@ export function SoundTab() {
               onChange={(v) => updateSound(sd.id, { masterVolume: v })} unit="%" />
             <Knob label="Pitch" value={sd.pitch} min={-12} max={12} step={1}
               onChange={(v) => updateSound(sd.id, { pitch: v })} />
-            <Knob label="Speed" value={sd.speed} min={0.25} max={4} step={0.05}
-              onChange={(v) => updateSound(sd.id, { speed: v })} unit="x" />
-            <Knob label="Delay" value={sd.delay} min={0} max={2} step={0.01}
-              onChange={(v) => updateSound(sd.id, { delay: v })} unit="s" />
+            {!sd.pcmBase64 && (
+              <Knob label="Speed" value={sd.speed} min={0.25} max={4} step={0.05}
+                onChange={(v) => updateSound(sd.id, { speed: v })} unit="x" />
+            )}
+            {!sd.pcmBase64 && (
+              <Knob label="Delay" value={sd.delay} min={0} max={2} step={0.01}
+                onChange={(v) => updateSound(sd.id, { delay: v })} unit="s" />
+            )}
           </div>
 
-          <div style={{ borderTop: '1px solid var(--border-light)', margin: '2px 0' }} />
-
-          {/* Attack / Release */}
-          <SliderRow label="Ataque" value={sd.attack} min={0} max={1} step={0.01}
-            onChange={(v) => updateSound(sd.id, { attack: v })} unit="s" defaultVal={0} />
-          <SliderRow label="Release" value={sd.release} min={0} max={2} step={0.01}
-            onChange={(v) => updateSound(sd.id, { release: v })} unit="s" defaultVal={0.05} />
+          {!sd.pcmBase64 && (
+            <>
+              <div style={{ borderTop: '1px solid var(--border-light)', margin: '2px 0' }} />
+              <SliderRow label="Ataque" value={sd.attack} min={0} max={1} step={0.01}
+                onChange={(v) => updateSound(sd.id, { attack: v })} unit="s" defaultVal={0} />
+              <SliderRow label="Release" value={sd.release} min={0} max={2} step={0.01}
+                onChange={(v) => updateSound(sd.id, { release: v })} unit="s" defaultVal={0.05} />
+            </>
+          )}
 
           <div style={{ borderTop: '1px solid var(--border-light)', margin: '2px 0' }} />
 
@@ -607,8 +649,70 @@ export function SoundTab() {
       ),
     });
 
-    // GBA export section (collapsible)
-    inspectorSections.push({
+    // Sección PCM: solo para audios importados (ya convertidos a formato GBA)
+    if (sd.pcmBase64) {
+      const rate = sd.pcmRate ?? 11025;
+      const bytes = sd.pcmBytes ?? 0;
+      inspectorSections.push({
+        title: 'Audio GBA (PCM)',
+        content: (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 56 }}>Calidad</span>
+              <select value={rate}
+                onChange={(e) => {
+                  const r = parseInt(e.target.value);
+                  updateSound(sd.id, { pcmRate: r });
+                  if (sd.filePath) convertSound(sd.id, sd.filePath, r);
+                }}
+                style={{ flex: 1, background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '3px 6px', outline: 'none' }}
+              >
+                {GBA_SAMPLE_RATES.map((r) => (
+                  <option key={r} value={r}>{r} Hz{r === 11025 ? ' (recomendado)' : ''}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 56 }}>Bucle</span>
+              <button onClick={() => updateSound(sd.id, { loop: !sd.loop })}
+                style={{
+                  width: 44, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
+                  background: sd.loop ? 'var(--accent)' : 'var(--bg-raised)', transition: 'background 0.15s',
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.15s', left: sd.loop ? 24 : 2,
+                }} />
+              </button>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{sd.loop ? 'Se repite' : 'Una vez'}</span>
+            </div>
+
+            <div style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}>
+              8-bit mono · {rate} Hz · {formatBytes(bytes)} · {(sd.duration || 0).toFixed(2)}s
+            </div>
+            <div style={{ color: 'var(--text-dim)', fontSize: 10, lineHeight: 1.4 }}>
+              Se exporta como PCM y suena por DMA en la ROM (música de fondo o efecto desde un script).
+            </div>
+
+            {sd.filePath && (
+              <button onClick={() => convertSound(sd.id, sd.filePath!, rate)}
+                style={{
+                  background: 'transparent', border: '1px dashed var(--border-light)', borderRadius: 4,
+                  color: 'var(--text-muted)', fontSize: 10, padding: '6px', cursor: 'pointer', width: '100%',
+                }}
+              >
+                Reprocesar audio
+              </button>
+            )}
+          </div>
+        ),
+      });
+    }
+
+    // GBA export section (collapsible) — solo para sonidos sintetizados
+    if (!sd.pcmBase64) inspectorSections.push({
       title: 'Exportacion GBA',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -725,42 +829,53 @@ export function SoundTab() {
         />
       }
       center={
-        selectedSound ? (
-          <WaveformPlayer ref={playerRef} sound={selectedSound} />
-        ) : (
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            style={{
-              flex: 1, display: 'flex', background: 'var(--bg-canvas)', minHeight: 0,
-              outline: dragOver ? '2px dashed var(--accent-light)' : 'none',
-              outlineOffset: -2,
-            }}
-          >
-            <EmptyState
-              background="transparent"
-              icon={<HeadphonesFilledIcon size={40} />}
-              title={sounds.length === 0 ? 'Sin efectos de sonido' : 'Sin sonido seleccionado'}
-              hint="Arrastra archivos de audio aquí o impórtalos manualmente."
-              action={
-                <button onClick={handleImport} disabled={isImporting}
-                  style={{
-                    marginTop: 2,
-                    background: dragOver ? 'var(--accent)' : 'transparent',
-                    border: dragOver ? 'none' : '1px dashed var(--border-light)',
-                    borderRadius: 4,
-                    color: dragOver ? '#fff' : 'var(--text-muted)',
-                    fontSize: 11, padding: '8px 16px', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  {isImporting ? 'Importando...' : '+ Cargar WAV/MP3'}
-                </button>
-              }
-            />
-          </div>
-        )
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{
+            flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg-canvas)',
+            outline: dragOver ? '2px dashed var(--accent-light)' : 'none', outlineOffset: -2,
+          }}
+        >
+          {notice && (
+            <div style={{
+              padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+              background: notice.tone === 'warn' ? 'rgba(248,113,113,0.12)' : notice.tone === 'ok' ? 'rgba(74,222,128,0.12)' : 'rgba(124,92,240,0.12)',
+              color: notice.tone === 'warn' ? '#f87171' : notice.tone === 'ok' ? '#4ade80' : 'var(--accent-lighter)',
+              borderBottom: '1px solid var(--border-light)',
+            }}>
+              {notice.text}
+            </div>
+          )}
+          {selectedSound ? (
+            <WaveformPlayer ref={playerRef} sound={selectedSound} />
+          ) : (
+            <div style={{ flex: 1, display: 'flex', background: 'var(--bg-canvas)', minHeight: 0 }}>
+              <EmptyState
+                background="transparent"
+                icon={<HeadphonesFilledIcon size={40} />}
+                title={sounds.length === 0 ? 'Sin efectos de sonido' : 'Sin sonido seleccionado'}
+                hint="Arrastra archivos de audio aquí o impórtalos manualmente. Se convertirán a 8-bit mono para la consola."
+                action={
+                  <button onClick={handleImport} disabled={isImporting}
+                    style={{
+                      marginTop: 2,
+                      background: dragOver ? 'var(--accent)' : 'transparent',
+                      border: dragOver ? 'none' : '1px dashed var(--border-light)',
+                      borderRadius: 4,
+                      color: dragOver ? '#fff' : 'var(--text-muted)',
+                      fontSize: 11, padding: '8px 16px', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    {isImporting ? 'Importando...' : '+ Cargar WAV/MP3'}
+                  </button>
+                }
+              />
+            </div>
+          )}
+        </div>
       }
       right={
         <InspectorPanel
