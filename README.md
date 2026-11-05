@@ -189,7 +189,18 @@ Advance Engine puede generar una ROM `.gba` directamente desde el editor:
 
 ## Versión
 
-Definida en `src/version.ts` — semver. Actual: **0.51.0**
+Definida en `src/version.ts` — semver. Actual: **0.70.0**
+
+### v0.70.0 — Diálogos con fuentes, multi-escena y emulador GBA
+- **Diálogos por filas e idiomas**: el editor de Diálogo pasa de páginas a una tabla de filas (ID, código, hablante, texto por idioma, sonido y fuente), con importación CSV y hasta 6 idiomas.
+- **Fuentes de texto (tilesets)**: nuevo modal de fuentes con mapeo carácter→tile, órdenes de caracteres (símbolos/letras/personalizado), espaciado X/Y y vista previa. Se exportan a la ROM con transparencia real (`ExactAlpha`) y `drawText` generalizado a N fuentes.
+- **Dialog Box 9-slice**: los actores de tipo Texto pueden asignar un sprite 3×3 (esquinas, bordes y centro) y el motor lo dibuja con `drawDialogBox`.
+- **Motor de diálogos en ROM**: `showDialogue(id)`, `nextDialogueRow()` y `hideDialogue()`, con soporte para scripts C y AdvanceCode.
+- **Multi-escena embebida**: todas las escenas del proyecto en la ROM, `switchScene(n[, "nombre"])`, transiciones por conexión (fade/instant/custom) y actores/scripts por escena.
+- **AdvanceCode (ACod)**: transpilador a C dentro del editor, áreas por-actor (`actor_in_area`, `actor_entered`, `gJp`) y primitivas de movimiento (`moveTopDown`, `movePlatformer`, `onFloor`).
+- **Emulador GBA integrado**: EmulatorJS + core mGBA auto-hospedado, remapeo de botones en Ajustes, pestaña Registro y tema del editor aplicado a la ventana.
+- **Música y sonido en ROM**: instrumentos derivados de presets, PCM por DMA, canción por escena y `sound_play`/`sound_stop` para scripts.
+- **Fix**: el texto de los diálogos ya es visible en ROM (el rect sucio incluye la zona del diálogo) y las fuentes conservan la transparencia.
 
 ### v0.51.0 — Panel de jerarquía con look de component-list + iconos Tabler
 - **Nuevo `HierarchyPanel`**: mismo look que el componente `component-list` (filas tipo tarjeta con chip de icono, encabezado con contador y colapsar, framer-motion en el expand/collapse), pero conservando el árbol completo: secciones, hijos anidados, grupos `isHeader`, renombrado en línea, menú contextual y eliminar al hover. Fila compacta de 34px y colores del tema (`--bg-raised`, `--accent`, `--text-secondary`), sin los colores hardcodeados del demo.

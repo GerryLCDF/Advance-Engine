@@ -2,10 +2,10 @@ import { create } from 'zustand';
 import type { Project, ActiveScreen, LauncherTab, CreditEntry, TemplateId } from '../types';
 import type {
   EditorTab, Scene, SceneConnection, SpriteSheet, Background,
-  Song, DialogueEntry, Actor, Animation, AnimationFrame,
+  Song, DialogueEntry, DialogueRow, FontTileset, Actor, Animation, AnimationFrame,
   BackgroundLayer, Instrument, Pattern, NoteRow, ADSREnvelope, SplashScreen, FxAsset, SoundEffect, ScriptMode, ScriptData, TransitionConfig,
 } from '../types/editor';
-import { createCollisionMap, makeDefaultConnection, defaultSoundEffect } from '../types/editor';
+import { createCollisionMap, makeDefaultConnection, defaultSoundEffect, defaultFontTileset } from '../types/editor';
 import type { GBAExportedActor, GBAExportedActorFrame, GBAExportedSceneBundle, GBASceneTransition } from '../utils/gba_export';
 import { scriptEffectiveCCode, acodSkeleton } from '../utils/advanceCode';
 import {
@@ -32,6 +32,7 @@ const uid = () => `e${_nextId++}_${Date.now()}`;
 let _copiedScene: Scene | null = null;
 let _copiedAnimation: Animation | null = null;
 let _copiedAnimationFrame: { frame: AnimationFrame; animId: string } | null = null;
+let _toastSeq = 1;
 
 const defaultScene = (): Scene => ({
   id: uid(), name: 'Nueva escena', width: 240, height: 160,
@@ -263,8 +264,13 @@ const marioSong = (): Song => ({
   ],
 });
 
+const defaultDialogueRow = (dialogueName: string, index: number): DialogueRow => ({
+  id: `${dialogueName || 'dialogo'}-${String(index + 1).padStart(3, '0')}-`,
+  code: '', speaker: '', text: { ES: '' }, choices: [],
+});
 const defaultDialogueEntry = (): DialogueEntry => ({
-  id: uid(), name: 'Nuevo diálogo', sceneId: '', pages: [{ id: uid(), text: '', choices: [] }],
+  id: uid(), name: 'Nuevo', sceneId: '', languages: ['ES'],
+  rows: [defaultDialogueRow('Nuevo', 0)],
 });
 
 interface AppState {
@@ -343,6 +349,14 @@ interface AppState {
   gridLineOpacity: number;
   imageSmoothing: boolean;
   setImageSmoothing: (val: boolean) => void;
+  fontLabelBgColor: string;
+  setFontLabelBgColor: (val: string) => void;
+  fontCanvasBgColor: string;
+  setFontCanvasBgColor: (val: string) => void;
+  fontCharOrderMode: 'symbols-first' | 'letters-first' | 'custom';
+  setFontCharOrderMode: (val: 'symbols-first' | 'letters-first' | 'custom') => void;
+  fontCharOrderCustom: string;
+  setFontCharOrderCustom: (val: string) => void;
   flatColors: boolean;
   setFlatColors: (val: boolean) => void;
   codeFontSize: number;
@@ -375,6 +389,10 @@ interface AppState {
   setProjectDir: (dir: string | null) => void;
   resetEditorState: () => void;
   exportLog: string[];
+  /** Avisos cortos (toasts) para validaciones de UI. */
+  toasts: { id: number; msg: string }[];
+  pushToast: (msg: string) => void;
+  dismissToast: (id: number) => void;
   /**
    * Hay una carga de proyecto en curso.
    *
@@ -410,7 +428,7 @@ interface AppState {
 
   // ── Mundo ──────────────────────────────────────────────────────────────
   scenes: Scene[];
-  addScene: (x?: number, y?: number) => void;
+  addScene: (x?: number, y?: number) => string;
   updateScene: (id: string, patch: Partial<Scene>) => void;
   removeScene: (id: string) => void;
   setCollisionTile: (sceneId: string, col: number, row: number, value: number) => void;
@@ -482,7 +500,7 @@ interface AppState {
   /** Biblioteca de presets de instrumento (la edita el inspector de Music). */
   instrumentPresets: InstrumentPreset[];
   updateInstrumentPreset: (id: string, patch: Partial<InstrumentPreset>) => void;
-  addSong: () => void;
+  addSong: () => string;
   updateSong: (id: string, patch: Partial<Song>) => void;
   removeSong: (id: string) => void;
   addInstrument: (songId: string) => void;
@@ -512,12 +530,19 @@ interface AppState {
 
   // ── Dialogo ────────────────────────────────────────────────────────────
   dialogues: DialogueEntry[];
-  addDialogue: () => void;
+  addDialogue: () => string;
   updateDialogue: (id: string, patch: Partial<DialogueEntry>) => void;
   removeDialogue: (id: string) => void;
-  addPage: (dialogueId: string) => void;
-  updatePage: (dialogueId: string, pageId: string, patch: Partial<DialogueEntry['pages'][0]>) => void;
-  removePage: (dialogueId: string, pageId: string) => void;
+  // ── Fuentes de texto (tilesets de caracteres) ──
+  fonts: FontTileset[];
+  addFont: () => string;
+  updateFont: (id: string, patch: Partial<FontTileset>) => void;
+  removeFont: (id: string) => void;
+  addRow: (dialogueId: string) => void;
+  updateRow: (dialogueId: string, rowId: string, patch: Partial<DialogueRow>) => void;
+  removeRow: (dialogueId: string, rowId: string) => void;
+  addLanguage: (dialogueId: string, lang: string) => void;
+  removeLanguage: (dialogueId: string, lang: string) => void;
 
   // ── Sound / Script / FX ─────────────────────────────────────────────────
   sounds: SoundEffect[];
@@ -578,6 +603,7 @@ interface GlobalSettings {
   mundoGridStrokeWidth: number; mundoGridColor: string;
   connColorOut: string; connColorIn: string; connStrokeWidth: number;
   clickAnimation: boolean; showGrid: boolean; gridLineOpacity: number; imageSmoothing: boolean;
+  fontLabelBgColor: string; fontCanvasBgColor: string; fontCharOrderMode: string; fontCharOrderCustom: string;
   flatColors: boolean; codeFontSize: number;
   emulatorKeyMap: EmuButtonMap;
 }
@@ -924,6 +950,404 @@ async function buildConnectionTransitions(
   return out;
 }
 
+// ── Extrae datos de fuentes (tilesets de caracteres) para el export GBA ──
+async function extractFontsData(fonts: any[], log: { add: (m: string) => void }): Promise<string> {
+  if (!fonts || fonts.length === 0) return '';
+  const api = window.advanceAPI;
+  const blocks: string[] = [];
+  const charMaps: string[] = [];
+  const spacingX: number[] = [];
+  const spacingY: number[] = [];
+  let idx = 0;
+  for (const f of fonts) {
+    if (!f.imagePath) { log.add(`[WARN] Fuente "${f.name}": sin imagen, omitida`); continue; }
+    const cols = f.cols || 16;
+    const rows = f.rows || 6;
+    const totalTiles = cols * rows;
+    try {
+      const gbaResult = await api.file.convertImageToGbaBase64ExactAlpha(f.imagePath);
+      if (!gbaResult.success || !gbaResult.base64 || !gbaResult.width || !gbaResult.height) {
+        log.add(`[WARN] Fuente "${f.name}": no se pudo convertir imagen`);
+        continue;
+      }
+      const sw = gbaResult.width;
+      const sh = gbaResult.height;
+      const tileW = Math.floor(sw / cols);
+      const tileH = Math.floor(sh / rows);
+      const binaryStr = atob(gbaResult.base64);
+      // charMap -> tile index; build reverse map tile->char
+      const charMap: Record<string, number> = (f.charMap && typeof f.charMap === 'object') ? f.charMap : {};
+      const tileToChar: string[] = new Array(totalTiles).fill('');
+      for (const [ch, ti] of Object.entries(charMap)) {
+        if (typeof ti === 'number' && ti >= 0 && ti < totalTiles) tileToChar[ti] = ch;
+      }
+      // unassigned
+      const unassigned: number[] = Array.isArray(f.unassigned) ? f.unassigned : [];
+      // Build gFontCharMap[256]: char code -> tile index (-1 if none)
+      const charToTile: number[] = new Array(256).fill(-1);
+      for (let t = 0; t < totalTiles; t++) {
+        if (unassigned.includes(t)) continue;
+        const ch = tileToChar[t];
+        if (ch) {
+          const code = ch.charCodeAt(0);
+          if (code >= 0 && code < 256) charToTile[code] = t;
+        } else {
+          const code = (f.firstChar ?? 32) + t;
+          if (code >= 0 && code < 256 && !unassigned.includes(t)) charToTile[code] = t;
+        }
+      }
+      charMaps.push('  { ' + charToTile.join(', ') + ' }');
+      // Build pixel array per tile
+      const tilePixels: string[] = [];
+      for (let t = 0; t < totalTiles; t++) {
+        const tc = t % cols;
+        const tr = Math.floor(t / cols);
+        const lines: string[] = [];
+        for (let py = 0; py < tileH; py++) {
+          const vals: string[] = [];
+          for (let px = 0; px < tileW; px++) {
+            const srcIdx = ((tr * tileH + py) * sw + (tc * tileW + px)) * 2;
+            if (srcIdx + 1 >= binaryStr.length) { vals.push('0x8000'); continue; }
+            const lo = binaryStr.charCodeAt(srcIdx);
+            const hi = binaryStr.charCodeAt(srcIdx + 1);
+            const val = (hi << 8) | lo;
+            // font: non-transparent pixels reveal; treat alpha via high bit
+            if (val & 0x8000) vals.push('0x8000');
+            else vals.push(`0x${(val & 0x7FFF).toString(16).padStart(4, '0')}`);
+          }
+          lines.push('    {' + vals.join(',') + '}');
+        }
+        tilePixels.push('  {\n' + lines.join(',\n') + '\n  }');
+      }
+      const block = `
+// ── Font ${idx}: ${f.name} (${cols}x${rows}, ${tileW}x${tileH}) ──
+#define FONT_${idx}_COLS ${cols}
+#define FONT_${idx}_ROWS ${rows}
+#define FONT_${idx}_TW ${tileW}
+#define FONT_${idx}_TH ${tileH}
+static const u16 gFont${idx}Pixels[${totalTiles}][${tileH}][${tileW}] = {
+${tilePixels.join(',\n')}
+};
+
+`;
+      blocks.push(block);
+      spacingX.push(f.letterSpacingX ?? 0);
+      spacingY.push(f.letterSpacingY ?? 0);
+      idx++;
+      log.add(`Fuente "${f.name}": ${cols}x${rows} tiles de ${tileW}x${tileH}`);
+    } catch (err: any) {
+      log.add(`[WARN] Fuente "${f.name}": error — ${String(err)}`);
+    }
+  }
+  // Sin fuentes válidas no se emite nada: el helper drawText referenciaría
+  // arrays que no existen y el main.c no compilaría.
+  if (idx === 0) return '';
+  // Registry
+  blocks.push(`
+#define FONT_COUNT ${idx}
+static const int gFontCols[FONT_COUNT] = { ${Array.from({length: idx}, (_, i) => `FONT_${i}_COLS`).join(', ')} };
+static const int gFontRows[FONT_COUNT] = { ${Array.from({length: idx}, (_, i) => `FONT_${i}_ROWS`).join(', ')} };
+static const int gFontTw[FONT_COUNT] = { ${Array.from({length: idx}, (_, i) => `FONT_${i}_TW`).join(', ')} };
+static const int gFontTh[FONT_COUNT] = { ${Array.from({length: idx}, (_, i) => `FONT_${i}_TH`).join(', ')} };
+static const int gFontSpacingX[FONT_COUNT] = { ${spacingX.join(', ')} };
+static const int gFontSpacingY[FONT_COUNT] = { ${spacingY.join(', ')} };
+static const u8 gFontCharMap[FONT_COUNT][256] = {
+${charMaps.join(',\n')}
+};
+static const u16* const gFontPixels[FONT_COUNT] = {
+${Array.from({length: idx}, (_, i) => `  &gFont${i}Pixels[0][0][0]`).join(',\n')}
+};
+`);
+  // drawText helper
+  blocks.push(`
+void drawText(int fontIdx, int x, int y, const char* text) {
+  const u16* pix;
+  int tw, th, cx, cy, py, px;
+  const char* p;
+  if (fontIdx < 0 || fontIdx >= FONT_COUNT || !text) return;
+  tw = gFontTw[fontIdx];
+  th = gFontTh[fontIdx];
+  pix = gFontPixels[fontIdx];
+  cx = x; cy = y;
+  p = text;
+  while (*p) {
+    if (*p == '\\n') { cx = x; cy += th + gFontSpacingY[fontIdx] + 2; p++; continue; }
+    {
+      int tile = gFontCharMap[fontIdx][(unsigned char)*p];
+      if (tile >= 0) {
+        for (py = 0; py < th; py++) {
+          for (px = 0; px < tw; px++) {
+            u16 v = pix[(tile * th + py) * tw + px];
+            if (!(v & 0x8000)) {
+              int sx = cx + px;
+              int sy = cy + py;
+              if (sx >= 0 && sx < SCREEN_W && sy >= 0 && sy < SCREEN_H)
+                gBackBuf[sy * SCREEN_W + sx] = v;
+            }
+          }
+        }
+      }
+    }
+    cx += tw + gFontSpacingX[fontIdx];
+    p++;
+  }
+}
+`);
+  return blocks.join('\n');
+}
+
+// ── Extrae datos de dialog boxes (sprites 3x3) para el export GBA ──
+async function extractDialogBoxesData(sheets: any[], log: { add: (m: string) => void }): Promise<string> {
+  if (!sheets || sheets.length === 0) return '';
+  const api = window.advanceAPI;
+  const blocks: string[] = [];
+  let idx = 0;
+  for (const sh of sheets) {
+    if (!sh.tilesetPath) { log.add(`[WARN] DialogBox "${sh.name}": sin imagen, omitido`); continue; }
+    try {
+      const gbaResult = await api.file.convertImageToGbaBase64ExactAlpha(sh.tilesetPath);
+      if (!gbaResult.success || !gbaResult.base64 || !gbaResult.width || !gbaResult.height) {
+        log.add(`[WARN] DialogBox "${sh.name}": no se pudo convertir imagen`);
+        continue;
+      }
+      const sw = gbaResult.width;
+      const shh = gbaResult.height;
+      const cols = sh.cols || 3;
+      const rows = sh.rows || 3;
+      const tw = Math.floor(sw / cols);
+      const th = Math.floor(shh / rows);
+      const binaryStr = atob(gbaResult.base64);
+      const tiles: string[] = [];
+      for (let t = 0; t < cols * rows; t++) {
+        const tc = t % cols;
+        const tr = Math.floor(t / cols);
+        const lines: string[] = [];
+        for (let py = 0; py < th; py++) {
+          const vals: string[] = [];
+          for (let px = 0; px < tw; px++) {
+            const srcIdx = ((tr * th + py) * sw + (tc * tw + px)) * 2;
+            if (srcIdx + 1 >= binaryStr.length) { vals.push('0x8000'); continue; }
+            const lo = binaryStr.charCodeAt(srcIdx);
+            const hi = binaryStr.charCodeAt(srcIdx + 1);
+            const val = (hi << 8) | lo;
+            if (val & 0x8000) vals.push('0x8000');
+            else vals.push(`0x${(val & 0x7FFF).toString(16).padStart(4, '0')}`);
+          }
+          lines.push('    {' + vals.join(',') + '}');
+        }
+        tiles.push('  {\n' + lines.join(',\n') + '\n  }');
+      }
+      blocks.push(`
+// ── DialogBox ${idx}: ${sh.name} (${cols}x${rows}, ${tw}x${th}) ──
+#define DB_${idx}_COLS ${cols}
+#define DB_${idx}_ROWS ${rows}
+#define DB_${idx}_TW ${tw}
+#define DB_${idx}_TH ${th}
+static const u16 gDialogBox${idx}Pixels[9][${th}][${tw}] = {
+${tiles.join(',\n')}
+};
+`);
+      idx++;
+      log.add(`DialogBox "${sh.name}": ${cols}x${rows} tiles de ${tw}x${th}`);
+    } catch (err: any) {
+      log.add(`[WARN] DialogBox "${sh.name}": error — ${String(err)}`);
+    }
+  }
+  if (idx === 0) return '';
+  let out = blocks.join('\n');
+  // registry
+  out += `
+#define DIALOGBOX_COUNT ${idx}
+`;
+  // drawDialogBox helper
+  out += `
+static const u16* const gDialogBoxPixels[DIALOGBOX_COUNT] = {
+${Array.from({ length: idx }, (_, i) => `  &gDialogBox${i}Pixels[0][0][0]`).join(',\n')}
+};
+static const int gDialogBoxTw[DIALOGBOX_COUNT] = { ${Array.from({ length: idx }, (_, i) => `DB_${i}_TW`).join(', ')} };
+static const int gDialogBoxTh[DIALOGBOX_COUNT] = { ${Array.from({ length: idx }, (_, i) => `DB_${i}_TH`).join(', ')} };
+
+void drawDialogBox(int dbIdx, int x, int y, int w, int h) {
+  const u16* pix;
+  int tw, th, py, px;
+  if (dbIdx < 0 || dbIdx >= DIALOGBOX_COUNT) return;
+  pix = gDialogBoxPixels[dbIdx];
+  tw = gDialogBoxTw[dbIdx];
+  th = gDialogBoxTh[dbIdx];
+  // tiles: 0=arriba-izq, 1=arriba, 2=arriba-der, 3=izq, 4=centro,
+  //        5=der, 6=abajo-izq, 7=abajo, 8=abajo-der
+  // esquina superior izquierda (tile 0)
+  for (py = 0; py < th && py < h; py++)
+    for (px = 0; px < tw && px < w; px++) {
+      u16 v = pix[(0 * th + py) * tw + px];
+      if (!(v & 0x8000)) { int sx=x+px, sy=y+py; if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // esquina superior derecha (tile 2)
+  for (py = 0; py < th && py < h; py++)
+    for (px = 0; px < tw && (w-tw+px) >= 0 && (w-tw+px) < w; px++) {
+      u16 v = pix[(2 * th + py) * tw + px];
+      if (!(v & 0x8000)) { int sx=x+(w-tw+px), sy=y+py; if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // esquina inferior izquierda (tile 6)
+  for (py = 0; py < th && (h-th+py) >= 0 && (h-th+py) < h; py++)
+    for (px = 0; px < tw && px < w; px++) {
+      u16 v = pix[(6 * th + py) * tw + px];
+      if (!(v & 0x8000)) { int sx=x+px, sy=y+(h-th+py); if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // esquina inferior derecha (tile 8)
+  for (py = 0; py < th && (h-th+py) >= 0 && (h-th+py) < h; py++)
+    for (px = 0; px < tw && (w-tw+px) >= 0 && (w-tw+px) < w; px++) {
+      u16 v = pix[(8 * th + py) * tw + px];
+      if (!(v & 0x8000)) { int sx=x+(w-tw+px), sy=y+(h-th+py); if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // borde superior (tile 1) estirado
+  for (py = 0; py < th && py < h; py++)
+    for (px = tw; px < w - tw; px++) {
+      u16 v = pix[(1 * th + py) * tw + (px % tw)];
+      if (!(v & 0x8000)) { int sx=x+px, sy=y+py; if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // borde inferior (tile 7) estirado
+  for (py = 0; py < th && (h-th+py) >= 0 && (h-th+py) < h; py++)
+    for (px = tw; px < w - tw; px++) {
+      u16 v = pix[(7 * th + py) * tw + (px % tw)];
+      if (!(v & 0x8000)) { int sx=x+px, sy=y+(h-th+py); if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // borde izquierdo (tile 3) estirado
+  for (py = th; py < h - th; py++)
+    for (px = 0; px < tw && px < w; px++) {
+      u16 v = pix[(3 * th + (py % th)) * tw + px];
+      if (!(v & 0x8000)) { int sx=x+px, sy=y+py; if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // borde derecho (tile 5) estirado
+  for (py = th; py < h - th; py++)
+    for (px = 0; px < tw && (w-tw+px) >= 0 && (w-tw+px) < w; px++) {
+      u16 v = pix[(5 * th + (py % th)) * tw + px];
+      if (!(v & 0x8000)) { int sx=x+(w-tw+px), sy=y+py; if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+  // centro (tile 4) relleno
+  for (py = th; py < h - th; py++)
+    for (px = tw; px < w - tw; px++) {
+      u16 v = pix[(4 * th + (py % th)) * tw + (px % tw)];
+      if (!(v & 0x8000)) { int sx=x+px, sy=y+py; if (sx>=0&&sx<SCREEN_W&&sy>=0&&sy<SCREEN_H) gBackBuf[sy*SCREEN_W+sx]=v; }
+    }
+}
+`;
+  return out;
+}
+
+// ── Extrae datos de diálogos para el export GBA ──
+async function extractDialoguesData(dialogues: any[], log: { add: (m: string) => void }): Promise<string> {
+  if (!dialogues || dialogues.length === 0) return '';
+  const MAX_ROWS = 64;
+  const MAX_LANGS = 6;
+  const blocks: string[] = [];
+  const rowCountArr: number[] = [];
+  const langCountArr: number[] = [];
+  const escC = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const textArr: string[] = []; // per dialogue: array of rows, each row array of langs
+  const codeArr: string[] = []; // per dialogue: código de cada fila
+  const idArr: string[] = [];   // per dialogue: ID completa de cada fila
+  const fontArr: string[] = [];
+  let idx = 0;
+  for (const d of dialogues) {
+    const rows = d.rows ?? [];
+    const langs = d.languages ?? ['ES'];
+    const rc = Math.min(rows.length, MAX_ROWS);
+    const lc = Math.min(langs.length, MAX_LANGS);
+    rowCountArr.push(rc);
+    langCountArr.push(lc);
+    const rowTexts: string[] = [];
+    const rowFonts: string[] = [];
+    const rowCodes: string[] = [];
+    const rowIds: string[] = [];
+    for (let r = 0; r < rc; r++) {
+      const row = rows[r];
+      const fontId = row.fontId;
+      // map fontId to index in state.fonts (will be resolved later; store -1 for now, resolve below)
+      rowFonts.push(String(-1));
+      rowCodes.push('"' + escC(String(row.code ?? '')) + '"');
+      rowIds.push('"' + escC(String(row.id ?? '')) + '"');
+      const langTexts: string[] = [];
+      for (let l = 0; l < lc; l++) {
+        const lang = langs[l];
+        const txt = (row.text && row.text[lang]) ? String(row.text[lang]) : '';
+        langTexts.push('"' + escC(txt) + '"');
+      }
+      // pad langs
+      while (langTexts.length < MAX_LANGS) langTexts.push('""');
+      rowTexts.push('    { ' + langTexts.join(', ') + ' }');
+    }
+    // pad rows
+    while (rowTexts.length < MAX_ROWS) {
+      rowTexts.push('    { ' + Array(MAX_LANGS).fill('""').join(', ') + ' }');
+    }
+    while (rowCodes.length < MAX_ROWS) rowCodes.push('""');
+    while (rowIds.length < MAX_ROWS) rowIds.push('""');
+    textArr.push('  {\n' + rowTexts.join(',\n') + '\n  }');
+    codeArr.push('  { ' + rowCodes.join(', ') + ' }');
+    idArr.push('  { ' + rowIds.join(', ') + ' }');
+    fontArr.push('  { ' + rowFonts.join(', ') + Array(MAX_ROWS - rc).fill('-1').join(', ') + (rc < MAX_ROWS ? (rc > 0 ? ', ' : '') + Array(MAX_ROWS - rc).fill('-1').join(', ') : '') + ' }');
+    idx++;
+    log.add(`Dialogo "${d.name}": ${rc} filas, ${lc} idiomas`);
+  }
+  if (idx === 0) return '';
+  let out = `
+#define DIALOGUE_COUNT ${idx}
+#define MAX_DIALOGUE_ROWS ${MAX_ROWS}
+#define MAX_DIALOGUE_LANGS ${MAX_LANGS}
+static const int gDialogueRowCount[DIALOGUE_COUNT] = { ${rowCountArr.join(', ')} };
+static const int gDialogueLangCount[DIALOGUE_COUNT] = { ${langCountArr.join(', ')} };
+static const char* gDialogueText[DIALOGUE_COUNT][MAX_DIALOGUE_ROWS][MAX_DIALOGUE_LANGS] = {
+${textArr.join(',\n')}
+};
+static const char* gRowCode[DIALOGUE_COUNT][MAX_DIALOGUE_ROWS] = {
+${codeArr.join(',\n')}
+};
+static const char* gRowId[DIALOGUE_COUNT][MAX_DIALOGUE_ROWS] = {
+${idArr.join(',\n')}
+};
+
+int gLang = 0;
+static int gActiveDialogue = -1;
+const char* gCurrentDialogueText = "";
+static int gActiveRow = 0;
+static int gDialogueVisible = 0;
+static int gActiveDialogFont = -1;
+
+void showDialogue(int id) {
+  if (id < 0 || id >= DIALOGUE_COUNT) return;
+  gActiveDialogue = id;
+  gActiveRow = 0;
+  gCurrentDialogueText = gDialogueText[id][0][gLang];
+  gDialogueVisible = 1;
+  gActiveDialogFont = -1;
+}
+void hideDialogue(void) { gDialogueVisible = 0; gActiveDialogue = -1; gActiveRow = 0; gCurrentDialogueText = ""; }
+void nextDialogueRow(void) {
+  if (!gDialogueVisible) return;
+  gActiveRow++;
+  if (gActiveRow >= gDialogueRowCount[gActiveDialogue]) hideDialogue();
+  else gCurrentDialogueText = gDialogueText[gActiveDialogue][gActiveRow][gLang];
+}
+void showDialogueRow(const char* key) {
+  int d, r;
+  if (!key) return;
+  for (d = 0; d < DIALOGUE_COUNT; d++) {
+    for (r = 0; r < gDialogueRowCount[d]; r++) {
+      if (strEq(gRowCode[d][r], key) || strEq(gRowId[d][r], key)) {
+        gActiveDialogue = d;
+        gActiveRow = r;
+        gCurrentDialogueText = gDialogueText[d][r][gLang];
+        gDialogueVisible = 1;
+        return;
+      }
+    }
+  }
+}
+`;
+  return out;
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   // ── Navegación ─────────────────────────────────────────────────────────
   activeScreen: { type: 'launcher' },
@@ -1007,6 +1431,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       songs: [],
       instrumentPresets: defaultInstrumentPresets(),
       dialogues: [],
+      fonts: [],
       sounds: [],
       scripts: [],
       fxAssets: [],
@@ -1103,6 +1528,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   gridLineOpacity: _saved.gridLineOpacity ?? 0.08,
   setGridLineOpacity: (val) => set({ gridLineOpacity: val }),
   imageSmoothing: _saved.imageSmoothing ?? false,
+      fontLabelBgColor: _saved.fontLabelBgColor ?? 'rgba(0,0,0,0.55)',
+      fontCanvasBgColor: _saved.fontCanvasBgColor ?? '#1a1a24',
+      fontCharOrderMode: (_saved.fontCharOrderMode as any) ?? 'symbols-first',
+      fontCharOrderCustom: _saved.fontCharOrderCustom ?? '',
       flatColors: _saved.flatColors ?? false,
       setFlatColors: (val) => set({ flatColors: val }),
       codeFontSize: clampFontSize(_saved.codeFontSize ?? 12),
@@ -1111,6 +1540,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       resetEmuKeyMap: () => set({ emulatorKeyMap: { ...EMU_KEY_MAP_DEFAULT } }),
   setCodeFontSize: (val) => set({ codeFontSize: clampFontSize(val) }),
   setImageSmoothing: (val) => set({ imageSmoothing: val }),
+  setFontLabelBgColor: (val) => set({ fontLabelBgColor: val }),
+  setFontCanvasBgColor: (val) => set({ fontCanvasBgColor: val }),
+  setFontCharOrderMode: (val) => set({ fontCharOrderMode: val }),
+  setFontCharOrderCustom: (val) => set({ fontCharOrderCustom: val }),
   mundoShowGrid: _saved.mundoShowGrid ?? true,
   setMundoShowGrid: (val) => set({ mundoShowGrid: val }),
   mundoGridSize: _saved.mundoGridSize ?? 16,
@@ -1142,6 +1575,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     songs: [],
     instrumentPresets: defaultInstrumentPresets(),
     dialogues: [],
+    fonts: [],
     sounds: [],
     scripts: [],
     fxAssets: [],
@@ -1158,6 +1592,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     imagenZoom: 1,
   }),
   exportLog: [],
+  toasts: [],
+  pushToast: (msg) => {
+    const id = _toastSeq++;
+    set((s) => ({ toasts: [...s.toasts, { id, msg }] }));
+    setTimeout(() => {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    }, 4000);
+  },
+  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   projectLoading: false,
   emulatorRunning: false,
   setEmulatorRunning: (v) => set({ emulatorRunning: v }),
@@ -1313,8 +1756,40 @@ export const useAppStore = create<AppState>((set, get) => ({
         // ── Actores de la escena (sprites software OVERLAY) ───────────────
         if (scene.actors?.length) {
           for (const actor of scene.actors) {
+            if (!actor.spriteId && actor.type !== 'texto') {
+              log.add(`[WARN] Actor "${actor.name}" sin spritesheet: omitido en export GBA (type=${actor.type})`);
+              continue;
+            }
+            // Actor 'texto' sin spritesheet: se exporta como actor invisible (solo para script/área)
             if (!actor.spriteId) {
-              log.add(`[WARN] Actor "${actor.name}" sin spritesheet: omitido en export GBA`);
+              actors.push({
+                name: actor.name,
+                x: Math.round(actor.x - camX),
+                y: Math.round(actor.y - camY),
+                z: actor.z || 0,
+                w: actor.width || 8,
+                h: actor.height || 8,
+                mode: 'loop',
+                frames: [],
+                delays: [],
+                collider: !!actor.collider,
+                colliderW: actor.colliderWidth,
+                colliderH: actor.colliderHeight,
+                colliderOffsetX: actor.colliderOffsetX ?? 0,
+                colliderOffsetY: actor.colliderOffsetY ?? 0,
+                hasArea: !!actor.hasArea,
+                areaW: actor.areaWidth,
+                areaH: actor.areaHeight,
+                areaOffsetX: actor.areaOffsetX ?? 0,
+                areaOffsetY: actor.areaOffsetY ?? 0,
+                dialogBoxSpriteId: actor.dialogBoxSpriteId || undefined,
+                dialogBoxW: actor.dialogBoxW,
+                dialogBoxH: actor.dialogBoxH,
+                dialogBoxOffsetX: actor.dialogBoxOffsetX ?? 0,
+                dialogBoxOffsetY: actor.dialogBoxOffsetY ?? 0,
+                scriptId: actor.scriptId || undefined,
+              });
+              log.add(`Actor "${actor.name}": texto (sin sprite), solo script/área`);
               continue;
             }
             const sheet = (state.spriteSheets ?? []).find((s) => s.id === actor.spriteId);
@@ -1393,6 +1868,11 @@ export const useAppStore = create<AppState>((set, get) => ({
               areaH: actor.areaHeight,
               areaOffsetX: actor.areaOffsetX ?? 0,
               areaOffsetY: actor.areaOffsetY ?? 0,
+              dialogBoxSpriteId: actor.dialogBoxSpriteId || undefined,
+              dialogBoxW: actor.dialogBoxW,
+              dialogBoxH: actor.dialogBoxH,
+              dialogBoxOffsetX: actor.dialogBoxOffsetX ?? 0,
+              dialogBoxOffsetY: actor.dialogBoxOffsetY ?? 0,
               scriptId: actor.scriptId || undefined,
             });
             log.add(`Actor "${actor.name}": ${tw}x${th}, ${frames.length} frames (${anim.name}), z=${actor.z || 0}`);
@@ -1916,6 +2396,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         log.add(`Transiciones de conexion: ${sceneTransitions.length} configurada(s) para switchScene`);
       }
 
+      const fontsCCode = await extractFontsData(state.fonts ?? [], log);
+      // collect unique dialog box sprite sheets
+      const dbSpriteIds = new Set<string>();
+      for (const sc of state.scenes) {
+        for (const a of (sc.actors ?? [])) {
+          if (a.dialogBoxSpriteId) dbSpriteIds.add(a.dialogBoxSpriteId);
+        }
+      }
+      const dbSprites = (state.spriteSheets ?? []).filter((sp: any) => dbSpriteIds.has(sp.id));
+      const dialogBoxesCCode = await extractDialogBoxesData(dbSprites, log);
+      const dialoguesCCode = await extractDialoguesData(state.dialogues ?? [], log);
+
       const cCode = generateGBAProject({
         scenes: state.scenes,
         sceneConnections: state.sceneConnections,
@@ -1924,6 +2416,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         songs: state.songs,
         sounds: state.sounds ?? [],
         dialogues: state.dialogues ?? [],
+        fonts: state.fonts ?? [],
         scripts: state.scripts ?? [],
         splashSoundId: state.splashScreen?.backgroundSoundId || undefined,
       }, project.name, project.author, log, splashCArray, splashDuration, splashSongExport, sceneSong, sceneCArray, sceneColor,
@@ -1933,6 +2426,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         entryGradientCArray, entryGradientW, entryGradientH,
         entryTransitionType, exitTransitionType,
         sceneCollisionMap, sceneCollisionTileSize, sceneCamX, sceneCamY, actorsExport,
+        fontsCCode,
+        dialogBoxesCCode,
+        dialoguesCCode,
         { scenes: allSceneBundles, startSceneId: state.splashScreen?.nextSceneId ?? '', transitions: sceneTransitions });
       const makefile = generateMakefile(project.name, log);
       const api = window.advanceAPI;
@@ -1984,6 +2480,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           sounds: state.sounds ?? [],
           fxAssets: state.fxAssets ?? [],
           dialogues: state.dialogues ?? [],
+        fonts: state.fonts ?? [],
           scripts: state.scripts ?? [],
           splashScreen: state.splashScreen,
         },
@@ -2047,7 +2544,42 @@ export const useAppStore = create<AppState>((set, get) => ({
         instrumentPresets: mergeInstrumentPresets(result.state.instrumentPresets),
         sounds: result.state.sounds ?? [],
         fxAssets: result.state.fxAssets ?? [],
-        dialogues: result.state.dialogues ?? [],
+        fonts: (result.state.fonts ?? []).map((f: any) => ({
+          id: f.id ?? '',
+          name: f.name ?? 'Fuente',
+          imagePath: f.imagePath ?? '',
+          cols: f.cols ?? 16,
+          rows: f.rows ?? 6,
+          firstChar: f.firstChar ?? 32,
+          charMap: (f.charMap && typeof f.charMap === 'object') ? f.charMap : {},
+          unassigned: Array.isArray(f.unassigned) ? f.unassigned : [],
+        })),
+        dialogues: (result.state.dialogues ?? []).map((d: any) => {
+          const langs = Array.isArray(d.languages) && d.languages.length ? d.languages : ['ES'];
+          const rows = Array.isArray(d.rows) && d.rows.length
+            ? d.rows.map((r: any) => ({
+                id: r.id ?? '',
+                code: r.code ?? '',
+                speaker: r.speaker ?? '',
+                text: (r.text && typeof r.text === 'object') ? r.text : { ES: r.text ?? '' },
+                choices: r.choices ?? [],
+                soundId: r.soundId,
+                fontId: r.fontId,
+              }))
+            : (d.pages ?? []).map((p: any, i: number) => ({
+                id: p.id ?? `${d.name || 'dialogo'}-${String(i + 1).padStart(3, '0')}-`,
+                code: '',
+                speaker: '',
+                text: { ES: p.text ?? '' },
+                choices: p.choices ?? [],
+              }));
+          const fixed = rows.map((r: any) => {
+            const t = { ...r.text };
+            langs.forEach((l: string) => { if (t[l] === undefined) t[l] = ''; });
+            return { ...r, text: t };
+          });
+          return { id: d.id ?? '', name: d.name ?? 'Nuevo diálogo', sceneId: d.sceneId ?? '', languages: langs, rows: fixed };
+        }),
         scripts: (result.state.scripts ?? []).map((sc: any) => ({
           id: sc.id ?? '',
           name: sc.name ?? 'Nuevo script',
@@ -2149,6 +2681,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // El remapeo de botones elegido en Ajustes → Play viaja en la URL.
       const keymapParam = encodeURIComponent(JSON.stringify(get().emulatorKeyMap));
+      const themeParam = encodeURIComponent(JSON.stringify({ bg: get().themeBgPanel, accent: get().themeAccent, flat: get().flatColors }));
 
       // Compile
       set((s) => ({ exportLog: [...s.exportLog, '[INFO] Generando build files…'] }));
@@ -2166,7 +2699,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ exportLog: [...s.exportLog, '[OK] ROM compilada, lanzando emulador…'] }));
 
       // Launch emulator
-      const emuResult = await api.emu.play(romPath, keymapParam);
+      const emuResult = await api.emu.play(romPath, keymapParam, themeParam);
       if (!emuResult.success) {
         set((s) => ({ exportLog: [...s.exportLog, `[ERROR] Emulador: ${emuResult.reason}`] }));
         return false;
@@ -2198,15 +2731,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   splashScreen: defaultSplashScreen(),
   addScene: (x?: number, y?: number) => {
     get()._snapshotMundo();
-    set((s) => {
-      const baseName = 'Escena';
-      const names = s.scenes.map((sc) => sc.name);
-      let num = 1;
-      while (names.includes(`${baseName} ${num}`)) num++;
-      const posX = x ?? (s.scenes.length * 30 + 60);
-      const posY = y ?? 20;
-      return { scenes: [...s.scenes, { ...defaultScene(), name: `${baseName} ${num}`, x: posX, y: posY }] };
-    });
+    const baseName = 'Escena';
+    const names = get().scenes.map((sc) => sc.name);
+    let num = 1;
+    while (names.includes(`${baseName} ${num}`)) num++;
+    const posX = x ?? (get().scenes.length * 30 + 60);
+    const posY = y ?? 20;
+    const scene = { ...defaultScene(), name: `${baseName} ${num}`, x: posX, y: posY };
+    set((s) => ({ scenes: [...s.scenes, scene], selectedNodeId: scene.id }));
+    return scene.id;
   },
   updateScene: (id, patch) => {
     get()._snapshotMundo();
@@ -2458,7 +2991,12 @@ addActor: (sceneId, overrides) => {
   // ── Music ──────────────────────────────────────────────────────────────
   songs: [defaultSong(), demoSong(), marioSong()],
   instrumentPresets: defaultInstrumentPresets(),
-  addSong: () => { get()._snapshotSongs(); set((s) => ({ songs: [...s.songs, defaultSong()] })); },
+  addSong: () => {
+    get()._snapshotSongs();
+    const song = defaultSong();
+    set((s) => ({ songs: [...s.songs, song], selectedNodeId: song.id }));
+    return song.id;
+  },
 
   // Ajustes de un preset de instrumento (biblioteca compartida por canciones).
   // Sin snapshot de undo a propósito: cada tick de un knob dispararía uno.
@@ -2763,33 +3301,81 @@ addActor: (sceneId, overrides) => {
 
   // ── Dialogo ────────────────────────────────────────────────────────────
   dialogues: [defaultDialogueEntry()],
-  addDialogue: () => set((s) => ({ dialogues: [...s.dialogues, defaultDialogueEntry()] })),
+  fonts: [],
+  addDialogue: () => {
+    const base = 'Nuevo';
+    const names = new Set(get().dialogues.map((d) => d.name));
+    let name = base;
+    let n = 2;
+    while (names.has(name)) { name = `${base} ${n}`; n++; }
+    const d = defaultDialogueEntry();
+    d.name = name;
+    // el ID de las filas usa el nombre del diálogo: regenerarlas con el nombre único
+    d.rows = d.rows.map((r, i) => ({ ...r, id: `${name}-${String(i + 1).padStart(3, '0')}-` }));
+    set((s) => ({ dialogues: [...s.dialogues, d] }));
+    return d.id;
+  },
   updateDialogue: (id, patch) => set((s) => ({
     dialogues: s.dialogues.map((d) => (d.id === id ? { ...d, ...patch } : d)),
   })),
   removeDialogue: (id) => set((s) => ({ dialogues: s.dialogues.filter((d) => d.id !== id) })),
-  addPage: (dialogueId) => set((s) => ({
-    dialogues: s.dialogues.map((d) =>
-      d.id === dialogueId
-        ? { ...d, pages: [...d.pages, { id: uid(), text: '', choices: [] }] }
-        : d
-    ),
+
+  addFont: () => {
+    const id = uid();
+    set((s) => ({ fonts: [...s.fonts, { ...defaultFontTileset(), id, name: `Fuente ${s.fonts.length + 1}` }] }));
+    return id;
+  },
+  updateFont: (id, patch) => set((s) => ({
+    fonts: s.fonts.map((f) => (f.id === id ? { ...f, ...patch } : f)),
   })),
-  updatePage: (dialogueId, pageId, patch) => set((s) => ({
+  removeFont: (id) => set((s) => ({ fonts: s.fonts.filter((f) => f.id !== id) })),
+  addRow: (dialogueId) => set((s) => ({
+    dialogues: s.dialogues.map((d) => {
+      if (d.id !== dialogueId) return d;
+      const row = defaultDialogueRow(d.name, d.rows.length);
+      return { ...d, rows: [...d.rows, row] };
+    }),
+  })),
+  updateRow: (dialogueId, rowId, patch) => set((s) => ({
     dialogues: s.dialogues.map((d) =>
       d.id !== dialogueId ? d : {
         ...d,
-        pages: d.pages.map((p) => (p.id === pageId ? { ...p, ...patch } : p)),
+        rows: d.rows.map((r) => (r.id === rowId ? { ...r, ...patch } : r)),
       }
     ),
   })),
-  removePage: (dialogueId, pageId) => set((s) => ({
+  removeRow: (dialogueId, rowId) => set((s) => ({
     dialogues: s.dialogues.map((d) =>
       d.id !== dialogueId ? d : {
         ...d,
-        pages: d.pages.filter((p) => p.id !== pageId),
+        rows: d.rows.filter((r) => r.id !== rowId),
       }
     ),
+  })),
+  addLanguage: (dialogueId, lang) => set((s) => ({
+    dialogues: s.dialogues.map((d) => {
+      if (d.id !== dialogueId) return d;
+      const code = (lang || '').trim().toUpperCase();
+      if (!code || d.languages.includes(code) || d.languages.length >= 6) return d;
+      return {
+        ...d,
+        languages: [...d.languages, code],
+        rows: d.rows.map((r) => ({ ...r, text: { ...r.text, [code]: '' } })),
+      };
+    }),
+  })),
+  removeLanguage: (dialogueId, lang) => set((s) => ({
+    dialogues: s.dialogues.map((d) => {
+      if (d.id !== dialogueId) return d;
+      if (d.languages.length <= 1) return d;
+      const langs = d.languages.filter((l) => l !== lang);
+      const rows = d.rows.map((r) => {
+        const t = { ...r.text };
+        delete t[lang];
+        return { ...r, text: t };
+      });
+      return { ...d, languages: langs, rows };
+    }),
   })),
   sounds: [],
   addSound: (overrides) => {
@@ -2863,6 +3449,10 @@ useAppStore.subscribe((state) => {
     connColorOut: state.connColorOut, connColorIn: state.connColorIn,
     connStrokeWidth: state.connStrokeWidth, clickAnimation: state.clickAnimation,
     showGrid: state.showGrid, gridLineOpacity: state.gridLineOpacity, imageSmoothing: state.imageSmoothing,
+    fontLabelBgColor: state.fontLabelBgColor,
+    fontCanvasBgColor: state.fontCanvasBgColor,
+    fontCharOrderMode: state.fontCharOrderMode,
+    fontCharOrderCustom: state.fontCharOrderCustom,
     flatColors: state.flatColors, codeFontSize: state.codeFontSize,
     emulatorKeyMap: state.emulatorKeyMap,
   });

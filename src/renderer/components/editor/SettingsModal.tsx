@@ -93,6 +93,15 @@ export function SettingsModal({ onClose, initialTab }: Props) {
   const setDefaultEditorTab = useAppStore((s) => s.setDefaultEditorTab);
   const pianoRollBg = useAppStore((s) => s.pianoRollBg);
   const setPianoRollBg = useAppStore((s) => s.setPianoRollBg);
+  const fontLabelBgColor = useAppStore((s) => s.fontLabelBgColor);
+  const setFontLabelBgColor = useAppStore((s) => s.setFontLabelBgColor);
+  const fontCanvasBgColor = useAppStore((s) => s.fontCanvasBgColor);
+  const setFontCanvasBgColor = useAppStore((s) => s.setFontCanvasBgColor);
+  const fontCharOrderMode = useAppStore((s) => s.fontCharOrderMode);
+  const setFontCharOrderMode = useAppStore((s) => s.setFontCharOrderMode);
+  const fontCharOrderCustom = useAppStore((s) => s.fontCharOrderCustom);
+  const setFontCharOrderCustom = useAppStore((s) => s.setFontCharOrderCustom);
+  const dialogPreviewRef = React.useRef<HTMLCanvasElement>(null);
   const defaultMusicView = useAppStore((s) => s.defaultMusicView);
   const setDefaultMusicView = useAppStore((s) => s.setDefaultMusicView);
   const keyWhiteColor = useAppStore((s) => s.keyWhiteColor);
@@ -327,6 +336,47 @@ export function SettingsModal({ onClose, initialTab }: Props) {
     onClose();
   }
 
+  React.useEffect(() => {
+    if (activeTab !== 'dialogo') return;
+    const canvas = dialogPreviewRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
+    const img = new Image();
+    img.onload = () => {
+      ctx.imageSmoothingEnabled = false;
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = fontCanvasBgColor;
+      ctx.fillRect(0, 0, W, H);
+      const scale = Math.min(W / img.width, H / img.height);
+      const dw = img.width * scale, dh = img.height * scale;
+      const ox = (W - dw) / 2, oy = (H - dh) / 2;
+      ctx.drawImage(img, ox, oy, dw, dh);
+      const cols = 2, rows = 2;
+      const tw = dw / cols, th = dh / rows;
+      const letters = ['A', 'B', 'a', 'b'];
+      ctx.font = `${Math.max(10, th * 0.5)}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          const tx = ox + c * tw, ty = oy + r * th;
+          const label = letters[idx] || '';
+          const metrics = ctx.measureText(label);
+          const lw = Math.max(10, metrics.width + 4);
+          const lh = Math.max(10, th * 0.5 + 4);
+          ctx.fillStyle = fontLabelBgColor || 'rgba(0,0,0,0.55)';
+          ctx.fillRect(tx + 2, ty + 2, lw, lh);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(label, tx + 4, ty + 3);
+        }
+      }
+    };
+    img.src = '/recursos/imgrecursos/imagen%20test.png';
+  }, [fontLabelBgColor, fontCanvasBgColor, activeTab]);
   return (
     <div
       style={{
@@ -1112,6 +1162,62 @@ export function SettingsModal({ onClose, initialTab }: Props) {
                     style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, padding: '7px 20px', cursor: 'pointer' }}>
                     Aplicar
                   </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'dialogo' ? (
+            <div style={{ flex: 1, padding: 20, display: 'flex', gap: 20, overflow: 'auto' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <span style={{ color: 'var(--text)', fontSize: 13, fontWeight: 700 }}>Diálogo — Fuentes</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 140 }}>Color fondo letras</span>
+                  <input type="color" value={'#000000'}
+                    onChange={(e) => setFontLabelBgColor(e.target.value)}
+                    style={{ width: 20, height: 24, border: '1px solid var(--border-light)', borderRadius: 4, background: 'transparent', cursor: 'pointer', padding: 0 }}
+                  />
+                  <input type="text" value={fontLabelBgColor}
+                    onChange={(e) => setFontLabelBgColor(e.target.value)}
+                    style={{ flex: 'none', width: 140, background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 12, padding: '5px 5px', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 140 }}>Color fondo canvas</span>
+                  <input type="color" value={fontCanvasBgColor}
+                    onChange={(e) => setFontCanvasBgColor(e.target.value)}
+                    style={{ width: 20, height: 24, border: '1px solid var(--border-light)', borderRadius: 4, background: 'transparent', cursor: 'pointer', padding: 0 }}
+                  />
+                  <input type="text" value={fontCanvasBgColor}
+                    onChange={(e) => setFontCanvasBgColor(e.target.value)}
+                    style={{ flex: 'none', width: 140, background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 12, padding: '5px 5px', outline: 'none' }}
+                  />
+                </div>
+              </div>
+              <div style={{ width: 200, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Vista previa</span>
+                <canvas ref={dialogPreviewRef} width={250} height={250}
+                  style={{ width: '100%', height: 'auto', background: fontCanvasBgColor, border: '1px solid var(--border-color)', borderRadius: 6, imageRendering: 'pixelated' }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Orden de caracteres</span>
+                  <select value={fontCharOrderMode}
+                    onChange={(e) => setFontCharOrderMode(e.target.value as any)}
+                    style={{ background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '3px 6px', outline: 'none' }}
+                  >
+                    <option value="symbols-first">Símbolos primero, luego letras</option>
+                    <option value="letters-first">Letras primero, luego símbolos</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                  <textarea
+                    value={fontCharOrderMode === 'custom' ? fontCharOrderCustom : (fontCharOrderMode === 'letters-first'
+                      ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+                      : ' !\"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~')}
+                    onChange={(e) => {
+                      setFontCharOrderCustom(e.target.value);
+                      if (fontCharOrderMode !== 'custom') setFontCharOrderMode('custom');
+                    }}
+                    rows={4}
+                    style={{ background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 9, padding: '3px 6px', outline: 'none', resize: 'vertical', fontFamily: 'monospace' }}
+                  />
                 </div>
               </div>
             </div>

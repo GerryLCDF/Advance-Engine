@@ -235,16 +235,12 @@ export function SpriteTab() {
     }
   }, [spriteImgSize, selectedSprite?.id, selectedSprite?.cols, selectedSprite?.rows, spriteSheets]);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    const filePath = (file as any).path;
-    if (!filePath) return;
+  // Importa una imagen como spritesheet (lo usan el botón y el drag & drop):
+  // copia al proyecto, crea el sprite si no hay uno seleccionado y detecta la
+  // grilla por el tamaño de la imagen.
+  const importSpritePath = useCallback(async (filePath: string) => {
     const api = window.advanceAPI;
-    if (!api) return;
+    if (!api || !filePath) return;
     const result = await api.file.readImage(filePath);
     if (!result.success || !result.dataUrl) return;
     const st = useAppStore.getState();
@@ -258,13 +254,13 @@ export function SpriteTab() {
     }
     if (!sprite) return;
 
-    const destPath = (projectDir ? `${projectDir}/sprites/${file.name}` : filePath).replace(/\\/g, '/');
+    const fileName = filePath.split(/[\\/]/).pop() || 'sprite.png';
+    const destPath = (projectDir ? `${projectDir}/sprites/${fileName}` : filePath).replace(/\\/g, '/');
     if (projectDir) {
       await api.dir.create(`${projectDir}/sprites`);
       await api.file.copy(filePath, destPath);
     }
 
-    // Auto-detect grid from image dimensions
     const imgW = result.width ?? 0;
     const imgH = result.height ?? 0;
     const detectedCols = imgW > 0 && imgW % 240 === 0 ? Math.round(imgW / 240) : 1;
@@ -275,7 +271,29 @@ export function SpriteTab() {
       cols: detectedCols,
       rows: detectedRows,
     });
-  }, [selectedSprite, projectDir]);
+  }, [selectedSprite, projectDir, updateSpriteSheet]);
+
+  const handleImportImage = useCallback(async () => {
+    const api = window.advanceAPI;
+    if (!api) return;
+    const result = await api.dialog.openImage();
+    if (result?.path) await importSpritePath(result.path);
+  }, [importSpritePath]);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    // Solo imágenes: el spritesheet se convierte a GBA (PNG con transparencia
+    // es lo ideal; jpg/webp también se pueden leer).
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!['png', 'jpg', 'jpeg', 'webp'].includes(ext)) return;
+    const filePath = ((file as any).path as string | undefined) || window.advanceAPI?.filePathFor?.(file) || '';
+    if (!filePath) return;
+    await importSpritePath(filePath);
+  }, [importSpritePath]);
 
   useEffect(() => { centerCanvas(); }, [centerCanvas]);
 
@@ -821,7 +839,22 @@ export function SpriteTab() {
                   title="Sin sprite seleccionado"
                   hint={dragOver
                     ? 'Suelta la imagen aquí'
-                    : 'Selecciona un sprite de la lista o arrastra una imagen para empezar.'}
+                    : 'Selecciona, importa o arrastra un sprite aquí para comenzar.'}
+                  action={
+                    <button onClick={handleImportImage}
+                      style={{
+                        marginTop: 2,
+                        background: dragOver ? 'var(--accent)' : 'transparent',
+                        border: dragOver ? 'none' : '1px dashed var(--border-light)',
+                        borderRadius: 4,
+                        color: dragOver ? '#fff' : 'var(--text-muted)',
+                        fontSize: 11, padding: '8px 16px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      + Importar imagen (PNG)
+                    </button>
+                  }
                 />
               </div>
             )}

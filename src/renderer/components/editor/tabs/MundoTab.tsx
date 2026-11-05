@@ -2,7 +2,9 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore, LOG_TERMINAL_LINES } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
+import { HierarchyContextMenu } from '../HierarchyContextMenu';
 import { InspectorPanel, type InspectorSection, type InspectorField } from '../InspectorPanel';
+import { validateItemName } from '../../../utils/validateName';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import type { Scene, Actor, SplashScreen, SceneConnection, TransitionConfig, FxAsset, TilesetAnimDirection, SoundEffect, TransitionType } from '../../../types/editor';
 import { COLLISION_EMPTY, COLLISION_SOLID, COLLISION_SLOPE, COLLISION_SLOPE_INV, COLLISION_SLOPE_26, COLLISION_SLOPE_MIRROR, COLLISION_SLOPE_INV_MIRROR, COLLISION_PALETTE, type CollisionBrush } from '../../../types/editor';
@@ -881,6 +883,8 @@ export function MundoTab() {
   const updateActor = useAppStore((s) => s.updateActor);
   const removeActor = useAppStore((s) => s.removeActor);
   const spriteSheets = useAppStore((s) => s.spriteSheets);
+  const addSpriteSheet = useAppStore((s) => s.addSpriteSheet);
+  const updateSpriteSheet = useAppStore((s) => s.updateSpriteSheet);
   const scripts = useAppStore((s) => s.scripts);
   const dialogues = useAppStore((s) => s.dialogues);
   const addConnection = useAppStore((s) => s.addConnection);
@@ -940,7 +944,7 @@ export function MundoTab() {
       const el = canvasContainerRef.current;
       const wX = el ? (el.clientWidth / 2 - panX) / zoom : 240;
       const wY = el ? (el.clientHeight / 2 - panY) / zoom : 80;
-      addScene(wX, wY);
+      createScene(wX, wY);
       setRadialPick('Escena creada');
     } else if (item.action === 'link') {
       setTool('connect');
@@ -970,7 +974,7 @@ export function MundoTab() {
         : 'move';
 
   // ── Context menu ──
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sceneId?: string; connectionId?: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sceneId?: string; connectionId?: string; hierarchyId?: string } | null>(null);
 
   // ── Grid ──
   const mundoShowGrid = useAppStore((s) => s.mundoShowGrid);
@@ -1097,6 +1101,33 @@ export function MundoTab() {
   const [highlightedConnId, setHighlightedConnId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const pushToast = useAppStore((s) => s.pushToast);
+
+  // Crea la escena y deja el nombre editable al instante (igual que en las
+  // jerarquías de Music/Scripting/Dialogo).
+  const createScene = useCallback((x?: number, y?: number) => {
+    const id = addScene(x, y);
+    if (id) setEditingId(id);
+    return id;
+  }, [addScene]);
+
+  // Renombrar desde la jerarquía o el menú contextual: valida vacío/duplicado.
+  const handleRename = useCallback((id: string, name: string): boolean => {
+    const a = parseActorId(id);
+    if (a) {
+      const scene = scenes.find((s) => s.id === a.sceneId);
+      const others = (scene?.actors ?? []).filter((x) => x.id !== a.actorId).map((x) => x.name);
+      const err = validateItemName(name, others);
+      if (err) { pushToast(err); return false; }
+      updateActor(a.sceneId, a.actorId, { name: name.trim() });
+      return true;
+    }
+    const err = validateItemName(name, scenes.filter((s) => s.id !== id).map((s) => s.name));
+    if (err) { pushToast(err); return false; }
+    updateScene(id, { name: name.trim() });
+    return true;
+  }, [scenes, updateActor, updateScene, pushToast]);
+
   const splashConnection = useMemo(() => {
     if (!splashScreen.nextSceneId) return null;
     return {
@@ -1119,6 +1150,42 @@ export function MundoTab() {
     }
     return result;
   }, [connections, selectedNodeId, splashConnection]);
+
+  // Refs para mover las líneas de conexión durante el arrastre sin re-render
+  // (el SVG se pinta desde el estado, que no se actualiza hasta soltar).
+  const scenesRef = useRef(scenes); scenesRef.current = scenes;
+  const splashScreenRef = useRef(splashScreen); splashScreenRef.current = splashScreen;
+  const svgBoundsRef = useRef<{x:number;y:number;w:number;h:number} | null>(null);
+
+  const updateConnectionPaths = useCallback((draggedId: string, liveX: number, liveY: number) => {
+    const svg = document.querySelector('svg[data-conn-overlay]') as SVGElement | null;
+    if (!svg) return;
+    const bounds = { x: parseFloat(svg.style.left) || 0, y: parseFloat(svg.style.top) || 0, w: svg.clientWidth, h: svg.clientHeight };
+    const paths = svg.querySelectorAll('path[data-conn-id]');
+    for (const path of Array.from(paths)) {
+      const from = path.getAttribute('data-conn-from');
+      const to = path.getAttribute('data-conn-to');
+      if (from !== draggedId && to !== draggedId) continue;
+      const findNode = (id: string) =>
+        scenesRef.current.find((s) => s.id === id) ||
+        (splashScreenRef.current?.id === id ? splashScreenRef.current : null);
+      const fromNode = from ? findNode(from) : null;
+      const toNode = to ? findNode(to) : null;
+      if (!fromNode || !toNode) continue;
+      const fromCenter = (node: any, live: boolean) => {
+        const x = live ? liveX : node.x;
+        const y = live ? liveY : node.y;
+        const w = node.width ?? 260;
+        const h = node.height ?? 206;
+        return { x: x + (node.width ? w / 2 : 130), y: y + (node.width ? 18 + h / 2 : 108) };
+      };
+      const fc = fromCenter(fromNode, from === draggedId);
+      const tc = fromCenter(toNode, to === draggedId);
+      const dx = Math.abs(tc.x - fc.x) * 0.4;
+      const d = `M ${fc.x - bounds.x} ${fc.y - bounds.y} C ${fc.x - bounds.x + dx} ${fc.y - bounds.y}, ${tc.x - bounds.x - dx} ${tc.y - bounds.y}, ${tc.x - bounds.x} ${tc.y - bounds.y}`;
+      path.setAttribute('d', d);
+    }
+  }, []);
 
   const svgBounds = useMemo(() => {
     if (scenes.length === 0) return { x: -500, y: -500, w: 1000, h: 1000 };
@@ -1251,8 +1318,8 @@ export function MundoTab() {
   const addSceneAtCursor = useCallback(() => {
     const wX = (mouseCanvasPos.current.x - panX) / zoom;
     const wY = (mouseCanvasPos.current.y - panY) / zoom;
-    addScene(wX, wY);
-  }, [addScene, panX, panY, zoom]);
+    createScene(wX, wY);
+  }, [createScene, panX, panY, zoom]);
 
   const hierarchySections: HierarchySection[] = [
     {
@@ -1460,6 +1527,7 @@ export function MundoTab() {
               { value: 'estatico', label: 'Estático' },
               { value: 'interactuable', label: 'Interactuable' },
               { value: 'objeto', label: 'Objeto' },
+              { value: 'texto', label: 'Texto' },
             ],
             onChange: (v) => actorPatch({ type: v as Actor['type'] }),
           },
@@ -1534,6 +1602,91 @@ export function MundoTab() {
           { label: 'Offset Y (px)', type: 'number', value: selectedActorObj.areaOffsetY ?? 0, min: -512, step: 1, onChange: (v) => actorPatch({ areaOffsetY: Math.round(v as number) }) },
         ],
       });
+      if (selectedActorObj.type === 'texto') {
+        const dbSheet = spriteSheets.find((sp) => sp.id === selectedActorObj.dialogBoxSpriteId);
+        inspectorSections.push({
+          title: 'Dialog Box (9-slice)',
+          content: (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  const files = e.dataTransfer.files;
+                  if (!files || files.length === 0) return;
+                  const file = files[0];
+                  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+                  if (!['png', 'jpg', 'jpeg', 'webp'].includes(ext)) return;
+                  const filePath = ((file as any).path as string | undefined) || window.advanceAPI?.filePathFor?.(file) || '';
+                  if (!filePath) return;
+                  // crear spritesheet 3x3
+                  addSpriteSheet();
+                  const newSheet = useAppStore.getState().spriteSheets[useAppStore.getState().spriteSheets.length - 1];
+                  if (newSheet) {
+                    updateSpriteSheet(newSheet.id, { tilesetPath: filePath, cols: 3, rows: 3, name: 'DialogBox' });
+                    actorPatch({ dialogBoxSpriteId: newSheet.id });
+                  }
+                }}
+                style={{
+                  border: '1px dashed var(--border-light)', borderRadius: 4, padding: 8,
+                  textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer',
+                  background: 'var(--bg-canvas)',
+                }}
+              >
+                {dbSheet ? dbSheet.name : 'Arrastra una imagen 3×3 aquí'}
+              </div>
+              {dbSheet && (
+                <div style={{ fontSize: 9, color: 'var(--text-dim)' }}>
+                  {dbSheet.cols}×{dbSheet.rows} · {dbSheet.tilesetPath.split(/[\\/]/).pop()}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Ancho</div>
+                  <input type="number" value={selectedActorObj.dialogBoxW ?? 0} min={0} step={1}
+                    onChange={(e) => actorPatch({ dialogBoxW: Math.max(0, parseInt(e.target.value) || 0) })}
+                    style={{ width: '100%', background: 'var(--bg-canvas)', color: '#fff', border: '1px solid var(--border-color)', borderRadius: 4, padding: '3px 6px', fontSize: 11 }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Alto</div>
+                  <input type="number" value={selectedActorObj.dialogBoxH ?? 0} min={0} step={1}
+                    onChange={(e) => actorPatch({ dialogBoxH: Math.max(0, parseInt(e.target.value) || 0) })}
+                    style={{ width: '100%', background: 'var(--bg-canvas)', color: '#fff', border: '1px solid var(--border-color)', borderRadius: 4, padding: '3px 6px', fontSize: 11 }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Offset X</div>
+                  <input type="number" value={selectedActorObj.dialogBoxOffsetX ?? 0} step={1}
+                    onChange={(e) => actorPatch({ dialogBoxOffsetX: Math.round(parseInt(e.target.value) || 0) })}
+                    style={{ width: '100%', background: 'var(--bg-canvas)', color: '#fff', border: '1px solid var(--border-color)', borderRadius: 4, padding: '3px 6px', fontSize: 11 }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Offset Y</div>
+                  <input type="number" value={selectedActorObj.dialogBoxOffsetY ?? 0} step={1}
+                    onChange={(e) => actorPatch({ dialogBoxOffsetY: Math.round(parseInt(e.target.value) || 0) })}
+                    style={{ width: '100%', background: 'var(--bg-canvas)', color: '#fff', border: '1px solid var(--border-color)', borderRadius: 4, padding: '3px 6px', fontSize: 11 }}
+                  />
+                </div>
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--text-dim)', lineHeight: 1.3 }}>
+                (0 en Ancho/Alto = automático según el texto)
+              </div>
+            </div>
+          ),
+        });
+        inspectorSections.push({
+          title: 'Hint',
+          content: (
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', lineHeight: 1.4 }}>
+              Zona de disparo: usa <code>actor_in_area</code>/<code>actor_entered</code> + <code>gJp</code> en tu script para decidir qué texto mostrar.
+            </div>
+          ),
+        });
+      }
       const sfxOptions = sounds.filter((sd) => sd.usage === 'sfx').map((sd) => ({ value: sd.id, label: sd.name }));
       inspectorSections.push({
         title: 'Audio',
@@ -2215,7 +2368,7 @@ export function MundoTab() {
       const my = e.clientY - rect.top;
       const wX = (mx - panX) / zoom;
       const wY = (my - panY) / zoom;
-      addScene(wX, wY);
+      createScene(wX, wY);
     }
   };
 
@@ -2284,11 +2437,8 @@ export function MundoTab() {
           sections={hierarchySections}
           selectedId={highlightedConnId || (selectedActor ? `actor:${selectedActor.sceneId}:${selectedActor.actorId}` : selectedNodeId)}
           editingId={editingId}
-          onRename={(id, name) => {
-            const a = parseActorId(id);
-            if (a) updateActor(a.sceneId, a.actorId, { name });
-            else updateScene(id, { name });
-          }}
+          onRename={handleRename}
+          onNameError={(msg) => pushToast(msg)}
           onEditingChange={setEditingId}
           onDoubleClick={(id) => {
             const a = parseActorId(id);
@@ -2329,7 +2479,7 @@ export function MundoTab() {
           onContextMenu={(id, x, y) => {
             if (id === splashScreen.id) return;
             const a = parseActorId(id);
-            if (a) return;
+            if (a) { setCtxMenu({ x, y, hierarchyId: id }); return; }
             const isConn = connections.some((c) => c.id === id) || id === '__splash_conn__';
             if (isConn) {
               if (id !== '__splash_conn__') setCtxMenu({ x, y, connectionId: id });
@@ -2437,14 +2587,21 @@ export function MundoTab() {
               const sx = e.clientX - rect.left;
               const sy = e.clientY - rect.top;
               mouseCanvasPos.current = { x: sx, y: sy };
-              setMouseWorld({ x: (sx - panX) / zoom, y: (sy - panY) / zoom });
+              // Guarda anti-bucle: si el mundo bajo el cursor no cambia de
+              // verdad, no se re-renderiza (un "Maximum update depth" venía de
+              // realimentarse mousemove -> render -> mousemove).
+              setMouseWorld((prev) => {
+                const nw = { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
+                if (Math.abs(nw.x - prev.x) < 0.01 && Math.abs(nw.y - prev.y) < 0.01) return prev;
+                return nw;
+              });
             }}
             onClick={(e) => {
               if (hasMoved.current) return;
               if (tool === 'add') {
                 const wX = (mouseCanvasPos.current.x - panX) / zoom;
                 const wY = (mouseCanvasPos.current.y - panY) / zoom;
-                addScene(wX, wY);
+                createScene(wX, wY);
               }
             }}
           >
@@ -2523,7 +2680,7 @@ export function MundoTab() {
               width: 0, height: 0,
             }}>
               {/* Connection lines */}
-              <svg style={{
+              <svg data-conn-overlay style={{
                 position: 'absolute',
                 left: svgBounds.x, top: svgBounds.y,
                 width: svgBounds.w, height: svgBounds.h,
@@ -2571,6 +2728,7 @@ export function MundoTab() {
                         />
                       )}
                       <path
+                        data-conn-id={c.id} data-conn-from={c.fromSceneId} data-conn-to={c.toSceneId}
                         d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
                         fill="none" stroke={strokeColor} strokeWidth={hw}
                         strokeDasharray="12 4"
@@ -2580,6 +2738,7 @@ export function MundoTab() {
                       />
                       {/* hit area for click + context menu */}
                       <path
+                        data-conn-id={c.id} data-conn-from={c.fromSceneId} data-conn-to={c.toSceneId}
                         d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
                         fill="none" stroke="transparent" strokeWidth={24}
                         style={{ cursor: 'pointer' }}
@@ -2620,6 +2779,7 @@ export function MundoTab() {
                       onSelect={() => { if (!hasMoved.current) handleSceneBoxClick(splashScreen.id); }}
                       updateSplashScreen={updateSplashScreen}
                       dragZoom={zoom}
+                      onDragMove={updateConnectionPaths}
                       showGrid={mundoShowGrid}
                       gridSize={mundoGridSize}
                       gridOpacity={mundoGridOpacity}
@@ -2650,6 +2810,7 @@ export function MundoTab() {
                         setCtxMenu({ x: e.clientX, y: e.clientY, sceneId: id });
                       }}
                       updateScene={updateScene}
+                      onDragMove={updateConnectionPaths}
                       dragZoom={zoom}
                       showGrid={mundoShowGrid}
                       gridSize={mundoGridSize}
@@ -2832,7 +2993,26 @@ export function MundoTab() {
         </div>
       }
     />
-    {ctxMenu && (
+    {ctxMenu?.hierarchyId && (
+      <HierarchyContextMenu
+        x={ctxMenu.x}
+        y={ctxMenu.y}
+        onRename={() => setEditingId(ctxMenu.hierarchyId!)}
+        onDelete={() => {
+          const id = ctxMenu.hierarchyId!;
+          const a = parseActorId(id);
+          if (a) {
+            removeActor(a.sceneId, a.actorId);
+            if (selectedActor?.sceneId === a.sceneId && selectedActor.actorId === a.actorId) setSelectedActor(null);
+          } else {
+            handleRemove(id);
+          }
+        }}
+        deleteLabel={parseActorId(ctxMenu.hierarchyId!) ? 'Eliminar actor' : 'Eliminar escena'}
+        onClose={() => setCtxMenu(null)}
+      />
+    )}
+    {ctxMenu && !ctxMenu.hierarchyId && (
       <>
         <div style={{
           position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
@@ -2913,7 +3093,7 @@ function ToolBtn({ children, active, onClick, title, style }: { children: React.
   );
 }
 
-function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onSelectActor, selectedActorId, updateActor, onContextMenu, updateScene, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor, animPaused, collisionPaintValue, collisionBrush, collisionBlockSize, setCollisionTile }: {
+function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect, onSelectActor, selectedActorId, updateActor, onContextMenu, updateScene, onDragMove, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor, animPaused, collisionPaintValue, collisionBrush, collisionBlockSize, setCollisionTile }: {
   scene: Scene; selected: boolean; isConnecting: boolean;
   tool: string; connectFrom: string | null;
   onSelect: (id: string) => void;
@@ -2923,6 +3103,7 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
   onContextMenu?: (e: React.MouseEvent, id: string) => void;
   updateScene: (id: string, patch: Partial<Scene>) => void;
   dragZoom: number;
+  onDragMove?: (id: string, x: number, y: number) => void;
   showGrid: boolean;
   gridSize: number;
   gridOpacity: number;
@@ -3217,6 +3398,12 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
     const startX = e.clientX;
     const startY = e.clientY;
     let moved = false;
+    // El arrastre NO toca el store frame a frame (cada updateScene re-renderiza
+    // todo MundoTab y el vigilante de guardado serializa el estado → tirones y
+    // 49 entradas de undo por arrastre). Mueve el transform del nodo a mano y
+    // confirma la posición final UNA vez al soltar.
+    let lastX = scene.x, lastY = scene.y;
+    const card = cardRef.current;
     const handleMove = (ev: MouseEvent) => {
       ev.preventDefault();
       const dx = ev.clientX - startX;
@@ -3227,25 +3414,28 @@ function SceneCard({ scene, selected, isConnecting, tool, connectFrom, onSelect,
         dragRef.current = { startX: ev.clientX, startY: ev.clientY, origX: scene.x, origY: scene.y };
       }
       if (moved) {
-        updateScene(scene.id, {
-          x: dragRef.current.origX + (ev.clientX - dragRef.current.startX) / dragZoom,
-          y: dragRef.current.origY + (ev.clientY - dragRef.current.startY) / dragZoom,
-        });
+        lastX = dragRef.current.origX + (ev.clientX - dragRef.current.startX) / dragZoom;
+        lastY = dragRef.current.origY + (ev.clientY - dragRef.current.startY) / dragZoom;
+        if (card) card.style.transform = `translate(${lastX}px, ${lastY}px)`;
+        onDragMove?.(scene.id, lastX, lastY);
       }
     };
     const handleUp = () => {
       setDragging(false);
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleUp);
+      if (moved) updateScene(scene.id, { x: lastX, y: lastY });
     };
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleUp);
   }, [scene.id, scene.x, scene.y, onSelect, updateScene, dragZoom, tool, setCollisionTile, collisionPaintValue, collisionBrush, collisionBlockSize, scene.collisionTileSize, scene.width, scene.height, batchCollisionTiles]);
 
   const bgSongObj = useMemo(() => songs.find((so) => so.id === scene.backgroundSong), [songs, scene.backgroundSong]);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   return (
     <div
+      ref={cardRef}
       data-scene-card
       style={{
         position: 'absolute',
@@ -3648,11 +3838,12 @@ function CameraRect({ cameraX, cameraY, sceneWidth, sceneHeight, sceneId, dragZo
   );
 }
 
-function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor }: {
+function SplashCard({ splash, selected, onSelect, updateSplashScreen, onDragMove, dragZoom, showGrid, gridSize, gridOpacity, gridStrokeWidth, gridColor }: {
   splash: SplashScreen; selected: boolean;
   onSelect: () => void;
   updateSplashScreen: (patch: Partial<SplashScreen>) => void;
   dragZoom: number;
+  onDragMove?: (id: string, x: number, y: number) => void;
   showGrid: boolean;
   gridSize: number;
   gridOpacity: number;
@@ -3661,6 +3852,7 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom, 
 }) {
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef({ startX: 0, startY: 0, origX: 0, origY: 0 });
+  const splashCardRef = useRef<HTMLDivElement>(null);
   const [bgImageUrl, setBgImageUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -3700,17 +3892,21 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom, 
     onSelect();
     setDragging(true);
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: splash.x, origY: splash.y };
+    // Igual que SceneCard: transform directo durante el arrastre, commit único.
+    let lastX = splash.x, lastY = splash.y;
+    const card = splashCardRef.current;
     const handleMove = (ev: MouseEvent) => {
       ev.preventDefault();
-      updateSplashScreen({
-        x: dragRef.current.origX + (ev.clientX - dragRef.current.startX) / dragZoom,
-        y: dragRef.current.origY + (ev.clientY - dragRef.current.startY) / dragZoom,
-      });
+      lastX = dragRef.current.origX + (ev.clientX - dragRef.current.startX) / dragZoom;
+      lastY = dragRef.current.origY + (ev.clientY - dragRef.current.startY) / dragZoom;
+      if (card) card.style.transform = `translate(${lastX}px, ${lastY}px)`;
+      onDragMove?.(splash.id, lastX, lastY);
     };
     const handleUp = () => {
       setDragging(false);
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleUp);
+      updateSplashScreen({ x: lastX, y: lastY });
     };
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleUp);
@@ -3718,6 +3914,7 @@ function SplashCard({ splash, selected, onSelect, updateSplashScreen, dragZoom, 
 
   return (
     <div
+      ref={splashCardRef}
       data-scene-card
       style={{
         position: 'absolute',

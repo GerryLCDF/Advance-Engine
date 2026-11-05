@@ -722,6 +722,9 @@ export function generateGBAProject(
   sceneCamX?: number,
   sceneCamY?: number,
   actors?: GBAExportedActor[],
+  fontsCCode?: string,
+  dialogBoxesCCode?: string,
+  dialoguesCCode?: string,
   multiScenes?: GBAMultiScenes,
 ): string {
   if (multiScenes && multiScenes.scenes.length > 0) {
@@ -731,7 +734,7 @@ export function generateGBAProject(
       exitTilesetCArray, exitTileSize, exitTilesetFrames, exitTilesetSpeed, exitTilesetFw, exitTilesetFh,
       exitTransitionDuration, exitGradientCArray, exitGradientW, exitGradientH,
       entryGradientCArray, entryGradientW, entryGradientH,
-      entryTransitionType, exitTransitionType, multiScenes);
+      entryTransitionType, exitTransitionType, multiScenes, fontsCCode, dialogBoxesCCode, dialoguesCCode);
   }
 
   log.add(`Generando proyecto GBA: ${name}`);
@@ -997,6 +1000,14 @@ static void waitVSync(void) {
   while (REG_VCOUNT >= SCREEN_H);
   while (REG_VCOUNT < SCREEN_H);
 }
+
+// ── Dialogue forward declarations ──
+void showDialogue(int id);
+void hideDialogue(void);
+void nextDialogueRow(void);
+void drawText(int fontIdx, int x, int y, const char* text);
+void drawDialogBox(int dbIdx, int x, int y, int w, int h);
+extern int gLang;
 `;
 
   if (hasActors && hasTransition) {
@@ -1297,6 +1308,11 @@ export interface GBAExportedActor {
   colliderOffsetX?: number;
   colliderOffsetY?: number;
   hasArea?: boolean;   // zona de detección (sigue al actor, como el collider)
+  dialogBoxSpriteId?: string;
+  dialogBoxW?: number;
+  dialogBoxH?: number;
+  dialogBoxOffsetX?: number;
+  dialogBoxOffsetY?: number;
   areaW?: number;
   areaH?: number;
   areaOffsetX?: number;
@@ -2055,6 +2071,9 @@ function generateGBAProjectMulti(
   entryTransitionType?: string,
   exitTransitionType?: string,
   multiScenes?: GBAMultiScenes,
+  fontsCCode?: string,
+  dialogBoxesCCode?: string,
+  dialoguesCCode?: string,
 ): string {
   log.add(`Generando proyecto GBA (multi-escena): ${name}`);
   log.add(`Autor: ${author}`);
@@ -2289,6 +2308,20 @@ static void waitVSync(void) {
   while (REG_VCOUNT >= SCREEN_H);
   while (REG_VCOUNT < SCREEN_H);
 }
+
+// ── Dialogue forward declarations ──
+void drawText(int fontIdx, int x, int y, const char* text);
+void drawDialogBox(int dbIdx, int x, int y, int w, int h);
+extern int gLang;
+static int gDialogueVisible;
+static int gActiveDialogue;
+static int gActiveRow;
+void showDialogue(int id);
+void showDialogueRow(const char* key);
+void hideDialogue(void);
+void nextDialogueRow(void);
+void drawText(int fontIdx, int x, int y, const char* text);
+void drawDialogBox(int dbIdx, int x, int y, int w, int h);
 
 // ── Runtime de escenas ───────────────────────────────────────────────────────
 // gScene: escena actual. switchScene(n) pide cambiar (índice = orden en el
@@ -2775,6 +2808,14 @@ static void computeDirtyRect(void) {
     if (x1 - 1 > gDirtyX1) gDirtyX1 = (s16)(x1 - 1);
     if (y1 - 1 > gDirtyY1) gDirtyY1 = (s16)(y1 - 1);
   }
+  // El diálogo se dibuja fuera del bucle de actores: si está visible, su zona
+  // también tiene que entrar en el rect sucio o el blit no la copia a VRAM.
+  if (gDialogueVisible) {
+    if (8 < gDirtyX0) gDirtyX0 = 8;
+    if (120 < gDirtyY0) gDirtyY0 = 120;
+    if (231 > gDirtyX1) gDirtyX1 = 231;
+    if (151 > gDirtyY1) gDirtyY1 = 151;
+  }
 }
 
 // ── Colisiones por escena (runtime) ──────────────────────────────────────────
@@ -3047,13 +3088,18 @@ static void loadSceneState(int n) {
   const sceneInitBlock = `  loadSceneState(${SCENE_START});`;
   const prologue = `  gScene = ${SCENE_START};`;
 
+  // El dibujo del diálogo requiere fuentes Y dialog boxes Y el texto; si falta
+  // cualquiera, el main.c no compilaría (drawText/drawDialogBox/gCurrentDialogueText).
+  const needsDialogueRuntime = !!(dialoguesCCode && fontsCCode && dialogBoxesCCode);
+
   // bucle de escena (multi)
   const actorLines = `  if (gDirty) { blitDirtyRect(); gDirty = 0; }
   advanceAllActors();
   updatePlayer();
 ` + (needsAreaRuntime ? `  updateAreaContacts();
 ` : '') + (activeScripts.length ? `  if (gSceneScriptUpdate[gScene]) gSceneScriptUpdate[gScene]();
-` : '') + `  if (actorsChanged()) { computeDirtyRect(); drawAllActors(gBackBuf, 1); gDirty = 1; }`;
+` : '') + (needsDialogueRuntime ? `  if (gDialogueVisible) { drawDialogBox(0, 8, 120, 224, 32); drawText(0, 12, 124, gCurrentDialogueText); }
+` : '') + `  if (actorsChanged() || gDialogueVisible) { computeDirtyRect(); if (actorsChanged()) drawAllActors(gBackBuf, 1); gDirty = 1; }`;
 
   let sceneLoopCode: string;
   sceneLoopCode = `  initSound();
@@ -3187,7 +3233,9 @@ ${splashSoundIdx >= 0 ? `  initSound();\n  soundPlay(${splashSoundIdx}, 1);\n` :
   if (!hasMusic && !hasSceneMusic) log.add('Sin musica');
   if (activeScripts.length) log.add(`Scripts C Directo: ${activeScripts.length} script(s) activo(s) — solo asignados a actores`);
   log.add('Codigo fuente C generado correctamente (multi-escena)');
-
+  if (fontsCCode) c = c.replace('int main() {', () => fontsCCode + '\n\nint main() {');
+  if (dialogBoxesCCode) c = c.replace('int main() {', () => dialogBoxesCCode + '\n\nint main() {');
+  if (dialoguesCCode) c = c.replace('int main() {', () => dialoguesCCode + '\n\nint main() {');
   return c;
 }
 

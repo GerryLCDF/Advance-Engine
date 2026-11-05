@@ -8,6 +8,7 @@ import {
   IconCheck as TablerIconCheck,
   IconClef as TablerIconClef,
   IconConeFilled as TablerIconConeFilled,
+  IconCopy as TablerIconCopy,
   IconDirectionArrows as TablerIconDirectionArrows,
   IconDeviceGamepad2 as TablerIconDeviceGamepad2,
   IconEye as TablerIconEye,
@@ -241,6 +242,7 @@ export const VolumeOffIcon = tabler(TablerIconVolumeOff, 'IconVolumeOff');
 export const FocusIcon = tabler(TablerIconFocus, 'IconFocus');
 export const XIcon = tabler(TablerIconXFilled, 'IconXFilled');
 export const CheckIcon = tabler(TablerIconCheck, 'IconCheck');
+export const CopyIcon = tabler(TablerIconCopy, 'IconCopy');
 export const ChevronDownIcon = tabler(TablerIconConeFilled, 'IconConeFilled');
 export const LayersIcon = tabler(TablerIconStack2, 'IconStack2');
 export const MapPinIcon = tabler(TablerIconMapPin, 'IconMapPin');

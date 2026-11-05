@@ -877,10 +877,42 @@ Todo lo ya definido arriba en el archivo (estático si es `static`) es accesible
 - **Múltiples escenas:** `switchScene(n)`, `near(a, b, dist)`, `gJp`, `gScene` (ver [10.15](#1015-varias-escenas-en-la-rom-switchscene-near-y-gjp)).
 - Botones: `KEY_A`, `KEY_B`, `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`, `KEY_SHOULDER`.
 - `REG_KEYINPUT` (`0x04000130`), mapa de bits correcto (ver [9](#109-entrada-leer-los-botones)).
+- **Diálogos:** `showDialogue(id)`, `nextDialogueRow()`, `hideDialogue()`, `gLang` (ver [10.13.1](#10131-diálogos-e-idiomas)).
 - `SCREEN_W=240`, `SCREEN_H=160`, `PIXEL_COUNT=38400`, `screen` **no** está como símbolo: usa `(u16*)VRAM` si quieres pintar.
 - `REG_SND1..4*`, `noteOn()`, `GBAInst`, `gNotePeriods` (si hay sonido en el proyecto).
 - `waitVSync()`.
 - Defines condicionales: `ACTOR_COUNT`, `COLLISION_*` (si hay mapa).
+
+### 10.13.1. Diálogos e idiomas
+
+Si el proyecto tiene diálogos, el motor exporta estas funciones y la variable global:
+
+```c
+void showDialogue(int id);            // muestra el diálogo `id` desde la fila 0
+void showDialogueRow(const char* key); // salta a una fila por su código o su ID
+void nextDialogueRow(void);           // avanza a la siguiente fila (si está visible)
+void hideDialogue(void);              // oculta el diálogo
+extern int gLang;                     // idioma activo: 0 = primera columna, 1 = segunda, …
+```
+
+- `id` es el **orden del diálogo en el editor** (0, 1, 2…), no el ID de la fila.
+- `showDialogueRow(key)` busca la primera fila cuyo **campo Código** o cuyo **ID completo** coincida con `key` y la muestra. Si no encuentra ninguna, no hace nada.
+- El texto mostrado es `texto[fila][gLang]`. Cambia `gLang` antes de `showDialogue`/`showDialogueRow` para elegir el idioma (el índice sigue el orden de las columnas de la tabla de Diálogo).
+- `nextDialogueRow()` y `hideDialogue()` no hacen nada si el diálogo está oculto.
+- El motor dibuja la caja y el texto en la parte inferior de la pantalla; no tienes que pintarlos.
+
+```c
+void script_update(void) {
+  static int shown = 0;
+  gLang = 1;                              // 0 = primer idioma, 1 = segundo
+  if (!shown) { showDialogue(0); shown = 1; }
+  if (gJp & 8) { showDialogueRow("saludo"); } // START: fila por código
+  if (gJp & 1) nextDialogueRow();         // A: siguiente fila
+  if (gJp & 2) hideDialogue();            // B: ocultar
+}
+```
+
+También puedes usar el ID completo de la fila: `showDialogueRow("Nuevo diálogo 3-002-1")`.
 
 ### Reglas obligatorias de tu código
 
@@ -1237,6 +1269,11 @@ u16 jp   = keys & ~prevKeys; prevKeys = keys; // flanco
 | `gSelf->animSpeed` | paso/vsync de la animación (2 = doble, ver [10.8](#108-sistema-de-actores-las-entidades-del-juego)) |
 | `movePlayer(keys,p)` | D-pad del jugador |
 | `updatePlayer()` | input + push actor-actor |
+| `showDialogue(id)` | muestra el diálogo `id` desde la fila 0 (ver [10.13.1](#10131-diálogos-e-idiomas)) |
+| `showDialogueRow(key)` | salta a una fila por su código o ID |
+| `nextDialogueRow()` | avanza a la siguiente fila |
+| `hideDialogue()` | oculta el diálogo |
+| `gLang = n` | elige el idioma (0 = primera columna, 1 = segunda…) |
 | `initActors()` / `advanceAllActors()` | animación automática |
 | `drawAllActors(screen)` | z-sort + dibujado |
 | `near(a,b,dist)` | ¿±`dist` px entre centros? (proximidad) |

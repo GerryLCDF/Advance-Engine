@@ -42,7 +42,7 @@ export function createCollisionMap(sceneWidth: number, sceneHeight: number, tile
 export interface Actor {
   id: string;
   name: string;
-  type: 'estatico' | 'interactuable' | 'objeto';
+  type: 'estatico' | 'interactuable' | 'objeto' | 'texto';
   x: number;
   y: number;
   width: number;
@@ -60,6 +60,11 @@ export interface Actor {
   areaHeight?: number;
   areaOffsetX?: number;
   areaOffsetY?: number;
+  dialogBoxSpriteId?: string;
+  dialogBoxW?: number;
+  dialogBoxH?: number;
+  dialogBoxOffsetX?: number;
+  dialogBoxOffsetY?: number;
   soundId?: string;
   musicId?: string;
   scriptId?: string;
@@ -267,6 +272,11 @@ export interface SoundEffect {
   release: number; // seconds 0..2
 }
 
+export const defaultFontTileset = (): FontTileset => ({
+  id: '', name: 'Nueva fuente', imagePath: '', cols: 16, rows: 6,
+  firstChar: 32, charMap: {}, unassigned: [], letterSpacingX: 0, letterSpacingY: 0, labelBgColor: 'rgba(0,0,0,0.55)',
+});
+
 export const defaultSoundEffect = (): SoundEffect => ({
   id: '',
   name: 'Nuevo sonido',
@@ -370,20 +380,42 @@ export interface DialogueChoice {
   nextPageId: string;
 }
 
-export interface DialoguePage {
-  id: string;
-  text: string;
+// Fila de un diálogo: un "renglón" con su ID (sección-NNN-sufijo), código
+// pequeño, nombre del hablante y el texto en cada idioma configurado.
+export interface DialogueRow {
+  id: string;                 // "menu-001-xyz" (sección-NNN-sufijo)
+  code: string;               // comandos pequeños
+  speaker: string;            // nombre del hablante
+  text: Record<string, string>; // idioma -> texto
   choices: DialogueChoice[];
+  soundId?: string;           // sonido al aparecer las letras
+  fontId?: string;            // tileset de la fuente
 }
 
 export interface DialogueEntry {
   id: string;
   name: string;
   sceneId: string;
-  pages: DialoguePage[];
+  languages: string[];        // códigos de idioma (máx. 6), por defecto ['ES']
+  rows: DialogueRow[];
 }
 
-// ── Scripting ────────────────────────────────────────────────────────────
+// ── Fuentes de texto (tilesets de caracteres) ─────────────────────────────
+export interface FontTileset {
+  id: string;
+  name: string;
+  imagePath: string;          // ruta al PNG del tileset
+  cols: number;               // columnas de la rejilla
+  rows: number;               // filas de la rejilla
+  firstChar: number;           // código del primer carácter (por defecto 32 = espacio)
+  charMap: Record<string, number>; // carácter -> índice de tile (sobrescrituras)
+  unassigned?: number[];            // tiles explícitamente vacíos (sin carácter)
+  letterSpacingX?: number;          // separación horizontal entre letras (px)
+  letterSpacingY?: number;          // separación vertical entre líneas (px)
+  labelBgColor?: string;      // color de fondo del recuadro de la letra
+}
+
+
 export type ScriptMode = 'blocks' | 'language' | 'c';
 export const SCRIPT_MODES: { value: ScriptMode; label: string }[] = [
   { value: 'blocks', label: 'Bloques' },

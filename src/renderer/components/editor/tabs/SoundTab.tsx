@@ -328,7 +328,7 @@ function freqToNote(freq: number): string {
   return `${NOTE_NAMES[noteIdx]}${octave}`;
 }
 
-function SoundIcon({ type, size = 14 }: { type: 'duty' | 'wave' | 'noise'; size?: number }) {
+export function SoundIcon({ type, size = 14 }: { type: 'duty' | 'wave' | 'noise'; size?: number }) {
   if (type === 'noise') return <NoiseIcon size={size} />;
   if (type === 'wave') return <WaveIcon size={size} />;
   return <VolumeIcon size={size} />;

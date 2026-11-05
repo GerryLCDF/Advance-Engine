@@ -712,6 +712,16 @@ ipcMain.handle('dialog:openVideo', async () => {
   return { path: filePath, size: stat.size };
 });
 
+ipcMain.handle('dialog:openCsv', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Seleccionar archivo CSV',
+    filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }],
+    properties: ['openFile'],
+  });
+  if (canceled || filePaths.length === 0) return { path: null };
+  return { path: filePaths[0] };
+});
+
 ipcMain.handle('dialog:openFolder', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: 'Seleccionar carpeta del proyecto',
@@ -722,7 +732,7 @@ ipcMain.handle('dialog:openFolder', async () => {
 
 ipcMain.handle('dialog:openImage', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
-    title: 'Seleccionar portada (480×270 PNG)',
+    title: 'Seleccionar imagen (PNG)',
     filters: [{ name: 'Imágenes PNG', extensions: ['png'] }],
     properties: ['openFile'],
   });
@@ -1064,7 +1074,7 @@ ipcMain.handle('system:installDevkitPro', async () => installDevkitPro());
 
 // ── IPC: Emulador ───────────────────────────────────────────────────────────
 
-ipcMain.handle('emu:play', async (_e, romPath: string, keymap?: string) => {
+ipcMain.handle('emu:play', async (_e, romPath: string, keymap?: string, theme?: string) => {
   try {
     if (!fs.existsSync(romPath)) {
       const reason = `ROM no encontrada: ${romPath}`;
@@ -1072,7 +1082,7 @@ ipcMain.handle('emu:play', async (_e, romPath: string, keymap?: string) => {
       return { success: false, reason };
     }
     closeEmulatorWindow();
-    createEmulatorWindow(romPath, keymap);
+    createEmulatorWindow(romPath, keymap, theme);
     return { success: true };
   } catch (err) {
     const reason = String(err);

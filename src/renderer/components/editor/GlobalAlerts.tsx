@@ -16,6 +16,8 @@ const MAX_VISIBLES = 3;
 
 export function GlobalAlerts() {
   const exportLog = useAppStore((s) => s.exportLog);
+  const toasts = useAppStore((s) => s.toasts);
+  const dismissToast = useAppStore((s) => s.dismissToast);
 
   // El aviso guarda su texto, no el índice: si el log se vacía a mitad de la
   // animación, un índice se quedaría apuntando a otra línea (o a ninguna).
@@ -68,7 +70,7 @@ useEffect(() => {
 
   const cerrar = (id: number) => setAvisos((prev) => prev.filter((a) => a.id !== id));
 
-  if (avisos.length === 0) return null;
+  if (avisos.length === 0 && toasts.length === 0) return null;
 
   return (
     <div
@@ -115,6 +117,50 @@ useEffect(() => {
             </div>
             <button
               onClick={() => cerrar(aviso.id)}
+              title="Cerrar"
+              style={{
+                marginLeft: 'auto',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <XIcon size={14} />
+            </button>
+          </motion.div>
+        ))}
+        {toasts.map((t) => (
+          <motion.div
+            key={t.id}
+            layout
+            initial={{ opacity: 0, y: 16, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.97 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            style={{
+              pointerEvents: 'auto',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border-color)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+              color: 'var(--text)',
+            }}
+          >
+            <TriangleAlertIcon size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 2 }} />
+            <div style={{ fontSize: 12, lineHeight: 1.45, wordBreak: 'break-word' }}>
+              {t.msg}
+            </div>
+            <button
+              onClick={() => dismissToast(t.id)}
               title="Cerrar"
               style={{
                 marginLeft: 'auto',

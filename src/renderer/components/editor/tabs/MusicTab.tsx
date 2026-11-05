@@ -1,9 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
+import { HierarchyContextMenu } from '../HierarchyContextMenu';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
 import { EmptyState } from '../EmptyState';
+import { ValidatedNameInput } from '../ValidatedNameInput';
+import { validateItemName } from '../../../utils/validateName';
 import {
   ActivityIcon,
   ClefIcon,
@@ -130,6 +133,26 @@ export function MusicTab() {
   const [viewMode, setViewMode] = useState<'tracker' | 'piano'>(() => useAppStore.getState().defaultMusicView);
   const [hoverRowIdx, setHoverRowIdx] = useState<number | null>(null);
   const [hoverStepIdx, setHoverStepIdx] = useState<number | null>(null);
+  const [editingSongId, setEditingSongId] = useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const songNameInputRef = useRef<HTMLInputElement>(null);
+  const pushToast = useAppStore((s) => s.pushToast);
+
+  const handleAddSong = useCallback(() => {
+    const id = addSong();
+    if (id) {
+      setCtxMenu(null);
+      setEditingSongId(id);
+    }
+  }, [addSong]);
+
+  const handleRenameSong = useCallback((id: string, name: string): boolean => {
+    if (!songs.some((s) => s.id === id)) return false;
+    const err = validateItemName(name, songs.filter((s) => s.id !== id).map((s) => s.name));
+    if (err) { pushToast(err); return false; }
+    updateSong(id, { name: name.trim() });
+    return true;
+  }, [songs, pushToast, updateSong]);
 
   // ── Ajustes del preset seleccionado ──────────────────────────────────────
   // Se editan DIRECTO al store (updateInstrumentPreset): antes se guardaban en
@@ -250,7 +273,7 @@ export function MusicTab() {
         id: so.id, label: so.name, icon: <MusicIcon />,
         subtitle: `${so.bpm} BPM`,
       })),
-      onAdd: addSong,
+      onAdd: handleAddSong,
     },
     {
       id: 'channels',
@@ -297,8 +320,11 @@ export function MusicTab() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 64 }}>Nombre</span>
-            <input type="text" value={selectedSong.name}
-              onChange={(e) => updateSong(selectedSong.id, { name: e.target.value })}
+            <ValidatedNameInput
+              value={selectedSong.name}
+              onChange={(name) => updateSong(selectedSong.id, { name })}
+              others={songs.filter((s) => s.id !== selectedSong.id).map((s) => s.name)}
+              inputRef={songNameInputRef}
               style={{ flex: 1, background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '3px 6px', outline: 'none' }}
             />
           </div>
@@ -773,8 +799,14 @@ export function MusicTab() {
         <HierarchyPanel
           sections={hierarchySections}
           selectedId={selectedNodeId}
-          onSelect={handleTreeSelect}
+          onSelect={(id) => { setEditingSongId(null); handleTreeSelect(id); }}
           onRemove={handleRemove}
+          editingId={editingSongId}
+          onEditingChange={setEditingSongId}
+          onRename={handleRenameSong}
+          onNameError={(msg) => pushToast(msg)}
+          onDoubleClick={(id) => { if (songs.some((s) => s.id === id)) setEditingSongId(id); }}
+          onContextMenu={(id, x, y) => { if (songs.some((s) => s.id === id)) setCtxMenu({ id, x, y }); }}
           expandHeaderIds={expandHeaderIds.length ? expandHeaderIds : undefined}
         />
       }
@@ -884,6 +916,9 @@ export function MusicTab() {
               icon={<ClefIcon size={40} />}
               title={songs.length === 0 ? 'Sin canciones' : 'Sin patrón seleccionado'}
               hint="Elige un patrón en la lista para editar sus notas."
+              // Compensa la barra de herramientas superior para que el grupo
+              // quede centrado en el panel completo, igual que las otras pestañas.
+              style={{ marginBottom: 39 }}
             />
           ) : viewMode === 'tracker' ? (
             /* ── Tracker View ── */
@@ -1373,6 +1408,16 @@ export function MusicTab() {
         />
       }
     />
+    {ctxMenu && (
+      <HierarchyContextMenu
+        x={ctxMenu.x}
+        y={ctxMenu.y}
+        onRename={() => setEditingSongId(ctxMenu.id)}
+        onDelete={() => { removeSong(ctxMenu.id); if (selectedNodeId === ctxMenu.id) setSelectedNodeId(''); }}
+        deleteLabel="Eliminar canción"
+        onClose={() => setCtxMenu(null)}
+      />
+    )}
     </>
   );
 }

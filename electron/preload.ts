@@ -16,7 +16,7 @@ export interface AdvanceAPI {
   filePathFor: (file: File) => string;
   // Emulador GBA
   emu: {
-    play: (romPath: string, keymap?: string) => Promise<{ success: boolean; reason?: string }>;
+    play: (romPath: string, keymap?: string, theme?: string) => Promise<{ success: boolean; reason?: string }>;
     stop: () => Promise<{ success: boolean }>;
     isRunning: () => Promise<boolean>;
     /** Estado real del emulador: loading | ready | started | error | closed */
@@ -39,6 +39,7 @@ export interface AdvanceAPI {
     openFolder: () => Promise<string | null>;
     openImage: () => Promise<{ path: string | null; error: string | null }>;
     openAnyImage: () => Promise<{ path: string | null; error: string | null }>;
+    openCsv: () => Promise<{ path: string | null }>;
     openVideo: () => Promise<{ path: string | null; size?: number }>;
     openAudio: () => Promise<{ path: string | null }>;
   };
@@ -100,7 +101,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
   // Ruta en disco de un File soltado (Electron 32+ quitó File.path).
   filePathFor: (file: File) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
   emu: {
-    play: (romPath: string, keymap?: string) => ipcRenderer.invoke('emu:play', romPath, keymap),
+    play: (romPath: string, keymap?: string, theme?: string) => ipcRenderer.invoke('emu:play', romPath, keymap, theme),
     stop: () => ipcRenderer.invoke('emu:stop'),
     isRunning: () => ipcRenderer.invoke('emu:isRunning'),
     onEmulatorStatus: (cb: (p: { level: 'info' | 'error'; msg: string }) => void) => {
@@ -126,6 +127,7 @@ contextBridge.exposeInMainWorld('advanceAPI', {
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
     openImage: () => ipcRenderer.invoke('dialog:openImage'),
     openAnyImage: () => ipcRenderer.invoke('dialog:openAnyImage'),
+    openCsv: () => ipcRenderer.invoke('dialog:openCsv'),
     openVideo: () => ipcRenderer.invoke('dialog:openVideo'),
     openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
   },

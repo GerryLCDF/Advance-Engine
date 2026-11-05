@@ -201,16 +201,11 @@ export function ImagenTab() {
     }
   }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    const filePath = (file as any).path;
-    if (!filePath) return;
+  // Importa una imagen (botón y drag & drop): crea/reutiliza la capa, copia al
+  // proyecto y genera el bitmap GBA. Acepta solo imágenes.
+  const importImagePath = useCallback(async (filePath: string) => {
     const api = window.advanceAPI;
-    if (!api) return;
+    if (!api || !filePath) return;
     const result = await api.file.readImage(filePath);
     if (!result.success || !result.dataUrl) return;
     const st = useAppStore.getState();
@@ -240,7 +235,8 @@ export function ImagenTab() {
       if (lastLayer) targetLayerId = lastLayer.id;
     }
 
-    const destPath = pd ? `${pd}/backgrounds/${file.name}` : filePath;
+    const fileName = filePath.split(/[\\/]/).pop() || 'imagen.png';
+    const destPath = pd ? `${pd}/backgrounds/${fileName}` : filePath;
     if (pd) {
       await api.dir.create(`${pd}/backgrounds`);
       await api.file.copy(filePath, destPath);
@@ -259,6 +255,26 @@ export function ImagenTab() {
     if (!selectedLayer && targetLayerId) setSelectedNodeId(targetLayerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLayer, parentBg, projectDir]);
+
+  const handleImportImage = useCallback(async () => {
+    const api = window.advanceAPI;
+    if (!api) return;
+    const result = await api.dialog.openImage();
+    if (result?.path) await importImagePath(result.path);
+  }, [importImagePath]);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!['png', 'jpg', 'jpeg', 'webp'].includes(ext)) return;
+    const filePath = ((file as any).path as string | undefined) || window.advanceAPI?.filePathFor?.(file) || '';
+    if (!filePath) return;
+    await importImagePath(filePath);
+  }, [importImagePath]);
 
   // Flat hierarchy — layers only, no background nesting
   const hierarchySections: HierarchySection[] = [
@@ -324,11 +340,10 @@ export function ImagenTab() {
     if (selectedNodeId === id) setSelectedNodeId('');
   };
 
-  const previewLayers = selectedLayer
-    ? [selectedLayer]
-    : backgrounds.length > 0
-      ? backgrounds[0].layers
-      : [];
+  // Sin selección no se previsualiza nada: al reabrir un proyecto no debe
+  // aparecer una imagen "seleccionada" por defecto (el lienzo muestra el
+  // estado vacío, igual que el resto de pestañas).
+  const previewLayers = selectedLayer ? [selectedLayer] : [];
 
   // Dynamic preview size: when rescale=false and image known, match image dimensions
   const singleLayer = selectedLayer;
@@ -447,7 +462,22 @@ export function ImagenTab() {
                   background="transparent"
                   icon={<PhotoPentagonIcon size={40} />}
                   title="Sin imagen seleccionada"
-                  hint={dragOver ? 'Suelta la imagen aquí' : 'Selecciona una imagen de la lista o arrastra una aquí.'}
+                  hint={dragOver ? 'Suelta la imagen aquí' : 'Selecciona, importa o arrastra una imagen aquí para comenzar.'}
+                  action={
+                    <button onClick={handleImportImage}
+                      style={{
+                        marginTop: 2,
+                        background: dragOver ? 'var(--accent)' : 'transparent',
+                        border: dragOver ? 'none' : '1px dashed var(--border-light)',
+                        borderRadius: 4,
+                        color: dragOver ? '#fff' : 'var(--text-muted)',
+                        fontSize: 11, padding: '8px 16px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      + Importar imagen (PNG)
+                    </button>
+                  }
                 />
               </div>
             )}

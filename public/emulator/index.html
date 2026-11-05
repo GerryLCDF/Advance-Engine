@@ -293,6 +293,38 @@ const params = new URLSearchParams(location.search);
 const ROM_URL = params.get('rom');
 const MODE = params.get('mode') === 'game' ? 'game' : 'editor';
 
+// Tema del editor (viaja en la URL como JSON): aplica el acento y el fondo de
+// paneles del tema seleccionado en Ajustes, en vez de los colores fijos.
+function parseTheme() {
+  try {
+    const raw = params.get('theme');
+    if (!raw) return null;
+    const t = JSON.parse(decodeURIComponent(raw));
+    if (typeof t?.bg !== 'string' || typeof t?.accent !== 'string') return null;
+    return t;
+  } catch { return null; }
+}
+const THEME = parseTheme();
+
+// Aplicar el tema: sobrescribe las variables CSS de la página del emulador.
+if (THEME) {
+  const style = document.createElement('style');
+  style.textContent = `:root {
+    --emu-bg: ${THEME.bg};
+    --emu-accent: ${THEME.accent};
+    --emu-accent-light: ${THEME.accent};
+  }
+  body { background: ${THEME.bg}; }
+  #titlebar, #controls, #game-info, #botones-presionados, #log-panel .toolbar { background: ${THEME.bg}; }
+  #btn-a, #btn-b, #btn-l, #btn-r, #btn-select, #btn-start, .dpad button, #sys-buttons button { background: color-mix(in srgb, ${THEME.bg} 70%, ${THEME.accent} 30%); color: ${THEME.accent}; }
+  #btn-a:active, #btn-a.pressed, #btn-b:active, #btn-b.pressed, .dpad button:active, .dpad button.pressed { background: ${THEME.accent}; color: #fff; }
+  #game-info .fps-counter { color: ${THEME.accent}; }
+  #botones-presionados .bp.activo { background: color-mix(in srgb, ${THEME.accent} 30%, ${THEME.bg}); color: ${THEME.accent}; box-shadow: 0 0 6px ${THEME.accent}55; }
+  #log-panel .toolbar button:hover { background: color-mix(in srgb, ${THEME.accent} 20%, ${THEME.bg}); }
+  #log-panel .toolbar button.activo { background: ${THEME.accent}; color: #fff; }
+  `;
+  document.head.appendChild(style);
+}
 const screenWrapper = document.getElementById('screen-wrapper');
 const errorOverlay = document.getElementById('error-overlay');
 const errorMsg = document.getElementById('error-msg');

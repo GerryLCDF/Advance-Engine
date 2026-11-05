@@ -42,7 +42,10 @@ interface HierarchyPanelProps {
   onRemove?: (id: string) => void;
   onContextMenu?: (id: string, x: number, y: number) => void;
   editingId?: string | null;
-  onRename?: (id: string, name: string) => void;
+  /** Devuelve false si el nombre no es válido (vacío/duplicado): se restaura el anterior. */
+  onRename?: (id: string, name: string) => boolean | void;
+  /** Aviso de nombre vacío (el rename no llega a llamarse en ese caso). */
+  onNameError?: (msg: string) => void;
   onEditingChange?: (id: string | null) => void;
   onDoubleClick?: (id: string) => void;
   /**
@@ -136,7 +139,7 @@ function ToggleButtons({ toggles }: { toggles: NonNullable<HierarchyItem['toggle
 
 export function HierarchyPanel({
   sections, selectedId, onSelect, onRemove, onContextMenu, editingId, onRename, onEditingChange, onDoubleClick,
-  expandHeaderIds,
+  onNameError, expandHeaderIds,
 }: HierarchyPanelProps) {
   const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(() => {
     const m: Record<string, boolean> = {};
@@ -285,16 +288,30 @@ export function HierarchyPanel({
               defaultValue={node.label}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  const val = e.currentTarget.value.trim();
-                  if (val) onRename?.(node.id, val);
+                  const el = e.currentTarget;
+                  const val = el.value.trim();
+                  if (!val) {
+                    el.value = node.label;
+                    onNameError?.('El nombre no puede estar vacío.');
+                  } else if (onRename) {
+                    const res = onRename(node.id, val);
+                    if (res === false) el.value = node.label;
+                  }
                   onEditingChange?.(null);
                 } else if (e.key === 'Escape') {
                   onEditingChange?.(null);
                 }
               }}
               onBlur={(e) => {
-                const val = e.currentTarget.value.trim();
-                if (val) onRename?.(node.id, val);
+                const el = e.currentTarget;
+                const val = el.value.trim();
+                if (!val) {
+                  el.value = node.label;
+                  onNameError?.('El nombre no puede estar vacío.');
+                } else if (onRename) {
+                  const res = onRename(node.id, val);
+                  if (res === false) el.value = node.label;
+                }
                 onEditingChange?.(null);
               }}
               onClick={(e) => e.stopPropagation()}

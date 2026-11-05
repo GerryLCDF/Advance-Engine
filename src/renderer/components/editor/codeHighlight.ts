@@ -42,6 +42,7 @@ const TYPES = new Set([
 const BUILTINS = new Set([
   'gActors', 'gSelf', 'PLAYER_INDEX', 'REG_KEYINPUT', 'REG_DISPSTAT', 'REG_VCOUNT',
   'moveActorCollide', 'movePlayer', 'moveActor', 'noteOn', 'soundPlay', 'waitVSync',
+  'showDialogue', 'showDialogueRow', 'nextDialogueRow', 'hideDialogue', 'gLang', 'gCurrentDialogueText',
   'printf', 'memcpy', 'memset', 'sprintf',
 ]);
 

@@ -1,12 +1,15 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HierarchyPanel, type HierarchySection } from '../HierarchyPanel';
+import { HierarchyContextMenu } from '../HierarchyContextMenu';
 import { InspectorPanel, type InspectorSection } from '../InspectorPanel';
 import { ResizableEditorLayout } from '../ResizableEditorLayout';
+import { ValidatedNameInput } from '../ValidatedNameInput';
 import { AdvanceCodeIcon, CodeIcon, PlusIcon, PuzzleIcon, XIcon } from './icons';
 import { SCRIPT_MODES, type ScriptData, type ScriptMode } from '../../../types/editor';
 import { highlightCode, type CodeTokenType } from '../codeHighlight';
 import { transpileAdvanceCode } from '../../../utils/advanceCode';
+import { validateItemName } from '../../../utils/validateName';
 
 const MODE_LABEL: Record<ScriptMode, string> = {
   blocks: 'Bloques',
@@ -38,6 +41,25 @@ export function ScriptingTab() {
   const [comingSoonMode, setComingSoonMode] = React.useState<ScriptMode | null>(null);
   const [assignSceneId, setAssignSceneId] = React.useState('');
   const [assignActorId, setAssignActorId] = React.useState('');
+  const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const pushToast = useAppStore((s) => s.pushToast);
+
+  const handleAddScript = useCallback((mode: ScriptMode) => {
+    setComingSoonMode(null);
+    const id = addScript(mode);
+    if (id) {
+      setEditingScriptId(id);
+      setCtxMenu(null);
+    }
+  }, [addScript]);
+
+  const handleRenameScript = useCallback((id: string, name: string): boolean => {
+    const err = validateItemName(name, scripts.filter((s) => s.id !== id).map((s) => s.name));
+    if (err) { pushToast(err); return false; }
+    updateScript(id, { name: name.trim() });
+    return true;
+  }, [scripts, pushToast, updateScript]);
 
   const selected = scripts.find((s) => s.id === selectedNodeId) ?? null;
   const activeMode = comingSoonMode ?? selected?.mode ?? 'c';
@@ -106,7 +128,7 @@ export function ScriptingTab() {
       id: m.value,
       title: m.label.toUpperCase(),
       items,
-      onAdd: () => { setComingSoonMode(null); addScript(m.value); },
+      onAdd: () => handleAddScript(m.value),
     };
   }));
 
@@ -136,8 +158,10 @@ export function ScriptingTab() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 56 }}>Nombre</span>
-            <input type="text" value={sc.name}
-              onChange={(e) => updateScript(sc.id, { name: e.target.value })}
+            <ValidatedNameInput
+              value={sc.name}
+              onChange={(name) => updateScript(sc.id, { name })}
+              others={scripts.filter((s) => s.id !== sc.id).map((s) => s.name)}
               style={{ flex: 1, background: '#141420', border: '1px solid var(--border-light)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '3px 6px', outline: 'none' }}
             />
           </div>
@@ -326,6 +350,7 @@ export function ScriptingTab() {
   }
 
   return (
+    <>
     <ResizableEditorLayout
       leftWidth={hierarchyWidth}
       rightWidth={inspectorWidth}
@@ -335,8 +360,14 @@ export function ScriptingTab() {
         <HierarchyPanel
           sections={hierarchySections}
           selectedId={selectedNodeId}
-          onSelect={(id) => setSelectedNodeId(id)}
-          onRemove={(id) => { removeScript(id); setSelectedNodeId(''); setComingSoonMode(null); }}
+          onSelect={(id) => { setEditingScriptId(null); setSelectedNodeId(id); }}
+          onRemove={(id) => { removeScript(id); setSelectedNodeId(''); setComingSoonMode(null); setEditingScriptId(null); }}
+          editingId={editingScriptId}
+          onEditingChange={setEditingScriptId}
+          onRename={handleRenameScript}
+          onNameError={(msg) => pushToast(msg)}
+          onDoubleClick={(id) => setEditingScriptId(id)}
+          onContextMenu={(id, x, y) => setCtxMenu({ id, x, y })}
         />
       }
       center={
@@ -397,11 +428,11 @@ export function ScriptingTab() {
               Sin scripts seleccionados
             </span>
             <span style={{ fontSize: 11, maxWidth: 380, textAlign: 'center', lineHeight: 1.5 }}>
-              El sistema de código soporta <b>AdvanceCode</b> y <b>C</b>. Bloques llegará próximamente.
+              Selecciona o crea un script (o un sistema de bloques) para iniciar.
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               {SCRIPT_MODES.map((m) => (
-                <button key={m.value} onClick={() => { setComingSoonMode(null); addScript(m.value); }}
+                <button key={m.value} onClick={() => handleAddScript(m.value)}
                   style={{
                     background: 'transparent', border: '1px dashed var(--border-light)', borderRadius: 4,
                     color: 'var(--text-muted)', fontSize: 11, padding: '6px 12px', cursor: 'pointer',
@@ -423,6 +454,17 @@ export function ScriptingTab() {
         />
       }
     />
+    {ctxMenu && (
+      <HierarchyContextMenu
+        x={ctxMenu.x}
+        y={ctxMenu.y}
+        onRename={() => setEditingScriptId(ctxMenu.id)}
+        onDelete={() => { removeScript(ctxMenu.id); setSelectedNodeId(''); setComingSoonMode(null); }}
+        deleteLabel="Eliminar script"
+        onClose={() => setCtxMenu(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -510,6 +552,9 @@ const CODE_SNIPPETS: { label: string; code: string }[] = [
   { label: 'mover gSelf', code: 'moveActorCollide(gSelf, 2, 0);   // (actor, dx, dy) en píxeles' },
   { label: 'bucle de frames', code: 'for (u16 i = 0; i < 60; i++) {\n  \n}\n' },
   { label: 'datos de gSelf', code: 'gSelf->x;  gSelf->y;  gSelf->frame;  gSelf->timer;' },
+  { label: 'mostrar diálogo', code: 'gLang = 0;   // 0 = primer idioma, 1 = segundo\nshowDialogue(0);   // desde la fila 0' },
+  { label: 'mostrar fila por código/ID', code: 'showDialogueRow("saludo");   // campo Código o ID completo de la fila' },
+  { label: 'siguiente fila / ocultar', code: 'if (gJp & 1) nextDialogueRow();   // A: siguiente fila\nif (gJp & 2) hideDialogue();     // B: ocultar' },
 ];
 
 // Snippets de AdvanceCode: la lógica se escribe dentro de `logic <Nombre> for

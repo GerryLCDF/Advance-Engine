@@ -10,6 +10,8 @@ export interface EditorState {
   /** Biblioteca de presets de instrumento de Music (opcional: proyectos viejos no la tienen). */
   instrumentPresets?: any[];
   sounds: any[];
+  /** Fuentes de texto (tilesets de caracteres). */
+  fonts?: any[];
   /** Id del sonido de fondo del splash (PCM por DMA en la ROM). */
   splashSoundId?: string;
   dialogues: any[];
